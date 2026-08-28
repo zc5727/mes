@@ -83,8 +83,12 @@ export class WebSocketService {
     this.emit({ type: 'device:update', payload: device });
 
     this.agvs = this.agvs.map((agv, index) => {
-      // AGV 状态由调度系统推送，本地 3D 控制器只负责按状态表现。
-      const state = Math.random() > 0.9 ? agvStatePool[Math.floor(Math.random() * agvStatePool.length)] : agv.state;
+      // 非移动状态在演示中只保留一个 tick，避免随机模拟把 AGV 永久停在 loading/charging/idle。
+      const state = agv.state !== 'moving'
+        ? 'moving'
+        : Math.random() > 0.94
+          ? agvStatePool[Math.floor(Math.random() * agvStatePool.length)]
+          : 'moving';
       const batteryDelta = state === 'charging' ? 2.8 : -0.8 - Math.random() * 0.7;
       const next: AGVTelemetry = {
         ...agv,
