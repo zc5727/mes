@@ -1,4 +1,4 @@
-import type { DeviceTelemetry, FactoryAlarm, FactoryLog, FactorySnapshot, ProductionLineTelemetry, ProductionSummary } from '@/types/factory';
+import type { AGVTelemetry, DeviceTelemetry, FactoryAlarm, FactoryLog, FactorySnapshot, ProductionLineTelemetry, ProductionSummary } from '@/types/factory';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api/v1').replace(/\/$/, '');
 const TENANT_ID = import.meta.env.VITE_TENANT_ID ?? 'tenant-demo';
@@ -25,6 +25,19 @@ interface ApiWorkOrderOverview {
   completionRate: number;
   inProgress: number;
   released: number;
+}
+
+interface ApiAgv {
+  id: string;
+  lineId: string;
+  code: string;
+  name: string;
+  state: AGVTelemetry['state'];
+  battery: number;
+  speed: number;
+  task: string;
+  progress: number;
+  position: { x: number; y: number; z: number };
 }
 
 const lineIdMap: Record<string, string> = {
@@ -76,6 +89,20 @@ function toDevice(device: ApiDevice, index: number): DeviceTelemetry {
   };
 }
 
+function toAgv(agv: ApiAgv): AGVTelemetry {
+  return {
+    id: agv.code || agv.id,
+    name: agv.name,
+    lineId: lineIdMap[agv.lineId] ?? agv.lineId,
+    state: agv.state,
+    battery: agv.battery,
+    speed: agv.speed,
+    task: agv.task,
+    progress: agv.progress,
+    position: agv.position
+  };
+}
+
 function toLine(line: ApiLine, devices: DeviceTelemetry[]): ProductionLineTelemetry {
   const id = lineIdMap[line.id] ?? line.id;
   const lineDevices = devices.filter((device) => device.lineId === id);
@@ -102,12 +129,14 @@ function toLine(line: ApiLine, devices: DeviceTelemetry[]): ProductionLineTeleme
 }
 
 export async function fetchFactorySnapshot(): Promise<{ snapshot: FactorySnapshot; lines: ProductionLineTelemetry[] }> {
-  const [apiLines, apiDevices, workOrderOverview] = await Promise.all([
+  const [apiLines, apiDevices, workOrderOverview, apiAgvs] = await Promise.all([
     get<ApiLine[]>('/production-lines'),
     get<ApiDevice[]>('/devices'),
-    get<ApiWorkOrderOverview>('/work-orders/overview')
+    get<ApiWorkOrderOverview>('/work-orders/overview'),
+    get<ApiAgv[]>('/agvs')
   ]);
   const devices = apiDevices.map(toDevice);
+  const agvs = apiAgvs.map(toAgv);
   const lines = apiLines.map((line) => toLine(line, devices));
   const alarms: FactoryAlarm[] = devices
     .filter((device) => device.status === 'error' || device.status === 'warning')
@@ -129,7 +158,7 @@ export async function fetchFactorySnapshot(): Promise<{ snapshot: FactorySnapsho
     lines,
     snapshot: {
       devices,
-      agvs: [],
+      agvs,
       alarms,
       logs,
       todayTasks: workOrderOverview.inProgress + workOrderOverview.released,
