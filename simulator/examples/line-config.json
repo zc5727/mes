@@ -1,0 +1,15 @@
+{
+  "lines": [
+    {
+      "id": "line-custom",
+      "code": "C01",
+      "name": "定制装配线",
+      "product": "用户自定义产品",
+      "idealCycleTimeSeconds": 40,
+      "devices": [
+        { "id": "custom-01", "name": "机器人工作站", "kind": "ROBOT", "cycleTimeSeconds": 40 },
+        { "id": "custom-02", "name": "视觉检测站", "kind": "VISION", "cycleTimeSeconds": 30 }
+      ]
+    }
+  ]
+}

@@ -20,3 +20,6 @@ qa_render3/
 # Local caches
 .cache/
 coverage/
+
+# Local development runtime files
+.runtime/

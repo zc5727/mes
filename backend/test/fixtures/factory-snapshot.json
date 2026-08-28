@@ -1,0 +1,69 @@
+{
+  "factoryId": "FACTORY-DEMO-01",
+  "capturedAt": "2026-08-28T08:00:00.000Z",
+  "lines": [
+    {
+      "id": "LINE-01",
+      "name": "CNC加工线",
+      "workshop": "一车间",
+      "status": "running",
+      "completionRate": 86,
+      "plannedQuantity": 420,
+      "completedQuantity": 361,
+      "oee": 84,
+      "deviceOnline": "4/4",
+      "risk": "低风险"
+    },
+    {
+      "id": "LINE-02",
+      "name": "装配线",
+      "workshop": "一车间",
+      "status": "warning",
+      "completionRate": 72,
+      "plannedQuantity": 280,
+      "completedQuantity": 202,
+      "oee": 76,
+      "deviceOnline": "3/4",
+      "risk": "缺料预警"
+    },
+    {
+      "id": "LINE-03",
+      "name": "焊接线",
+      "workshop": "二车间",
+      "status": "error",
+      "completionRate": 64,
+      "plannedQuantity": 240,
+      "completedQuantity": 154,
+      "oee": 61,
+      "deviceOnline": "2/4",
+      "risk": "设备停机"
+    },
+    {
+      "id": "LINE-04",
+      "name": "视觉检测线",
+      "workshop": "二车间",
+      "status": "running",
+      "completionRate": 91,
+      "plannedQuantity": 510,
+      "completedQuantity": 464,
+      "oee": 89,
+      "deviceOnline": "3/3",
+      "risk": "低风险"
+    }
+  ],
+  "devices": [
+    { "id": "DEV-01", "lineId": "LINE-01", "name": "CNC-01", "status": "running", "temperature": 42.1, "power": 45.2 },
+    { "id": "DEV-02", "lineId": "LINE-01", "name": "CNC-02", "status": "running", "temperature": 43.4, "power": 47.8 },
+    { "id": "DEV-03", "lineId": "LINE-02", "name": "ASM-01", "status": "running", "temperature": 39.8, "power": 31.4 },
+    { "id": "DEV-04", "lineId": "LINE-02", "name": "ASM-02", "status": "warning", "temperature": 61.2, "power": 38.6 },
+    { "id": "DEV-05", "lineId": "LINE-03", "name": "WELD-01", "status": "error", "temperature": 78.4, "power": 52.7 },
+    { "id": "DEV-06", "lineId": "LINE-03", "name": "WELD-02", "status": "offline", "temperature": 0, "power": 0 },
+    { "id": "DEV-07", "lineId": "LINE-04", "name": "VISION-01", "status": "running", "temperature": 34.2, "power": 16.8 },
+    { "id": "DEV-08", "lineId": "LINE-04", "name": "VISION-02", "status": "running", "temperature": 35.1, "power": 17.2 }
+  ],
+  "metrics": {
+    "todayTasks": 126,
+    "powerConsumption": 2480,
+    "temperatureTrend": [42, 43, 44, 43, 45, 46, 44, 47]
+  }
+}

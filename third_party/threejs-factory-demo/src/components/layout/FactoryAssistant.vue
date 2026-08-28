@@ -7,17 +7,28 @@
       </div>
       <span class="assistant-status"><i></i>在线</span>
     </div>
-    <div class="assistant-message">
-      <span class="assistant-avatar">AI</span>
-      <p>当前整体生产平稳，但焊接工作站存在温度波动。我可以帮你分析影响范围或模拟调度方案。</p>
+
+    <div class="scope-bar">
+      <span>当前视角</span>
+      <strong>{{ selectedLine.name }}</strong>
+      <small>{{ selectedLine.workshop }}</small>
     </div>
-    <div class="quick-prompts">
+
+    <div class="conversation" aria-live="polite">
+      <div v-for="message in messages" :key="message.id" class="chat-row" :class="`chat-${message.role}`">
+        <span v-if="message.role === 'assistant'" class="assistant-avatar">AI</span>
+        <div class="chat-bubble">
+          <strong v-if="message.title">{{ message.title }}</strong>
+          <p>{{ message.text }}</p>
+          <button v-if="message.action" type="button" class="message-action" @click="runAction(message.action)">
+            {{ message.action.label }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="quick-prompts" aria-label="快捷提问">
       <button v-for="prompt in prompts" :key="prompt" type="button" @click="ask(prompt)">{{ prompt }}</button>
-    </div>
-    <div v-if="answer" class="assistant-answer">
-      <strong>{{ answer.title }}</strong>
-      <p>{{ answer.body }}</p>
-      <button type="button" @click="emit('select-device', answer.deviceId)">定位设备</button>
     </div>
     <form class="assistant-input" @submit.prevent="submitQuestion">
       <input v-model="question" placeholder="问问工厂现在发生了什么..." aria-label="向厂长智能助手提问" />
@@ -28,47 +39,136 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import type { DeviceTelemetry, FactoryAlarm } from '@/types/factory';
+import type { DeviceTelemetry, FactoryAlarm, ProductionLineTelemetry } from '@/types/factory';
+import { createId } from '@/utils/time';
 
-const props = defineProps<{ selectedDevice: DeviceTelemetry | null; alarms: FactoryAlarm[] }>();
-const emit = defineEmits<{ (event: 'select-device', id: string): void }>();
+type ChatAction =
+  | { type: 'device'; label: string; id: string }
+  | { type: 'line'; label: string; id: string };
+
+interface ChatMessage {
+  id: string;
+  role: 'assistant' | 'manager';
+  text: string;
+  title?: string;
+  action?: ChatAction;
+}
+
+const props = defineProps<{
+  selectedDevice: DeviceTelemetry | null;
+  alarms: FactoryAlarm[];
+  devices: DeviceTelemetry[];
+  productionLines: ProductionLineTelemetry[];
+  selectedLine: ProductionLineTelemetry;
+}>();
+
+const emit = defineEmits<{
+  (event: 'select-device', id: string): void;
+  (event: 'select-line', id: string): void;
+}>();
+
 const question = ref('');
-const answer = ref<{ title: string; body: string; deviceId: string } | null>(null);
-const prompts = ['现在最严重的问题？', '哪些订单有延期风险？', '给我一个处理方案'];
+const prompts = ['现在最严重的问题？', '哪些订单有延期风险？', '切换到焊接线'];
+const messages = ref<ChatMessage[]>([
+  {
+    id: createId('chat'),
+    role: 'assistant',
+    text: '当前视角已聚焦选中产线。你可以直接问我异常、设备状态或处置建议。'
+  }
+]);
+
+const findLine = (input: string) => props.productionLines.find((line) => input.includes(line.name) || input.includes(line.id));
+
+const findAlarmDevice = (alarm: FactoryAlarm) => props.devices.find((device) => device.id === alarm.source)
+  ?? props.selectedDevice
+  ?? props.devices.find((device) => device.status === 'error' || device.status === 'warning');
+
+const append = (message: Omit<ChatMessage, 'id'>) => {
+  messages.value.push({ ...message, id: createId('chat') });
+  if (messages.value.length > 8) messages.value.splice(0, messages.value.length - 8);
+};
 
 const respond = (input: string) => {
-  const device = props.selectedDevice ?? { id: 'DEV-03', name: '焊接工作站', warning: '焊接温度波动' };
-  if (input.includes('订单') || input.includes('延期')) {
-    answer.value = { title: '订单A存在轻微延期风险', body: '焊接工作站节拍下降约12%，建议将30%的任务切换到备用工位，预计可避免约2小时延期。', deviceId: device.id };
-  } else if (input.includes('方案')) {
-    answer.value = { title: '建议执行方案：切换备用工位', body: '保留当前工单数据，调整后续派工，并持续观察焊接温度和首件合格率。', deviceId: device.id };
-  } else {
-    answer.value = { title: '当前重点异常：焊接工作站', body: '设备处于预警状态，建议安排点检并检查温度传感器；系统暂不建议直接停线。', deviceId: device.id };
+  append({ role: 'manager', text: input });
+  const line = findLine(input);
+  if (line && (input.includes('切换') || input.includes('查看') || input.includes('聚焦'))) {
+    emit('select-line', line.id);
+    append({
+      role: 'assistant',
+      title: `已切换至${line.name}`,
+      text: `当前产线完成率 ${line.completionRate}%，设备在线 ${line.deviceOnline}。需要我继续查看异常设备吗？`
+    });
+    return;
   }
+
+  const alarm = props.alarms.find((item) => item.level === 'critical') ?? props.alarms[0];
+  const alarmDevice = alarm ? findAlarmDevice(alarm) : props.selectedDevice;
+  if (input.includes('订单') || input.includes('延期')) {
+    append({
+      role: 'assistant',
+      title: '订单延期风险：中等',
+      text: `${props.selectedLine.name}当前完成率 ${props.selectedLine.completionRate}%。建议先处理${alarmDevice?.name ?? '异常设备'}，再重新评估派工。`,
+      action: alarmDevice ? { type: 'device', label: '定位风险设备', id: alarmDevice.id } : undefined
+    });
+    return;
+  }
+
+  if (input.includes('方案') || input.includes('建议') || input.includes('怎么处理')) {
+    append({
+      role: 'assistant',
+      title: '建议按“先隔离、再点检、后恢复”执行',
+      text: `${alarmDevice?.name ?? '当前产线'}存在需要关注的状态。先保留工单上下文，安排点检并观察首件合格率，未经确认不直接停线。`,
+      action: alarmDevice ? { type: 'device', label: '查看设备详情', id: alarmDevice.id } : undefined
+    });
+    return;
+  }
+
+  if (alarm) {
+    append({
+      role: 'assistant',
+      title: alarm.level === 'critical' ? '当前最严重问题' : '当前重点关注',
+      text: `${alarm.source}：${alarm.message}。建议先确认现场安全状态，再安排点检。`,
+      action: alarmDevice ? { type: 'device', label: '定位异常设备', id: alarmDevice.id } : undefined
+    });
+    return;
+  }
+
+  append({
+    role: 'assistant',
+    title: '当前没有未处理告警',
+    text: `${props.selectedLine.name}运行数据平稳。你可以继续询问设备温度、订单进度或产线切换。`
+  });
 };
+
+const runAction = (action: ChatAction) => {
+  if (action.type === 'device') emit('select-device', action.id);
+  if (action.type === 'line') emit('select-line', action.id);
+};
+
 const ask = (prompt: string) => respond(prompt);
-const submitQuestion = () => { if (question.value.trim()) { respond(question.value.trim()); question.value = ''; } };
+const submitQuestion = () => {
+  const input = question.value.trim();
+  if (!input) return;
+  respond(input);
+  question.value = '';
+};
 </script>
 
 <style scoped>
-.assistant { position:absolute; right:380px; top:92px; z-index:4; width:310px; padding:14px; color:#dcecff; }
-.assistant-head,.assistant-status,.assistant-input,.assistant-message { display:flex; align-items:center; }
+.assistant { position:absolute; right:380px; top:92px; z-index:4; display:flex; width:310px; max-height:calc(100vh - 234px); flex-direction:column; padding:14px; color:#dcecff; }
+.assistant-head,.assistant-status,.assistant-input { display:flex; align-items:center; }
 .assistant-head { justify-content:space-between; gap:12px; }
 .eyebrow { display:block; color:#67d5ff; font-size:9px; letter-spacing:1.2px; }
 .assistant-head strong { display:block; margin-top:4px; color:#eef8ff; font-size:15px; }
 .assistant-status { gap:6px; color:#72f5ba; font-size:11px; }
 .assistant-status i { width:7px; height:7px; border-radius:50%; background:#39f5b6; box-shadow:0 0 10px #39f5b6; }
-.assistant-message { align-items:flex-start; gap:8px; margin:14px 0 10px; padding:10px; background:rgba(255,255,255,.055); }
+.scope-bar { display:flex; align-items:baseline; gap:7px; margin:12px 0 8px; padding:8px 9px; border:1px solid rgba(104,200,255,.2); background:rgba(29,143,255,.08); }
+.scope-bar span,.scope-bar small { color:#7eaed6; font-size:10px; }.scope-bar strong { color:#eef8ff; font-size:12px; }.scope-bar small { margin-left:auto; }
+.conversation { display:flex; min-height:110px; flex:1; flex-direction:column; gap:8px; overflow-y:auto; padding-right:3px; scrollbar-width:thin; }
+.chat-row { display:flex; align-items:flex-start; gap:8px; }.chat-manager { justify-content:flex-end; }.chat-manager .chat-bubble { background:rgba(29,143,255,.14); border-color:rgba(104,200,255,.26); }
+.chat-bubble { max-width:90%; padding:9px 10px; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.055); }.chat-bubble strong { display:block; margin-bottom:4px; color:#ffe3a1; font-size:11px; }.chat-bubble p { margin:0; color:#b8d8f4; font-size:12px; line-height:1.5; }
 .assistant-avatar { display:grid; width:26px; height:26px; flex:0 0 auto; place-items:center; border:1px solid #4a90e2; color:#9ed2ff; font-size:10px; font-weight:800; }
-.assistant-message p,.assistant-answer p { margin:0; color:#b8d8f4; font-size:12px; line-height:1.5; }
-.quick-prompts { display:flex; flex-wrap:wrap; gap:6px; }
-.quick-prompts button,.assistant-answer button { padding:6px 8px; border:1px solid rgba(104,200,255,.3); background:rgba(29,143,255,.1); color:#a9d7ff; cursor:pointer; font-size:11px; }
-.quick-prompts button:hover,.assistant-answer button:hover { border-color:#68c8ff; background:rgba(29,143,255,.2); }
-.assistant-answer { margin-top:10px; padding:10px; border-left:3px solid #ffc857; background:rgba(255,200,87,.08); }
-.assistant-answer strong { display:block; margin-bottom:5px; color:#ffe3a1; font-size:12px; }
-.assistant-answer button { margin-top:9px; color:#ffe3a1; border-color:rgba(255,200,87,.35); background:transparent; }
-.assistant-input { gap:7px; margin-top:12px; }
-.assistant-input input { min-width:0; flex:1; padding:8px 9px; border:1px solid rgba(111,183,255,.2); outline:none; background:rgba(0,0,0,.18); color:#dcecff; font-size:12px; }
-.assistant-input input:focus { border-color:#4a90e2; }
-.assistant-input button { padding:8px 11px; border:0; background:#1d8fff; color:#fff; cursor:pointer; font-size:12px; }
+.message-action { margin-top:8px; padding:5px 7px; border:1px solid rgba(104,200,255,.3); background:transparent; color:#a9d7ff; cursor:pointer; font-size:10px; }
+.quick-prompts { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }.quick-prompts button { padding:6px 8px; border:1px solid rgba(104,200,255,.3); background:rgba(29,143,255,.1); color:#a9d7ff; cursor:pointer; font-size:11px; }.quick-prompts button:hover,.message-action:hover { border-color:#68c8ff; background:rgba(29,143,255,.2); }
+.assistant-input { gap:7px; margin-top:12px; }.assistant-input input { min-width:0; flex:1; padding:8px 9px; border:1px solid rgba(111,183,255,.2); outline:none; background:rgba(0,0,0,.18); color:#dcecff; font-size:12px; }.assistant-input input:focus { border-color:#4a90e2; }.assistant-input button { padding:8px 11px; border:0; background:#1d8fff; color:#fff; cursor:pointer; font-size:12px; }
 </style>

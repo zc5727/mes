@@ -4,6 +4,7 @@ import type { AGVState, AGVTelemetry } from '@/types/factory';
 export interface AGVRuntimeOptions {
   id: string;
   name: string;
+  lineId: string;
   path: THREE.Vector3[];
   speed: number;
   color: number;
@@ -33,6 +34,7 @@ export class AGVController {
     this.telemetry = {
       id: options.id,
       name: options.name,
+      lineId: options.lineId,
       state: 'moving',
       battery: 92,
       speed: options.speed,

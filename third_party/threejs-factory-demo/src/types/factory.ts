@@ -26,6 +26,7 @@ export interface VectorPoint {
 export interface AGVTelemetry {
   id: string;
   name: string;
+  lineId: string;
   state: AGVState;
   battery: number;
   speed: number;
@@ -37,6 +38,7 @@ export interface AGVTelemetry {
 export interface DeviceTelemetry {
   id: string;
   name: string;
+  lineId: string;
   zone: string;
   status: DeviceStatus;
   temperature: number;
@@ -49,6 +51,7 @@ export interface FactoryAlarm {
   id: string;
   level: 'info' | 'warning' | 'critical';
   source: string;
+  lineId?: string;
   message: string;
   time: string;
 }

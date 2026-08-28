@@ -96,6 +96,17 @@ export class FactoryScene {
     this.deviceManager.updateTelemetry(device);
   }
 
+  setVisibleDeviceIds(ids: string[]): void {
+    this.deviceManager.setVisibleIds(ids);
+  }
+
+  setVisibleAgvIds(ids: string[]): void {
+    const visibleIds = new Set(ids);
+    this.agvs.forEach((agv) => {
+      agv.group.visible = visibleIds.has(agv.id);
+    });
+  }
+
   updateAgv(telemetry: AGVTelemetry): void {
     const agv = this.agvs.find((item) => item.id === telemetry.id);
     agv?.applyTelemetry(telemetry);
@@ -367,6 +378,7 @@ export class FactoryScene {
       const agv = new AGVController({
         id: `AGV-0${index + 1}`,
         name: `运输机器人 ${index + 1}`,
+        lineId: ['LINE-01', 'LINE-02', 'LINE-03'][index],
         path: pathA,
         speed: 0.036 + index * 0.008,
         color: palette[index],

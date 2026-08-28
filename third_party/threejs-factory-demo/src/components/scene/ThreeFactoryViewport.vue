@@ -28,6 +28,8 @@ import type { AGVTelemetry, DeviceStatus, DeviceTelemetry } from '@/types/factor
 const props = defineProps<{
   devices: DeviceTelemetry[];
   agvs: AGVTelemetry[];
+  visibleDeviceIds: string[];
+  visibleAgvIds: string[];
   selectedDevice: DeviceTelemetry | null;
 }>();
 
@@ -53,6 +55,8 @@ onMounted(() => {
     onDeviceSelect: (device) => emit('select-device', device)
   });
   factoryScene.start();
+  factoryScene.setVisibleDeviceIds(props.visibleDeviceIds);
+  factoryScene.setVisibleAgvIds(props.visibleAgvIds);
   resizeObserver = new ResizeObserver(() => factoryScene?.resize());
   resizeObserver.observe(containerRef.value!);
 });
@@ -70,6 +74,18 @@ watch(
   (agvs) => {
     agvs.forEach((agv) => factoryScene?.updateAgv(agv));
   },
+  { deep: true, immediate: true }
+);
+
+watch(
+  () => props.visibleDeviceIds,
+  (ids) => factoryScene?.setVisibleDeviceIds(ids),
+  { deep: true, immediate: true }
+);
+
+watch(
+  () => props.visibleAgvIds,
+  (ids) => factoryScene?.setVisibleAgvIds(ids),
   { deep: true, immediate: true }
 );
 

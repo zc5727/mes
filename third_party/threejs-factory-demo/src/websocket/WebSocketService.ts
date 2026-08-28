@@ -38,8 +38,8 @@ export class WebSocketService {
     this.devices = this.createDevices();
     this.agvs = this.createAgvs();
     this.alarms = [
-      this.createAlarm('warning', 'CAM-04', '仓储区摄像头出现短时抖动'),
-      this.createAlarm('info', 'AGV-02', '机器人完成 A-17 物料转运任务')
+      this.createAlarm('warning', 'CAM-04', '仓储区摄像头出现短时抖动', 'LINE-04'),
+      this.createAlarm('info', 'AGV-02', '机器人完成 A-17 物料转运任务', 'LINE-02')
     ];
     this.logs = [
       this.createLog('WebSocket 通道已建立，开始接收 IoT 数据'),
@@ -122,16 +122,18 @@ export class WebSocketService {
   }
 
   private createDevices(): DeviceTelemetry[] {
-    const names = ['冲压机组 A1', 'CNC 加工中心', '焊接工作站', '机械臂 R7', '视觉检测台', '高位货架', '能源柜', '边缘网关'];
-    const zones = ['工业设备区', '工业设备区', '工业设备区', '机械臂区域', '摄像头区域', '仓储区', '数据看板区域', '数据看板区域'];
+    const names = ['CNC 加工中心 A1', '刀具检测台', '装配机器人 R7', '螺栓拧紧机 A2', '焊接工作站', '焊缝检测台', '视觉检测台', '边缘视觉网关'];
+    const zones = ['CNC 加工区', 'CNC 加工区', '装配区', '装配区', '焊接区', '焊接区', '视觉检测区', '视觉检测区'];
+    const lineIds = ['LINE-01', 'LINE-01', 'LINE-02', 'LINE-02', 'LINE-03', 'LINE-03', 'LINE-04', 'LINE-04'];
     return names.map((name, index) => ({
       id: `DEV-${String(index + 1).padStart(2, '0')}`,
       name,
+      lineId: lineIds[index],
       zone: zones[index],
-      status: index === 2 ? 'warning' : index === 7 ? 'offline' : 'running',
+      status: index === 4 ? 'error' : index === 5 ? 'warning' : index === 7 ? 'offline' : 'running',
       temperature: 38 + index * 3 + Math.random() * 3,
       power: 38 + index * 7 + Math.random() * 5,
-      warning: index === 2 ? '焊接温度波动' : null,
+      warning: index === 4 ? '焊接电流异常' : index === 5 ? '焊缝质量需要复检' : null,
       position: devicePositions[index]
     }));
   }
@@ -140,6 +142,7 @@ export class WebSocketService {
     return ['AGV-01', 'AGV-02', 'AGV-03'].map((id, index) => ({
       id,
       name: `运输机器人 ${index + 1}`,
+      lineId: ['LINE-01', 'LINE-02', 'LINE-03'][index],
       state: 'moving',
       battery: 86 - index * 13,
       speed: 0.34 + index * 0.04,
@@ -153,11 +156,13 @@ export class WebSocketService {
     return statusPool[Math.floor(Math.random() * statusPool.length)];
   }
 
-  private createAlarm(level: FactoryAlarm['level'], source: string, message: string): FactoryAlarm {
+  private createAlarm(level: FactoryAlarm['level'], source: string, message: string, lineId?: string): FactoryAlarm {
+    const sourceDevice = this.devices.find((device) => device.id === source);
     return {
       id: createId('alarm'),
       level,
       source,
+      lineId: lineId ?? sourceDevice?.lineId,
       message,
       time: formatClock()
     };

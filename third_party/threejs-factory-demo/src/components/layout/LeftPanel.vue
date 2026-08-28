@@ -2,14 +2,14 @@
   <aside class="left-panel">
     <section class="panel block shop-block">
       <div class="panel-title">工厂导航</div>
-      <div class="breadcrumb">南沙示范工厂 / 一车间</div>
+      <div class="breadcrumb">南沙示范工厂 / {{ selectedLine?.workshop ?? '全部车间' }}</div>
       <div class="shop-tree">
         <button type="button" class="tree-row active"><span>⌄</span>一车间</button>
         <button type="button" class="tree-row"><span>└</span>加工产线 <em>4台</em></button>
         <button type="button" class="tree-row"><span>└</span>装配产线 <em>2台</em></button>
         <button type="button" class="tree-row"><span>└</span>原料与成品仓 <em>12项</em></button>
       </div>
-      <div class="flow-title">生产线总览</div>
+      <div class="flow-title line-overview-title"><span>生产线总览</span><em>{{ devices.length }} 台设备</em></div>
       <div class="line-list">
         <button v-for="line in productionLines" :key="line.id" type="button" class="line-card" :class="[{ active: selectedLineId === line.id }, `line-${line.status}`]" @click="$emit('select-line', line.id)">
           <span class="line-state"></span>
@@ -30,6 +30,7 @@
           </div>
           <p>{{ alarm.message }}</p>
         </div>
+        <div v-if="!alarms.length" class="empty-state">当前产线暂无未处理告警。</div>
       </div>
     </section>
 
@@ -47,6 +48,7 @@
           <span class="device-name">{{ device.name }}</span>
           <span class="device-temp">{{ device.temperature.toFixed(1) }}℃</span>
         </button>
+        <div v-if="!devices.length" class="empty-state">当前产线暂无设备数据。</div>
       </div>
     </section>
   </aside>
@@ -61,6 +63,7 @@ defineProps<{
   selectedDeviceId: string | null;
   productionLines: ProductionLineTelemetry[];
   selectedLineId: string;
+  selectedLine?: ProductionLineTelemetry;
 }>();
 
 defineEmits<{
@@ -90,6 +93,7 @@ defineEmits<{
 .tree-row em { margin-left:auto; color:#6e97b9; font-size:10px; font-style:normal; }
 .tree-row.active,.tree-row:hover { background:rgba(29,143,255,.13); color:#eef8ff; }
 .flow-title { margin:14px 0 8px; color:#83add0; font-size:11px; }
+.line-overview-title { display:flex; align-items:center; justify-content:space-between; }.line-overview-title em { color:#6e97b9; font-size:10px; font-style:normal; }
 .flow-track { display:flex; align-items:center; gap:4px; color:#7c9ab7; font-size:10px; }
 .flow-track span { padding:5px 6px; border:1px solid rgba(111,183,255,.16); }
 .flow-track .done { color:#72f5ba; border-color:rgba(77,255,181,.35); }
@@ -216,5 +220,12 @@ defineEmits<{
   color: #9ed2ff;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+.empty-state {
+  padding: 14px 8px;
+  color: #7898b6;
+  font-size: 11px;
+  line-height: 1.5;
 }
 </style>

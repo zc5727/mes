@@ -11,6 +11,7 @@ const statusColor: Record<DeviceStatus, number> = {
 export class DeviceManager {
   readonly group = new THREE.Group();
   private readonly bindings = new Map<string, SceneDeviceBinding>();
+  private visibleIds: Set<string> | null = null;
   private selectedId: string | null = null;
   private hoveredId: string | null = null;
 
@@ -21,7 +22,17 @@ export class DeviceManager {
 
   getInteractiveObjects(): THREE.Object3D[] {
     // Raycaster 只检测设备根节点，命中后再向上回溯 deviceId。
-    return Array.from(this.bindings.values()).map((binding) => binding.mesh);
+    return Array.from(this.bindings.values())
+      .filter((binding) => binding.mesh.visible)
+      .map((binding) => binding.mesh);
+  }
+
+  setVisibleIds(ids: string[]): void {
+    const visibleIds = new Set(ids);
+    this.visibleIds = visibleIds;
+    this.bindings.forEach((binding, id) => {
+      binding.mesh.visible = visibleIds.has(id);
+    });
   }
 
   updateTelemetry(device: DeviceTelemetry): void {
@@ -128,6 +139,7 @@ export class DeviceManager {
 
     root.add(base, body, light, ring);
     this.applyStatus(root, device.status, false);
+    root.visible = this.visibleIds?.has(device.id) ?? true;
     this.bindings.set(device.id, { mesh: root, telemetry: device });
     this.group.add(root);
   }

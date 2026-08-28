@@ -1,7 +1,7 @@
 <template>
   <aside class="right-panel">
     <section class="panel block">
-      <div class="panel-title"><span>生产态势</span><ElTag size="small" type="success">运行中</ElTag></div>
+      <div class="panel-title"><span>生产态势</span><ElTag size="small" :type="lineStatusTag(selectedLine.status)">{{ lineStatusLabel(selectedLine.status) }}</ElTag></div>
       <div class="line-focus">
         <div><strong>{{ selectedLine.name }}</strong><small>{{ selectedLine.workshop }} · {{ selectedLine.deviceOnline }}设备在线 · {{ selectedLine.risk }}</small></div>
         <b>{{ selectedLine.completionRate }}%</b>
@@ -12,8 +12,8 @@
           <strong>{{ todayTasks }}</strong>
         </div>
         <div class="kpi">
-          <span>AGV数量</span>
-          <strong>{{ agvs.length }}</strong>
+          <span>设备在线率</span>
+          <strong>{{ onlineRate }}%</strong>
         </div>
         <div class="kpi">
           <span>告警统计</span>
@@ -25,9 +25,9 @@
         </div>
       </div>
       <div class="production-strip">
-        <div><span>今日计划</span><strong>1,260</strong></div>
-        <div><span>已完成</span><strong class="good">1,084</strong></div>
-        <div><span>达成率</span><strong>86%</strong></div>
+        <div><span>今日计划</span><strong>{{ selectedLine.plannedQuantity.toLocaleString() }}</strong></div>
+        <div><span>已完成</span><strong class="good">{{ selectedLine.completedQuantity.toLocaleString() }}</strong></div>
+        <div><span>达成率</span><strong>{{ selectedLine.completionRate }}%</strong></div>
       </div>
       <DataCharts class="charts-host" :devices="devices" :alarms="alarms" :temperature-trend="temperatureTrend" />
     </section>
@@ -89,6 +89,8 @@ const tagType = (state: AGVState) => {
 
 const statusTag = (status: DeviceStatus) => status === 'error' ? 'danger' : status === 'warning' ? 'warning' : status === 'offline' ? 'info' : 'success';
 const statusLabel = (status: DeviceStatus) => ({ running: '运行', warning: '预警', error: '故障', offline: '离线' })[status];
+const lineStatusTag = (status: ProductionLineTelemetry['status']) => status === 'error' ? 'danger' : status === 'warning' ? 'warning' : status === 'idle' ? 'info' : 'success';
+const lineStatusLabel = (status: ProductionLineTelemetry['status']) => ({ running: '运行中', warning: '需关注', error: '已停机', idle: '待启动' })[status];
 </script>
 
 <style scoped>
