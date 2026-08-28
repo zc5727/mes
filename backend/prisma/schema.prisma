@@ -1,0 +1,209 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 这是 MES 基座的数据边界。首轮演示仍使用内存服务，接入 Prisma 时按此模型迁移。
+model Tenant {
+  id          String   @id
+  name        String
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  factories   Factory[]
+  users       User[]
+  roles       Role[]
+  products    Product[]
+  documents   Document[]
+  orders      ProductionOrder[]
+  devices     Device[]
+  workOrders  WorkOrder[]
+  qualityRecords QualityRecord[]
+  strategyDecisions StrategyDecision[]
+  auditLogs   AuditLog[]
+}
+
+model User {
+  id          String   @id
+  tenantId    String
+  username    String
+  displayName String
+  status      String   @default("active")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  roles       UserRole[]
+  auditLogs   AuditLog[]
+  @@unique([tenantId, username])
+  @@index([tenantId])
+}
+
+model Role {
+  id          String   @id
+  tenantId    String
+  name        String
+  permissions Json
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  users       UserRole[]
+  @@unique([tenantId, name])
+}
+
+model UserRole {
+  userId      String
+  roleId      String
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  @@id([userId, roleId])
+}
+
+model Factory {
+  id          String   @id
+  tenantId    String
+  name        String
+  address     String?
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  lines       ProductionLine[]
+  devices     Device[]
+  @@index([tenantId])
+}
+
+model ProductionLine {
+  id          String   @id
+  tenantId    String
+  factoryId   String
+  code        String
+  name        String
+  status      String   @default("active")
+  targetOee   Float    @default(85)
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  factory     Factory  @relation(fields: [factoryId], references: [id])
+  devices     Device[]
+  workOrders  WorkOrder[]
+  @@unique([tenantId, code])
+  @@index([tenantId, factoryId])
+}
+
+model Device {
+  id          String   @id
+  tenantId    String
+  factoryId   String
+  lineId      String
+  code        String
+  name        String
+  protocol    String
+  status      String   @default("offline")
+  metrics     Json
+  metadata    Json
+  lastSeenAt  DateTime?
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  factory     Factory  @relation(fields: [factoryId], references: [id])
+  line        ProductionLine @relation(fields: [lineId], references: [id])
+  @@unique([tenantId, code])
+  @@index([tenantId, lineId])
+}
+
+model Product {
+  id          String   @id
+  tenantId    String
+  code        String
+  name        String
+  version     String
+  bom         Json
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  documents   Document[]
+  orders      ProductionOrder[]
+  @@unique([tenantId, code, version])
+}
+
+model ProductionOrder {
+  id          String   @id
+  tenantId    String
+  productId   String
+  orderNo     String
+  quantity    Int
+  dueAt       DateTime
+  priority    Int      @default(3)
+  status      String   @default("planned")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  product     Product  @relation(fields: [productId], references: [id])
+  workOrders  WorkOrder[]
+  @@unique([tenantId, orderNo])
+}
+
+model WorkOrder {
+  id          String   @id
+  tenantId    String
+  orderId     String
+  lineId      String
+  workOrderNo String
+  plannedQty  Int
+  completedQty Int @default(0)
+  status      String @default("released")
+  tenant      Tenant @relation(fields: [tenantId], references: [id])
+  order       ProductionOrder @relation(fields: [orderId], references: [id])
+  line        ProductionLine @relation(fields: [lineId], references: [id])
+  qualityRecords QualityRecord[]
+  @@unique([tenantId, workOrderNo])
+}
+
+model QualityRecord {
+  id          String   @id
+  tenantId    String
+  workOrderId String
+  batchNo     String
+  type        String
+  result      String
+  measurements Json
+  attachments Json
+  createdAt   DateTime @default(now())
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id])
+  @@index([tenantId, batchNo])
+}
+
+model Document {
+  id          String   @id
+  tenantId    String
+  productId   String?
+  fileName    String
+  objectKey   String
+  sha256      String
+  version     String
+  parseStatus String   @default("pending")
+  extracted   Json
+  createdAt   DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  product     Product? @relation(fields: [productId], references: [id])
+  @@unique([tenantId, sha256])
+}
+
+model StrategyDecision {
+  id          String   @id
+  tenantId    String
+  strategyCode String
+  riskLevel   String
+  status      String   @default("draft")
+  evidence    Json
+  candidates  Json
+  approval    Json
+  execution   Json
+  createdAt   DateTime @default(now())
+  @@index([tenantId, status])
+}
+
+model AuditLog {
+  id          String   @id
+  tenantId    String
+  userId      String?
+  action      String
+  resource    String
+  resourceId  String?
+  traceId     String
+  beforeData  Json?
+  afterData   Json?
+  createdAt   DateTime @default(now())
+  tenant      Tenant @relation(fields: [tenantId], references: [id])
+  user        User? @relation(fields: [userId], references: [id])
+  @@index([tenantId, createdAt])
+}

@@ -6,6 +6,7 @@ import { HealthController } from './health.controller';
 import { ProductionLinesModule } from './production-lines/production-lines.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { WorkOrdersModule } from './work-orders/work-orders.module';
+import { FoundationModule } from './foundation/foundation.module';
 
 @Module({
   controllers: [HealthController],
@@ -16,6 +17,7 @@ import { WorkOrdersModule } from './work-orders/work-orders.module';
     ProductionLinesModule,
     DevicesModule,
     WorkOrdersModule,
+    FoundationModule,
   ],
 })
 export class AppModule {}
