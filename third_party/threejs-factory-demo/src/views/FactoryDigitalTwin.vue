@@ -52,11 +52,13 @@ import RightPanel from '@/components/layout/RightPanel.vue';
 import TopBar from '@/components/layout/TopBar.vue';
 import ThreeFactoryViewport from '@/components/scene/ThreeFactoryViewport.vue';
 import { useFactoryStore } from '@/store/factoryStore';
+import { fetchFactorySnapshot } from '@/api/mesApi';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
 import { websocketService } from '@/websocket/WebSocketService';
 
 const store = useFactoryStore();
 const selectedLineId = ref('LINE-01');
+const dataSource = ref<'api' | 'simulator'>('simulator');
 const lineDefinitions: ProductionLineTelemetry[] = [
   { id: 'LINE-01', name: 'CNC加工线', workshop: '一车间', status: 'running', completionRate: 86, plannedQuantity: 420, completedQuantity: 361, oee: 84, deviceOnline: '4/4', risk: '低风险' },
   { id: 'LINE-02', name: '装配线', workshop: '一车间', status: 'warning', completionRate: 72, plannedQuantity: 280, completedQuantity: 202, oee: 76, deviceOnline: '3/4', risk: '缺料预警' },
@@ -128,7 +130,7 @@ const ensureLineSelection = () => {
   store.selectDevice(firstDevice?.id ?? null);
 };
 
-onMounted(() => {
+const connectSimulator = () => {
   unsubscribe = websocketService.subscribe((message) => {
     if (message.type === 'snapshot') {
       store.applySnapshot(message.payload);
@@ -149,12 +151,26 @@ onMounted(() => {
     }
   });
   websocketService.connect();
+};
+
+onMounted(async () => {
+  try {
+    const result = await fetchFactorySnapshot();
+    store.applySnapshot(result.snapshot);
+    dataSource.value = 'api';
+    store.setConnected(true);
+    ensureLineSelection();
+  } catch (error) {
+    console.info('MES API unavailable, using local simulator', error);
+    dataSource.value = 'simulator';
+    connectSimulator();
+  }
 });
 
 onBeforeUnmount(() => {
   unsubscribe?.();
   websocketService.disconnect();
-  store.setConnected(false);
+  if (dataSource.value === 'simulator') store.setConnected(false);
 });
 </script>
 
