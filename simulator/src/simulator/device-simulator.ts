@@ -12,6 +12,8 @@ const FAULT_MESSAGES: Record<FaultType, string> = {
   COMMUNICATION_LOSS: "设备通信中断",
   QUALITY_DRIFT: "质量参数发生漂移",
   EMERGENCY_STOP: "设备触发急停",
+  MATERIAL_SHORTAGE: "上游物料不足",
+  QUALITY_ANOMALY: "连续质量异常",
 };
 
 const FAULT_SEVERITY: Record<FaultType, Alarm["severity"]> = {
@@ -20,6 +22,8 @@ const FAULT_SEVERITY: Record<FaultType, Alarm["severity"]> = {
   COMMUNICATION_LOSS: "CRITICAL",
   QUALITY_DRIFT: "WARNING",
   EMERGENCY_STOP: "CRITICAL",
+  MATERIAL_SHORTAGE: "WARNING",
+  QUALITY_ANOMALY: "CRITICAL",
 };
 
 export class DeviceSimulator {
@@ -106,11 +110,13 @@ export class DeviceSimulator {
       this.fractionalOutput += (elapsedSeconds / this.definition.cycleTimeSeconds) * (0.9 + this.random() * 0.16);
       const produced = Math.floor(this.fractionalOutput);
       this.fractionalOutput -= produced;
-      const defects = Array.from({ length: produced }).filter(() => this.random() < 0.02).length;
+      const defectRate = this.activeFaults.has("QUALITY_DRIFT") || this.activeFaults.has("QUALITY_ANOMALY") ? 0.35 : 0.02;
+      const defects = Array.from({ length: produced }).filter(() => this.random() < defectRate).length;
       this.totalCount += produced;
       this.defectCount += defects;
       this.goodCount += produced - defects;
       this.temperatureCelsius = Math.min(85, this.temperatureCelsius + 0.35 + this.random() * 0.7);
+      if (this.activeFaults.has("MATERIAL_SHORTAGE")) this.fractionalOutput = Math.min(this.fractionalOutput, 0.1);
     } else {
       this.temperatureCelsius = Math.max(28, this.temperatureCelsius - 0.8);
     }

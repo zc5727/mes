@@ -4,8 +4,11 @@ import { MessagePublisher } from "../mqtt/publisher";
 import { ProductionLineSimulator } from "./production-line-simulator";
 
 export class FactorySimulator {
-  private readonly lines: ProductionLineSimulator[];
+  private lines: ProductionLineSimulator[];
   private readonly pendingMessages: SimulationMessage[] = [];
+  private readonly history: Array<{ timestamp: string; messages: SimulationMessage[] }> = [];
+  private paused = false;
+  private timeScale = 1;
 
   public constructor(
     private readonly tenantId: string,
@@ -13,8 +16,28 @@ export class FactorySimulator {
     random: () => number = Math.random,
     definitions = LINE_DEFINITIONS,
   ) {
+    this.definitions = definitions;
+    this.random = random;
     this.lines = definitions.map((definition) => new ProductionLineSimulator(definition, tenantId, random));
   }
+
+  private readonly definitions: typeof LINE_DEFINITIONS;
+  private readonly random: () => number;
+
+  public setPaused(paused: boolean): void { this.paused = paused; }
+  public isPaused(): boolean { return this.paused; }
+  public setTimeScale(timeScale: number): void {
+    if (!Number.isFinite(timeScale) || timeScale <= 0) throw new Error("timeScale must be greater than 0");
+    this.timeScale = timeScale;
+  }
+  public getTimeScale(): number { return this.timeScale; }
+  public reset(): void {
+    this.lines = this.definitions.map((definition) => new ProductionLineSimulator(definition, this.tenantId, this.random));
+    this.pendingMessages.length = 0;
+    this.history.length = 0;
+  }
+  public exportHistory(): string { return JSON.stringify(this.history, null, 2); }
+  public snapshot(timestamp = new Date()) { return this.lines.map((line) => line.snapshot(timestamp)); }
 
   public injectFault(lineId: string, deviceId: string, type: FaultType): SimulationMessage {
     const alarm = this.findLine(lineId).injectFault(deviceId, type);
@@ -58,12 +81,12 @@ export class FactorySimulator {
   }
 
   public tick(timestamp = new Date()): SimulationMessage[] {
-    const messages = this.lines.flatMap((line) => line.tick(this.intervalMs / 1000, timestamp));
-    return [...this.pendingMessages.splice(0), ...messages];
-  }
-
-  public snapshots(timestamp = new Date()) {
-    return this.lines.map((line) => line.snapshot(timestamp));
+    const pending = this.pendingMessages.splice(0);
+    if (this.paused) return pending;
+    const messages = this.lines.flatMap((line) => line.tick(this.intervalMs / 1000 * this.timeScale, timestamp));
+    const result = [...pending, ...messages];
+    this.history.push({ timestamp: timestamp.toISOString(), messages: result });
+    return result;
   }
 
   public async run(publisher: MessagePublisher, once = false): Promise<() => Promise<void>> {

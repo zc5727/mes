@@ -2,6 +2,7 @@ import { SimulatorOptions } from "./types";
 
 const DEFAULT_TENANT_ID = "demo-tenant";
 const DEFAULT_INTERVAL_MS = 1000;
+const DEFAULT_TIME_SCALE = 1;
 
 export interface CliOptions extends SimulatorOptions {
   mqttUrl?: string;
@@ -9,6 +10,7 @@ export interface CliOptions extends SimulatorOptions {
   once: boolean;
   faults: FaultCommand[];
   clearFaults: FaultCommand[];
+  paused: boolean;
 }
 
 export interface FaultCommand {
@@ -30,6 +32,11 @@ export function parseCliArgs(args: string[], env: NodeJS.ProcessEnv = process.en
   if (!Number.isFinite(intervalMs) || intervalMs < 100) {
     throw new Error("--interval-ms must be a number greater than or equal to 100");
   }
+  const timeScale = Number(getValue("--time-scale") ?? env.SIMULATOR_TIME_SCALE ?? DEFAULT_TIME_SCALE);
+  if (!Number.isFinite(timeScale) || timeScale <= 0) throw new Error("--time-scale must be greater than 0");
+  const seedValue = getValue("--seed") ?? env.SIMULATOR_SEED;
+  const seed = seedValue === undefined ? undefined : Number(seedValue);
+  if (seed !== undefined && !Number.isInteger(seed)) throw new Error("--seed must be an integer");
 
   const parseFaultCommands = (flag: string): FaultCommand[] => args
     .flatMap((arg, index) => arg === flag && args[index + 1] ? [parseFaultCommand(args[index + 1])] : []);
@@ -42,17 +49,20 @@ export function parseCliArgs(args: string[], env: NodeJS.ProcessEnv = process.en
     once: args.includes("--once"),
     faults: parseFaultCommands("--fault"),
     clearFaults: parseFaultCommands("--clear-fault"),
+    timeScale,
+    seed,
+    paused: args.includes("--pause"),
   };
 }
 
 function parseFaultCommand(value: string): FaultCommand {
   const [lineId, deviceId, type, ...extra] = value.split(":");
   if (!lineId || !deviceId || !type || extra.length > 0 || !isFaultType(type)) {
-    throw new Error("Fault format must be lineId:deviceId:OVERHEAT|JAM|COMMUNICATION_LOSS|QUALITY_DRIFT|EMERGENCY_STOP");
+    throw new Error("Fault format must be lineId:deviceId:OVERHEAT|JAM|COMMUNICATION_LOSS|QUALITY_DRIFT|EMERGENCY_STOP|MATERIAL_SHORTAGE|QUALITY_ANOMALY");
   }
   return { lineId, deviceId, type };
 }
 
 function isFaultType(value: string): value is FaultCommandType {
-  return ["OVERHEAT", "JAM", "COMMUNICATION_LOSS", "QUALITY_DRIFT", "EMERGENCY_STOP"].includes(value);
+  return ["OVERHEAT", "JAM", "COMMUNICATION_LOSS", "QUALITY_DRIFT", "EMERGENCY_STOP", "MATERIAL_SHORTAGE", "QUALITY_ANOMALY"].includes(value);
 }

@@ -9,7 +9,9 @@ export type FaultType =
   | "JAM"
   | "COMMUNICATION_LOSS"
   | "QUALITY_DRIFT"
-  | "EMERGENCY_STOP";
+  | "EMERGENCY_STOP"
+  | "MATERIAL_SHORTAGE"
+  | "QUALITY_ANOMALY";
 
 export type AlarmSeverity = "INFO" | "WARNING" | "CRITICAL";
 
@@ -118,5 +120,7 @@ export interface TwinCommand {
 export interface SimulatorOptions {
   tenantId: string;
   intervalMs: number;
+  timeScale?: number;
+  seed?: number;
   random?: () => number;
 }
