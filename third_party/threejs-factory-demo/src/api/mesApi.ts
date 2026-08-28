@@ -38,7 +38,10 @@ async function get<T>(path: string): Promise<T> {
     headers: { 'x-tenant-id': TENANT_ID }
   });
   if (!response.ok) throw new Error(`MES API ${response.status}: ${path}`);
-  return response.json() as Promise<T>;
+  const body = await response.json() as T | { data: T };
+  return typeof body === 'object' && body !== null && 'data' in body
+    ? body.data
+    : body as T;
 }
 
 function toStatus(status: ApiDevice['status']): DeviceTelemetry['status'] {
