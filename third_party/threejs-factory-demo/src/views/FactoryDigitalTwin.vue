@@ -28,6 +28,7 @@
       :selected-device="activeSelectedDevice"
       :online-rate="selectedLineOnlineRate"
       :selected-line="selectedLine"
+      :production-summary="productionSummary"
     />
     <BottomLogs :logs="logs" />
     <FactoryAssistant
@@ -77,7 +78,8 @@ const {
   selectedDeviceId,
   selectedDevice,
   onlineDeviceCount,
-  connected
+  connected,
+  productionSummary
 } = storeToRefs(store);
 
 const lineSummaries = computed<ProductionLineTelemetry[]>(() => {
@@ -112,6 +114,7 @@ const selectedLineOnlineRate = computed(() => {
 const activeSelectedDevice = computed(() => selectedDevice.value?.lineId === selectedLineId.value ? selectedDevice.value : null);
 
 let unsubscribe: (() => void) | null = null;
+let apiRefreshTimer: number | null = null;
 
 const handleSceneSelect = (device: DeviceTelemetry | null) => {
   store.selectDevice(device?.id ?? null);
@@ -157,14 +160,24 @@ const connectSimulator = () => {
   websocketService.connect();
 };
 
+const refreshApiSnapshot = async () => {
+  const result = await fetchFactorySnapshot();
+  apiLines.value = result.lines;
+  store.applySnapshot(result.snapshot);
+  store.setConnected(true);
+  ensureLineSelection();
+};
+
 onMounted(async () => {
   try {
-    const result = await fetchFactorySnapshot();
-    apiLines.value = result.lines;
-    store.applySnapshot(result.snapshot);
+    await refreshApiSnapshot();
     dataSource.value = 'api';
-    store.setConnected(true);
-    ensureLineSelection();
+    apiRefreshTimer = window.setInterval(() => {
+      void refreshApiSnapshot().catch((error) => {
+        console.warn('MES API refresh failed, keeping last known snapshot', error);
+        store.setConnected(false);
+      });
+    }, 3000);
   } catch (error) {
     console.info('MES API unavailable, using local simulator', error);
     apiLines.value = [];
@@ -174,6 +187,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  window.clearInterval(apiRefreshTimer ?? undefined);
   unsubscribe?.();
   websocketService.disconnect();
   if (dataSource.value === 'simulator') store.setConnected(false);

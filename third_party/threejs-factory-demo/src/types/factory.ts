@@ -62,6 +62,12 @@ export interface FactoryLog {
   message: string;
 }
 
+export interface ProductionSummary {
+  plannedQuantity: number;
+  completedQuantity: number;
+  completionRate: number;
+}
+
 export interface FactorySnapshot {
   devices: DeviceTelemetry[];
   agvs: AGVTelemetry[];
@@ -70,6 +76,7 @@ export interface FactorySnapshot {
   todayTasks: number;
   powerConsumption: number;
   temperatureTrend: number[];
+  productionSummary?: ProductionSummary;
 }
 
 export interface SceneDeviceBinding {

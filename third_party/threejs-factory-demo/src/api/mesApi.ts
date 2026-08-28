@@ -1,4 +1,4 @@
-import type { DeviceTelemetry, FactoryAlarm, FactoryLog, FactorySnapshot, ProductionLineTelemetry } from '@/types/factory';
+import type { DeviceTelemetry, FactoryAlarm, FactoryLog, FactorySnapshot, ProductionLineTelemetry, ProductionSummary } from '@/types/factory';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api/v1').replace(/\/$/, '');
 const TENANT_ID = import.meta.env.VITE_TENANT_ID ?? 'tenant-demo';
@@ -17,6 +17,14 @@ interface ApiDevice {
   name: string;
   status: 'online' | 'offline' | 'maintenance' | 'alarm';
   metrics: Record<string, number | string | boolean | null>;
+}
+
+interface ApiWorkOrderOverview {
+  plannedQty: number;
+  completedQty: number;
+  completionRate: number;
+  inProgress: number;
+  released: number;
 }
 
 const lineIdMap: Record<string, string> = {
@@ -94,9 +102,10 @@ function toLine(line: ApiLine, devices: DeviceTelemetry[]): ProductionLineTeleme
 }
 
 export async function fetchFactorySnapshot(): Promise<{ snapshot: FactorySnapshot; lines: ProductionLineTelemetry[] }> {
-  const [apiLines, apiDevices] = await Promise.all([
+  const [apiLines, apiDevices, workOrderOverview] = await Promise.all([
     get<ApiLine[]>('/production-lines'),
-    get<ApiDevice[]>('/devices')
+    get<ApiDevice[]>('/devices'),
+    get<ApiWorkOrderOverview>('/work-orders/overview')
   ]);
   const devices = apiDevices.map(toDevice);
   const lines = apiLines.map((line) => toLine(line, devices));
@@ -111,6 +120,11 @@ export async function fetchFactorySnapshot(): Promise<{ snapshot: FactorySnapsho
       time: `${index + 1}分钟前`
     }));
   const logs: FactoryLog[] = [{ id: 'api-log-1', time: '刚刚', message: '已接入 MES API，显示后端实时设备台账' }];
+  const productionSummary: ProductionSummary = {
+    plannedQuantity: workOrderOverview.plannedQty,
+    completedQuantity: workOrderOverview.completedQty,
+    completionRate: workOrderOverview.completionRate
+  };
   return {
     lines,
     snapshot: {
@@ -118,9 +132,10 @@ export async function fetchFactorySnapshot(): Promise<{ snapshot: FactorySnapsho
       agvs: [],
       alarms,
       logs,
-      todayTasks: 126,
+      todayTasks: workOrderOverview.inProgress + workOrderOverview.released,
       powerConsumption: devices.reduce((total, device) => total + device.power, 0),
-      temperatureTrend: devices.length ? devices.slice(0, 8).map((device) => device.temperature) : [36, 37, 38]
+      temperatureTrend: devices.length ? devices.slice(0, 8).map((device) => device.temperature) : [36, 37, 38],
+      productionSummary
     }
   };
 }

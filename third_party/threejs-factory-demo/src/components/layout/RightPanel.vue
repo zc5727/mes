@@ -25,9 +25,9 @@
         </div>
       </div>
       <div class="production-strip">
-        <div><span>今日计划</span><strong>{{ selectedLine.plannedQuantity.toLocaleString() }}</strong></div>
-        <div><span>已完成</span><strong class="good">{{ selectedLine.completedQuantity.toLocaleString() }}</strong></div>
-        <div><span>达成率</span><strong>{{ selectedLine.completionRate }}%</strong></div>
+        <div><span>今日计划</span><strong>{{ (productionSummary?.plannedQuantity ?? selectedLine.plannedQuantity).toLocaleString() }}</strong></div>
+        <div><span>已完成</span><strong class="good">{{ (productionSummary?.completedQuantity ?? selectedLine.completedQuantity).toLocaleString() }}</strong></div>
+        <div><span>达成率</span><strong>{{ productionSummary?.completionRate ?? selectedLine.completionRate }}%</strong></div>
       </div>
       <DataCharts class="charts-host" :devices="devices" :alarms="alarms" :temperature-trend="temperatureTrend" />
     </section>
@@ -56,6 +56,7 @@
             <span>{{ agv.speed.toFixed(2) }}m/s</span>
           </div>
         </div>
+        <div v-if="!agvs.length" class="empty-state">后端暂未接入 AGV 数据。</div>
       </div>
     </section>
   </aside>
@@ -66,7 +67,7 @@ import DataCharts from '@/components/charts/DataCharts.vue';
 import { ElProgress, ElTag } from 'element-plus';
 import 'element-plus/es/components/progress/style/css';
 import 'element-plus/es/components/tag/style/css';
-import type { AGVState, AGVTelemetry, DeviceTelemetry, DeviceStatus, FactoryAlarm, ProductionLineTelemetry } from '@/types/factory';
+import type { AGVState, AGVTelemetry, DeviceTelemetry, DeviceStatus, FactoryAlarm, ProductionLineTelemetry, ProductionSummary } from '@/types/factory';
 
 defineProps<{
   devices: DeviceTelemetry[];
@@ -78,6 +79,7 @@ defineProps<{
   selectedDevice: DeviceTelemetry | null;
   onlineRate: number;
   selectedLine: ProductionLineTelemetry;
+  productionSummary?: ProductionSummary;
 }>();
 
 const tagType = (state: AGVState) => {
