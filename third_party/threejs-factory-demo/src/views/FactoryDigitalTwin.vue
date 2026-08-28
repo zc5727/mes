@@ -59,7 +59,8 @@ import { websocketService } from '@/websocket/WebSocketService';
 const store = useFactoryStore();
 const selectedLineId = ref('LINE-01');
 const dataSource = ref<'api' | 'simulator'>('simulator');
-const lineDefinitions: ProductionLineTelemetry[] = [
+const apiLines = ref<ProductionLineTelemetry[]>([]);
+const fallbackLineDefinitions: ProductionLineTelemetry[] = [
   { id: 'LINE-01', name: 'CNC加工线', workshop: '一车间', status: 'running', completionRate: 86, plannedQuantity: 420, completedQuantity: 361, oee: 84, deviceOnline: '4/4', risk: '低风险' },
   { id: 'LINE-02', name: '装配线', workshop: '一车间', status: 'warning', completionRate: 72, plannedQuantity: 280, completedQuantity: 202, oee: 76, deviceOnline: '3/4', risk: '缺料预警' },
   { id: 'LINE-03', name: '焊接线', workshop: '二车间', status: 'error', completionRate: 64, plannedQuantity: 240, completedQuantity: 154, oee: 61, deviceOnline: '2/4', risk: '设备停机' },
@@ -79,23 +80,26 @@ const {
   connected
 } = storeToRefs(store);
 
-const lineSummaries = computed<ProductionLineTelemetry[]>(() => lineDefinitions.map((line) => {
-  const lineDevices = devices.value.filter((device) => device.lineId === line.id);
-  const hasError = lineDevices.some((device) => device.status === 'error');
-  const hasAttention = lineDevices.some((device) => device.status === 'warning' || device.status === 'offline');
-  const onlineCount = lineDevices.filter((device) => device.status !== 'offline').length;
-  const status = hasError || line.status === 'error'
-    ? 'error'
-    : hasAttention || line.status === 'warning'
-      ? 'warning'
-      : lineDevices.length ? 'running' : 'idle';
-  return {
-    ...line,
-    status,
-    deviceOnline: `${onlineCount}/${lineDevices.length || 0}`,
-    risk: status === 'error' ? '设备故障' : status === 'warning' ? '需要关注' : '低风险'
-  };
-}));
+const lineSummaries = computed<ProductionLineTelemetry[]>(() => {
+  const lineDefinitions = apiLines.value.length ? apiLines.value : fallbackLineDefinitions;
+  return lineDefinitions.map((line) => {
+    const lineDevices = devices.value.filter((device) => device.lineId === line.id);
+    const hasError = lineDevices.some((device) => device.status === 'error');
+    const hasAttention = lineDevices.some((device) => device.status === 'warning' || device.status === 'offline');
+    const onlineCount = lineDevices.filter((device) => device.status !== 'offline').length;
+    const status = hasError || line.status === 'error'
+      ? 'error'
+      : hasAttention || line.status === 'warning'
+        ? 'warning'
+        : lineDevices.length ? 'running' : 'idle';
+    return {
+      ...line,
+      status,
+      deviceOnline: `${onlineCount}/${lineDevices.length || 0}`,
+      risk: status === 'error' ? '设备故障' : status === 'warning' ? '需要关注' : '低风险'
+    };
+  });
+});
 
 const selectedLine = computed(() => lineSummaries.value.find((line) => line.id === selectedLineId.value) ?? lineSummaries.value[0]);
 const lineDevices = computed(() => devices.value.filter((device) => device.lineId === selectedLineId.value));
@@ -156,12 +160,14 @@ const connectSimulator = () => {
 onMounted(async () => {
   try {
     const result = await fetchFactorySnapshot();
+    apiLines.value = result.lines;
     store.applySnapshot(result.snapshot);
     dataSource.value = 'api';
     store.setConnected(true);
     ensureLineSelection();
   } catch (error) {
     console.info('MES API unavailable, using local simulator', error);
+    apiLines.value = [];
     dataSource.value = 'simulator';
     connectSimulator();
   }
