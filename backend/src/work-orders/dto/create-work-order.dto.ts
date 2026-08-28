@@ -16,6 +16,11 @@ export class CreateWorkOrderDto {
   @MaxLength(120)
   productName!: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  orderId?: string;
+
   @IsString()
   @MinLength(2)
   @MaxLength(40)

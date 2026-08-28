@@ -1,13 +1,17 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { createId, MockEntity, timestamp } from '../common/mock.types';
 import { CreateWorkOrderDto } from './dto/create-work-order.dto';
 import { UpdateWorkOrderStatusDto } from './dto/update-work-order-status.dto';
 import { UpdateWorkOrderDto } from './dto/update-work-order.dto';
+import { ReportWorkOrderDto } from './dto/report-work-order.dto';
+import { OrdersService } from '../orders/orders.service';
+import { ProductionLinesService } from '../production-lines/production-lines.service';
 
 type WorkOrderStatus = 'draft' | 'released' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
 type WorkOrderPriority = 'low' | 'normal' | 'high' | 'urgent';
 
 export interface WorkOrder extends MockEntity {
+  orderId?: string;
   orderNo: string;
   productCode: string;
   productName: string;
@@ -18,6 +22,18 @@ export interface WorkOrder extends MockEntity {
   priority: WorkOrderPriority;
   status: WorkOrderStatus;
   statusReason: string;
+}
+
+export interface WorkOrderReport {
+  id: string;
+  workOrderId: string;
+  tenantId: string;
+  quantity: number;
+  goodQty: number;
+  defectQty: number;
+  deviceId: string | null;
+  sourceTraceId: string;
+  reportedAt: string;
 }
 
 const allowedTransitions: Record<WorkOrderStatus, WorkOrderStatus[]> = {
@@ -31,6 +47,12 @@ const allowedTransitions: Record<WorkOrderStatus, WorkOrderStatus[]> = {
 
 @Injectable()
 export class WorkOrdersService {
+  constructor(
+    @Optional() private readonly ordersService: OrdersService = new OrdersService(),
+    @Optional() private readonly productionLinesService: ProductionLinesService = new ProductionLinesService(),
+  ) {}
+
+  private readonly reports: WorkOrderReport[] = [];
   private readonly workOrders = new Map<string, WorkOrder>([
     [
       'wo-demo-001',
@@ -93,9 +115,12 @@ export class WorkOrdersService {
       throw new ConflictException(`Work order ${dto.orderNo} already exists`);
     }
 
+    this.productionLinesService.findOne(tenantId, dto.lineId);
+    if (dto.orderId) this.ordersService.findOne(tenantId, dto.orderId);
     const now = timestamp();
     const workOrder: WorkOrder = {
       id: createId('wo'),
+      orderId: dto.orderId,
       tenantId,
       orderNo: dto.orderNo,
       productCode: dto.productCode,
@@ -116,8 +141,12 @@ export class WorkOrdersService {
 
   update(tenantId: string, id: string, dto: UpdateWorkOrderDto): WorkOrder {
     const current = this.findOne(tenantId, id);
+    if (dto.lineId) this.productionLinesService.findOne(tenantId, dto.lineId);
     const plannedQty = dto.plannedQty ?? current.plannedQty;
     const completedQty = dto.completedQty ?? current.completedQty;
+    if (completedQty < current.completedQty) {
+      throw new ConflictException('completedQty cannot be decreased');
+    }
     if (completedQty > plannedQty) {
       throw new ConflictException('completedQty cannot be greater than plannedQty');
     }
@@ -130,6 +159,36 @@ export class WorkOrdersService {
       updatedAt: timestamp(),
     };
     this.workOrders.set(id, updated);
+    return updated;
+  }
+
+  report(tenantId: string, id: string, dto: ReportWorkOrderDto): { workOrder: WorkOrder; report: WorkOrderReport } {
+    const current = this.findOne(tenantId, id);
+    if (current.status !== 'in_progress') throw new ConflictException('Only in-progress work orders can report production');
+    if (current.completedQty + dto.quantity > current.plannedQty) throw new ConflictException('Report quantity exceeds planned quantity');
+    const goodQty = dto.goodQty ?? dto.quantity;
+    const defectQty = dto.defectQty ?? dto.quantity - goodQty;
+    if (goodQty + defectQty !== dto.quantity) throw new ConflictException('goodQty + defectQty must equal quantity');
+    const report: WorkOrderReport = {
+      id: createId('report'), workOrderId: id, tenantId, quantity: dto.quantity,
+      goodQty, defectQty, deviceId: dto.deviceId ?? null,
+      sourceTraceId: dto.sourceTraceId ?? createId('trace'), reportedAt: timestamp(),
+    };
+    this.reports.push(report);
+    const completedQty = current.completedQty + dto.quantity;
+    const workOrder = this.updateProgress(current, completedQty);
+    if (workOrder.orderId) this.ordersService.recordProgress(tenantId, workOrder.orderId, completedQty);
+    return { workOrder, report };
+  }
+
+  findReports(tenantId: string, workOrderId: string): WorkOrderReport[] {
+    this.findOne(tenantId, workOrderId);
+    return this.reports.filter((report) => report.tenantId === tenantId && report.workOrderId === workOrderId);
+  }
+
+  private updateProgress(current: WorkOrder, completedQty: number): WorkOrder {
+    const updated = { ...current, completedQty, status: completedQty === current.plannedQty ? 'completed' : current.status, updatedAt: timestamp() };
+    this.workOrders.set(current.id, updated);
     return updated;
   }
 
