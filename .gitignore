@@ -1,0 +1,22 @@
+# Dependencies and build output
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+backend/.env
+.env
+*.log
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+
+# Rendered QA intermediates
+qa_render/
+qa_render2/
+qa_render3/
+
+# Local caches
+.cache/
+coverage/
