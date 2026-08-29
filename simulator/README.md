@@ -6,11 +6,12 @@
 
 - CNC 加工线、装配线、焊接线、视觉检测线
 - 每条产线 3 台设备，共 12 台设备
-- 设备状态：`RUNNING`、`IDLE`、`STOPPED`、`FAULT`
+- 设备状态：`RUNNING`、`IDLE`、`WARNING`、`STOPPED`、`FAULT`、`OFFLINE`
 - 设备温度、节拍、产量、良品数、不良品数
 - OEE：开动率、性能、质量和综合 OEE
 - 告警：信息、警告、严重三级；支持故障恢复
 - 故障注入：过热、堵料、通信中断、质量漂移、急停
+- AGV：每条默认产线 1 台物流 AGV，支持电量、载荷、里程、通信中断和故障模拟
 - MQTT 发布；未配置 MQTT 时默认输出 JSON 到 stdout
 
 ## 启动
@@ -33,6 +34,27 @@ npm run dev -- --once
 npm run dev -- --interval-ms 2000 --tenant demo-factory
 ```
 
+使用固定随机种子并加速仿真时间，适合回归测试和策略对比：
+
+```bash
+npm run dev -- --seed 20260828 --time-scale 5
+```
+
+启动后可通过标准输入控制运行状态：
+
+```text
+start       恢复运行
+stop        停止状态推进（进程仍保持运行）
+pause       暂停状态推进
+resume      恢复状态推进
+speed 10    设置时间倍率
+fault line-cnc:cnc-01:OVERHEAT
+reset       重置全部产线和回放记录
+snapshot    输出当前快照
+export      输出仿真历史
+replay      输出版本化回放文档
+```
+
 按工厂实际情况加载自定义产线配置，配置文件可以增加、删除或修改产线和设备：
 
 ```bash
@@ -45,6 +67,12 @@ npm run dev -- --config examples/line-config.json
 
 ```bash
 npm run dev -- --mqtt mqtt://localhost:1883
+```
+
+启用 AGV 独立遥测及可复现网络扰动：
+
+```bash
+npm run dev -- --agv-telemetry --network-latency-ms 500 --network-duplicate-rate 0.1 --network-drop-rate 0.05 --network-seed 7
 ```
 
 启动时注入故障，支持重复传入多个 `--fault`：
@@ -76,6 +104,8 @@ mes/simulator/{tenantId}/lines/{lineId}/devices/{deviceId}/telemetry
 mes/simulator/{tenantId}/lines/{lineId}/snapshot
 mes/simulator/{tenantId}/alarms
 mes/simulator/{tenantId}/twin/state
+mes/simulator/{tenantId}/lines/{lineId}/agvs/{agvId}/telemetry
+mes/simulator/{tenantId}/control
 ```
 
 孪生页面向下面的控制主题发布 JSON，模拟器会执行命令并立即发布 `twin.state.changed`，下一采样周期继续发布最新设备遥测和产线快照：
@@ -97,6 +127,19 @@ mes/control/{tenantId}/twin/command
 ```
 
 支持的孪生动作：`START_LINE`、`STOP_LINE`、`START_DEVICE`、`STOP_DEVICE`、`INJECT_FAULT`、`RESET_FAULT`。`INJECT_FAULT` 还需要传入 `faultType`。
+
+模拟器自身还提供统一控制协议，主题为 `mes/control/{tenantId}/simulator/command`（兼容订阅不带 `/command` 的主题）。协议使用小写 `action`，支持 `start`、`stop`、`pause`、`resume`、`speed`、`fault`、`reset`、`snapshot`、`export`、`replay`：
+
+```json
+{"commandId":"ctl-001","action":"speed","speed":2}
+{"commandId":"ctl-002","action":"fault","lineId":"line-cnc","deviceId":"cnc-01","faultType":"OVERHEAT"}
+```
+
+其中 `fault` 必须提供 `lineId`、`deviceId` 和 `faultType`；`speed` 必须是大于 0 的数字。控制结果发布到 `mes/simulator/{tenantId}/control`，快照和导出结果分别使用 `simulator.snapshot` 和 `simulator.export` 事件。`stop` 停止状态推进但不结束进程，`start` 可恢复推进；`pause`/`resume` 只控制暂停状态。`reset` 无范围参数时重置模拟器；传入 `lineId`、`deviceId` 和可选 `faultType` 时只恢复指定故障。
+
+策略或调度服务可以直接读取 `FactorySimulator.strategyInputSnapshot()`，获得同一时间点的产线、设备、AGV、告警和运行控制状态。场景测试通过 `loadScenario([{ "atSeconds": 10, "command": { ... } }])` 注入定时控制命令。
+
+阶段 7 的网络扰动通过构造参数启用：`latencyMs` 模拟延迟，`duplicateRate` 模拟重复消息，`dropRate` 模拟丢包，`seed` 保证扰动可复现。`exportReplay()` 导出带版本和序号的回放文档，`replayFrames()` 支持按帧筛选回放数据。
 
 消息统一为 JSON，`event` 表示事件类型，`data` 为业务数据。例如：
 
@@ -135,6 +178,8 @@ JAM                 堵料
 COMMUNICATION_LOSS  通信中断
 QUALITY_DRIFT       质量漂移
 EMERGENCY_STOP      急停
+MATERIAL_SHORTAGE   物料短缺（预警）
+QUALITY_ANOMALY     质量异常
 ```
 
 ## 校验

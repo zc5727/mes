@@ -6,6 +6,7 @@ const requiredKeys = [
   'NODE_ENV',
   'PORT',
   'DATABASE_URL',
+  'MQTT_ENABLED',
   'MQTT_URL',
   'MINIO_ENDPOINT',
   'MINIO_PORT',

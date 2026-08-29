@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-08-29T08:00:00.000Z",
+  "lines": [
+    { "id": "LINE-01", "name": "冲压线", "capacityPerHour": 32, "active": true },
+    { "id": "LINE-02", "name": "机加线", "capacityPerHour": 28, "active": true },
+    { "id": "LINE-03", "name": "焊接线", "capacityPerHour": 24, "active": true },
+    { "id": "LINE-04", "name": "装配线", "capacityPerHour": 30, "active": true }
+  ],
+  "devices": [
+    { "id": "PRESS-01", "lineId": "LINE-01", "status": "online", "capacityPerHour": 32 },
+    { "id": "CNC-01", "lineId": "LINE-02", "status": "online", "capacityPerHour": 28 },
+    { "id": "WELD-01", "lineId": "LINE-03", "status": "alarm", "capacityPerHour": 24 },
+    { "id": "WELD-02", "lineId": "LINE-03", "status": "offline", "capacityPerHour": 24 },
+    { "id": "ASM-01", "lineId": "LINE-04", "status": "online", "capacityPerHour": 30 }
+  ],
+  "workOrders": [
+    {
+      "id": "WO-WELD-001",
+      "lineId": "LINE-03",
+      "remainingQty": 120,
+      "dueAt": "2026-08-29T12:00:00.000Z",
+      "priority": 4,
+      "status": "running"
+    },
+    {
+      "id": "WO-ASM-001",
+      "lineId": "LINE-04",
+      "remainingQty": 20,
+      "dueAt": "2026-08-29T20:00:00.000Z",
+      "priority": 2,
+      "status": "released"
+    }
+  ]
+}

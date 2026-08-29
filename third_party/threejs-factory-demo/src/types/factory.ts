@@ -13,6 +13,7 @@ export interface ProductionLineTelemetry {
   plannedQuantity: number;
   completedQuantity: number;
   oee: number;
+  oeeMetrics?: OeeMetrics;
   deviceOnline: string;
   risk: string;
 }
@@ -45,12 +46,14 @@ export interface DeviceTelemetry {
   power: number;
   warning: string | null;
   position: VectorPoint;
+  observedAt?: string;
 }
 
 export interface FactoryAlarm {
   id: string;
   level: 'info' | 'warning' | 'critical';
   source: string;
+  sourceId?: string;
   lineId?: string;
   message: string;
   time: string;
@@ -68,6 +71,23 @@ export interface ProductionSummary {
   completionRate: number;
 }
 
+export interface OeeMetrics {
+  availability: number;
+  performance: number;
+  quality: number;
+  oee: number;
+  totalCount?: number;
+  goodCount?: number;
+  defectCount?: number;
+}
+
+export interface SimulatorState {
+  status: 'RUNNING' | 'PAUSED' | 'STOPPED';
+  paused: boolean;
+  timeScale: number;
+  currentTime: string;
+}
+
 export interface FactorySnapshot {
   devices: DeviceTelemetry[];
   agvs: AGVTelemetry[];
@@ -77,6 +97,8 @@ export interface FactorySnapshot {
   powerConsumption: number;
   temperatureTrend: number[];
   productionSummary?: ProductionSummary;
+  simulator?: SimulatorState;
+  lines?: ProductionLineTelemetry[];
 }
 
 export interface SceneDeviceBinding {

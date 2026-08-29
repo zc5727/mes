@@ -3,7 +3,7 @@
     <section class="panel block">
       <div class="panel-title"><span>生产态势</span><ElTag size="small" :type="lineStatusTag(selectedLine.status)">{{ lineStatusLabel(selectedLine.status) }}</ElTag></div>
       <div class="line-focus">
-        <div><strong>{{ selectedLine.name }}</strong><small>{{ selectedLine.workshop }} · {{ selectedLine.deviceOnline }}设备在线 · {{ selectedLine.risk }}</small></div>
+        <div><strong>{{ selectedLine.name }}</strong><small>{{ selectedLine.workshop }} · OEE {{ selectedLine.oee.toFixed(1) }}% · {{ selectedLine.deviceOnline }}设备在线 · {{ selectedLine.risk }}</small></div>
         <b>{{ selectedLine.completionRate }}%</b>
       </div>
       <div class="kpi-grid">
@@ -37,7 +37,7 @@
       <div v-if="selectedDevice" class="selected-device">
         <div class="selected-head"><strong>{{ selectedDevice.name }}</strong><ElTag size="small" :type="statusTag(selectedDevice.status)">{{ statusLabel(selectedDevice.status) }}</ElTag></div>
         <p>{{ selectedDevice.zone }} · {{ selectedDevice.id }}</p>
-        <div class="detail-grid"><span>温度</span><strong>{{ selectedDevice.temperature.toFixed(1) }}℃</strong><span>功率</span><strong>{{ selectedDevice.power.toFixed(1) }}kW</strong><span>当前工单</span><strong>WO-20260828-017</strong></div>
+        <div class="detail-grid"><span>温度</span><strong>{{ selectedDevice.temperature.toFixed(1) }}℃</strong><span>功率</span><strong>{{ selectedDevice.power.toFixed(1) }}kW</strong><span>当前工单</span><strong>进行中</strong></div>
         <div v-if="selectedDevice.warning" class="selected-warning">{{ selectedDevice.warning }}，建议安排点检。</div>
         <div class="object-actions"><button type="button">查看工单</button><button type="button">创建点检</button></div>
       </div>

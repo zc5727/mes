@@ -127,12 +127,14 @@ export class DeviceManager {
       new THREE.BoxGeometry(1.14, 0.08, 0.86),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.75 })
     );
+    light.userData.statusVisual = true;
     light.position.y = 1.32;
 
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.86, 0.93, 48),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, side: THREE.DoubleSide })
     );
+    ring.userData.statusVisual = true;
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.04;
     root.userData.ring = ring;
@@ -161,7 +163,7 @@ export class DeviceManager {
         material.emissive.setHex(color);
         material.emissiveIntensity = status === 'offline' ? 0.02 : active ? 0.42 : 0.16;
       }
-      if ('color' in material && mesh.geometry.type !== 'BoxGeometry') {
+      if ('color' in material && (mesh.userData.statusVisual || mesh.geometry.type !== 'BoxGeometry')) {
         material.color.setHex(color);
       }
     });

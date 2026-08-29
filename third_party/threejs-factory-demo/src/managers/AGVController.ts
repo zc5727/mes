@@ -76,6 +76,13 @@ export class AGVController {
     if (telemetry.task) {
       this.telemetry.task = telemetry.task;
     }
+    if (telemetry.progress !== undefined) {
+      this.progress = Math.max(0, Math.min(100, telemetry.progress)) / 100;
+    }
+    if (telemetry.position && telemetry.progress === undefined) {
+      this.group.position.set(telemetry.position.x, telemetry.position.y, telemetry.position.z);
+      this.telemetry.position = { ...telemetry.position };
+    }
   }
 
   pause(): void {

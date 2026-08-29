@@ -2,7 +2,7 @@ import { parseCliArgs } from "./config";
 import { loadLineDefinitions } from "./config/line-config";
 import { ConsolePublisher, MqttPublisher, MessagePublisher } from "./mqtt/publisher";
 import { FactorySimulator } from "./simulator/factory-simulator";
-import { parseTwinCommand } from "./twin/command";
+import { parseConsoleControlCommand, parseSimulatorControlCommand, parseTwinCommand } from "./twin/command";
 
 async function createPublisher(mqttUrl?: string): Promise<MessagePublisher> {
   if (!mqttUrl) {
@@ -21,7 +21,15 @@ async function main(): Promise<void> {
   const options = parseCliArgs(process.argv.slice(2));
   const publisher = await createPublisher(options.mqttUrl);
   const random = createSeededRandom(options.seed);
-  const simulator = new FactorySimulator(options.tenantId, options.intervalMs, random, loadLineDefinitions(options.lineConfigPath));
+  const simulator = new FactorySimulator(
+    options.tenantId,
+    options.intervalMs,
+    random,
+    loadLineDefinitions(options.lineConfigPath),
+    undefined,
+    options.emitAgvTelemetry,
+    options.network,
+  );
   simulator.setTimeScale(options.timeScale ?? 1);
   simulator.setPaused(options.paused);
   for (const fault of options.faults) {
@@ -39,6 +47,17 @@ async function main(): Promise<void> {
       console.error(`twin command rejected: ${String(error)}`);
     }
   });
+  const controlHandler = async (payload: string) => {
+    try {
+      const command = parseSimulatorControlCommand(payload);
+      const messages = simulator.handleControlCommand(command);
+      await Promise.all(messages.map((message) => publisher.publish(message)));
+    } catch (error) {
+      console.error(`simulator control rejected: ${String(error)}`);
+    }
+  };
+  await publisher.subscribe(`mes/control/${options.tenantId}/simulator/command`, controlHandler);
+  await publisher.subscribe(`mes/control/${options.tenantId}/simulator`, controlHandler);
   const stop = await simulator.run(publisher, options.once);
 
   if (options.once) {
@@ -48,7 +67,7 @@ async function main(): Promise<void> {
 
   console.error(`MES simulator started: 4 lines, interval=${options.intervalMs}ms`);
   console.error(`timeScale=${simulator.getTimeScale()}, paused=${simulator.isPaused()}, seed=${options.seed ?? "random"}`);
-  console.error("Press Ctrl+C to stop. Use stdin commands: pause, resume, speed 5, reset, snapshot, export.");
+  console.error("Press Ctrl+C to stop. Use stdin commands: start, stop, pause, resume, speed 5, fault line:device:TYPE, reset, snapshot, export, replay.");
   process.stdin.setEncoding("utf8");
   process.stdin.on("data", (chunk: string) => handleConsoleCommand(chunk.trim(), simulator));
   const shutdown = async () => {
@@ -68,15 +87,25 @@ function createSeededRandom(seed?: number): () => number {
   };
 }
 
-function handleConsoleCommand(command: string, simulator: FactorySimulator): void {
-  const [action, value] = command.split(/\s+/, 2);
-  if (action === "pause") simulator.setPaused(true);
-  else if (action === "resume" || action === "start") simulator.setPaused(false);
-  else if (action === "speed") simulator.setTimeScale(Number(value));
-  else if (action === "reset") simulator.reset();
-  else if (action === "snapshot") console.log(JSON.stringify(simulator.snapshot()));
-  else if (action === "export") console.log(simulator.exportHistory());
-  else if (command) console.error("Unknown command. Use pause, resume, speed <n>, reset, snapshot, export.");
+export function handleConsoleCommand(command: string, simulator: FactorySimulator): void {
+  if (!command) return;
+
+  try {
+    const control = parseConsoleControlCommand(command);
+    const messages = simulator.handleControlCommand(control);
+    if (control.action === "snapshot") {
+      console.log(JSON.stringify((messages[0].payload.data)));
+    } else if (control.action === "export") {
+      // Keep the original CLI export format: pretty-printed history JSON.
+      console.log(simulator.exportHistory());
+    } else if (control.action === "replay") {
+      console.log(simulator.exportReplay());
+    } else if (control.action === "fault") {
+      messages.forEach((message) => console.log(JSON.stringify({ topic: message.topic, ...message.payload })));
+    }
+  } catch (error) {
+    console.error(String(error));
+  }
 }
 
 void main().catch((error: unknown) => {

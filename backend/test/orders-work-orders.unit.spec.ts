@@ -43,4 +43,28 @@ describe('production execution flow', () => {
     workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'in_progress' });
     expect(() => workOrders.report('tenant-demo', workOrder.id, { quantity: 2 })).toThrow(ConflictException);
   });
+
+  it('enforces quantity integrity and exception reasons', () => {
+    const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService());
+
+    expect(() => workOrders.create('tenant-demo', {
+      orderNo: 'WO-OVER-INITIAL', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1,
+      completedQty: 2, dueAt: '2026-08-29T18:00:00.000Z',
+    })).toThrow(ConflictException);
+
+    const workOrder = workOrders.create('tenant-demo', {
+      orderNo: 'WO-VALIDATION', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 2,
+      dueAt: '2026-08-29T18:00:00.000Z',
+    });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'in_progress' });
+
+    expect(() => workOrders.report('tenant-demo', workOrder.id, { quantity: 1, goodQty: 2 })).toThrow(ConflictException);
+    expect(() => workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'paused' })).toThrow(ConflictException);
+    expect(() => workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'cancelled' })).toThrow(ConflictException);
+    expect(() => workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'completed' })).toThrow(ConflictException);
+
+    const paused = workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'paused', reason: '设备换刀' });
+    expect(paused.statusReason).toBe('设备换刀');
+  });
 });

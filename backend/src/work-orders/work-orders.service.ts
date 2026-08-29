@@ -117,6 +117,10 @@ export class WorkOrdersService {
 
     this.productionLinesService.findOne(tenantId, dto.lineId);
     if (dto.orderId) this.ordersService.findOne(tenantId, dto.orderId);
+    const completedQty = dto.completedQty ?? 0;
+    if (completedQty > dto.plannedQty) {
+      throw new ConflictException('completedQty cannot be greater than plannedQty');
+    }
     const now = timestamp();
     const workOrder: WorkOrder = {
       id: createId('wo'),
@@ -127,7 +131,7 @@ export class WorkOrdersService {
       productName: dto.productName,
       lineId: dto.lineId,
       plannedQty: dto.plannedQty,
-      completedQty: dto.completedQty ?? 0,
+      completedQty,
       dueAt: dto.dueAt,
       priority: dto.priority ?? 'normal',
       status: 'draft',
@@ -168,6 +172,9 @@ export class WorkOrdersService {
     if (current.completedQty + dto.quantity > current.plannedQty) throw new ConflictException('Report quantity exceeds planned quantity');
     const goodQty = dto.goodQty ?? dto.quantity;
     const defectQty = dto.defectQty ?? dto.quantity - goodQty;
+    if (goodQty < 0 || defectQty < 0 || goodQty > dto.quantity || defectQty > dto.quantity) {
+      throw new ConflictException('goodQty and defectQty must be within quantity');
+    }
     if (goodQty + defectQty !== dto.quantity) throw new ConflictException('goodQty + defectQty must equal quantity');
     const report: WorkOrderReport = {
       id: createId('report'), workOrderId: id, tenantId, quantity: dto.quantity,
@@ -196,6 +203,12 @@ export class WorkOrdersService {
     const current = this.findOne(tenantId, id);
     if (!allowedTransitions[current.status].includes(dto.status)) {
       throw new ConflictException(`Cannot change work order from ${current.status} to ${dto.status}`);
+    }
+    if ((dto.status === 'paused' || dto.status === 'cancelled') && !dto.reason?.trim()) {
+      throw new ConflictException(`A reason is required when work order is ${dto.status}`);
+    }
+    if (dto.status === 'completed' && current.completedQty !== current.plannedQty) {
+      throw new ConflictException('Work order can be completed only after planned quantity is reported');
     }
 
     const updated: WorkOrder = {

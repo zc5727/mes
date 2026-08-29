@@ -33,7 +33,9 @@ export class DeviceSimulator {
   private goodCount = 0;
   private defectCount = 0;
   private fractionalOutput = 0;
+  private manuallyStopped = false;
   private readonly activeFaults = new Set<FaultType>();
+  private readonly faultStartedAt = new Map<FaultType, string>();
 
   public constructor(
     private readonly lineId: string,
@@ -46,47 +48,30 @@ export class DeviceSimulator {
   }
 
   public injectFault(type: FaultType, timestamp: Date): Alarm {
+    const startedAt = this.faultStartedAt.get(type) ?? timestamp.toISOString();
+    this.faultStartedAt.set(type, startedAt);
     this.activeFaults.add(type);
-    this.status = "FAULT";
+    this.status = this.deriveFaultStatus();
 
-    return {
-      id: `${this.lineId}-${this.definition.id}-${type}`,
-      lineId: this.lineId,
-      deviceId: this.definition.id,
-      type,
-      severity: FAULT_SEVERITY[type],
-      message: FAULT_MESSAGES[type],
-      startedAt: timestamp.toISOString(),
-    };
+    return this.createAlarm(type, startedAt);
   }
 
   public clearFault(type: FaultType, timestamp: Date): Alarm | undefined {
-    if (!this.activeFaults.delete(type)) {
-      return undefined;
-    }
-
-    if (this.activeFaults.size === 0) {
-      this.status = "RUNNING";
-    }
-
-    return {
-      id: `${this.lineId}-${this.definition.id}-${type}`,
-      lineId: this.lineId,
-      deviceId: this.definition.id,
-      type,
-      severity: FAULT_SEVERITY[type],
-      message: FAULT_MESSAGES[type],
-      startedAt: timestamp.toISOString(),
-      clearedAt: timestamp.toISOString(),
-    };
+    if (!this.activeFaults.delete(type)) return undefined;
+    const startedAt = this.faultStartedAt.get(type) ?? timestamp.toISOString();
+    this.faultStartedAt.delete(type);
+    this.status = this.deriveStatus();
+    return { ...this.createAlarm(type, startedAt), clearedAt: timestamp.toISOString() };
   }
 
   public start(): void {
-    if (this.activeFaults.size === 0) this.status = "RUNNING";
+    this.manuallyStopped = false;
+    this.status = this.deriveStatus();
   }
 
   public stop(): void {
-    if (this.activeFaults.size === 0) this.status = "STOPPED";
+    this.manuallyStopped = true;
+    this.status = this.deriveStatus();
   }
 
   public resetFaults(timestamp: Date): Alarm[] {
@@ -96,17 +81,14 @@ export class DeviceSimulator {
   }
 
   public tick(lineId: string, elapsedSeconds: number, timestamp: Date): DeviceTelemetry {
-    if (this.activeFaults.size > 0) {
-      this.status = "FAULT";
-    } else if (this.status === "RUNNING" && this.random() < 0.03) {
+    this.status = this.deriveStatus();
+    if (this.status === "RUNNING" && this.random() < 0.03) {
       this.status = "IDLE";
     } else if (this.status === "IDLE" && this.random() < 0.25) {
       this.status = "RUNNING";
-    } else if (this.status === "STOPPED" && this.random() < 0.1) {
-      this.status = "RUNNING";
     }
 
-    if (this.status === "RUNNING") {
+    if (this.status === "RUNNING" || this.status === "WARNING") {
       this.fractionalOutput += (elapsedSeconds / this.definition.cycleTimeSeconds) * (0.9 + this.random() * 0.16);
       const produced = Math.floor(this.fractionalOutput);
       this.fractionalOutput -= produced;
@@ -153,6 +135,36 @@ export class DeviceSimulator {
       defectCount: this.defectCount,
       activeFaults: [...this.activeFaults],
       lastUpdatedAt: timestamp.toISOString(),
+    };
+  }
+
+  private deriveFaultStatus(): DeviceState["status"] {
+    if (this.activeFaults.has("COMMUNICATION_LOSS")) return "OFFLINE";
+    if (["OVERHEAT", "JAM", "EMERGENCY_STOP", "QUALITY_ANOMALY"].some((fault) => this.activeFaults.has(fault as FaultType))) {
+      return "FAULT";
+    }
+    if (["QUALITY_DRIFT", "MATERIAL_SHORTAGE"].some((fault) => this.activeFaults.has(fault as FaultType))) {
+      return "WARNING";
+    }
+    return "RUNNING";
+  }
+
+  private deriveStatus(): DeviceState["status"] {
+    const faultStatus = this.deriveFaultStatus();
+    if (this.activeFaults.size > 0) return faultStatus;
+    if (this.manuallyStopped) return "STOPPED";
+    return this.status === "IDLE" ? "IDLE" : "RUNNING";
+  }
+
+  private createAlarm(type: FaultType, startedAt: string): Alarm {
+    return {
+      id: `${this.lineId}-${this.definition.id}-${type}`,
+      lineId: this.lineId,
+      deviceId: this.definition.id,
+      type,
+      severity: FAULT_SEVERITY[type],
+      message: FAULT_MESSAGES[type],
+      startedAt,
     };
   }
 }

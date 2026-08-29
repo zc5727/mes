@@ -22,7 +22,11 @@
       </div>
       <div class="metric">
         <span>连接状态</span>
-        <strong :class="connected ? 'status-running' : 'status-error'">{{ connected ? 'ONLINE' : 'OFFLINE' }}</strong>
+        <strong :class="connected ? 'status-running' : 'status-error'">{{ connectionLabel }}</strong>
+      </div>
+      <div class="metric simulation-metric">
+        <span>{{ dataSource === 'api' ? '数据来源' : '降级数据' }}</span>
+        <strong>{{ simulationTime }}</strong>
       </div>
       <div class="clock">{{ clock }}</div>
     </div>
@@ -30,15 +34,35 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { formatClock } from '@/utils/time';
+import type { SimulatorState } from '@/types/factory';
 
-defineProps<{
+const props = defineProps<{
   onlineDeviceCount: number;
   connected: boolean;
   onlineRate: number;
   lineCount: number;
+  connectionState: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'fallback' | 'offline' | 'polling';
+  dataSource: 'api' | 'simulator';
+  simulation?: SimulatorState;
 }>();
+
+const connectionLabel = computed(() => ({
+  idle: 'IDLE',
+  connecting: 'CONNECTING',
+  connected: 'ONLINE',
+  reconnecting: 'RECONNECTING',
+  fallback: 'LOCAL MOCK',
+  offline: 'OFFLINE',
+  polling: 'API POLLING',
+}[props.connectionState]));
+const simulationTime = computed(() => {
+  const value = props.simulation?.currentTime;
+  if (!value) return props.dataSource === 'api' ? 'API' : '08:00:00';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '未知' : date.toISOString().slice(11, 19);
+});
 
 const clock = ref(formatClock());
 let timer: number | null = null;

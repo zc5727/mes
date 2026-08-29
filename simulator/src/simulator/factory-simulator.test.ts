@@ -28,3 +28,38 @@ test("material shortage and quality anomaly are represented as active faults", (
   const device = factory.snapshot()[0].devices.find((item) => item.deviceId === "cnc-01");
   assert.deepEqual(device?.activeFaults, ["MATERIAL_SHORTAGE", "QUALITY_ANOMALY"]);
 });
+
+test("control protocol covers lifecycle, speed, fault, snapshot and export", () => {
+  const factory = new FactorySimulator("test-tenant", 1000, () => 0.5, [LINE_DEFINITIONS[0]]);
+  const start = new Date("2026-08-28T00:00:00.000Z");
+
+  factory.tick(start);
+  const countBeforeStop = factory.snapshot(start).at(0)?.oee.totalCount;
+  factory.handleControlCommand({ action: "stop", commandId: "stop-1" }, start);
+  factory.tick(new Date("2026-08-28T00:01:00.000Z"));
+  assert.equal(factory.snapshot(start).at(0)?.oee.totalCount, countBeforeStop);
+  assert.equal(factory.getControlState().status, "STOPPED");
+
+  factory.handleControlCommand({ action: "start" }, start);
+  factory.handleControlCommand({ action: "pause" }, start);
+  assert.equal(factory.getControlState().status, "PAUSED");
+  factory.handleControlCommand({ action: "resume" }, start);
+  factory.handleControlCommand({ action: "speed", speed: 2 }, start);
+  assert.deepEqual(factory.getControlState(), { status: "RUNNING", paused: false, timeScale: 2 });
+
+  const faultMessages = factory.handleControlCommand({
+    action: "fault",
+    lineId: "line-cnc",
+    deviceId: "cnc-01",
+    faultType: "JAM",
+  }, start);
+  assert.equal(faultMessages[0].payload.event, "alarm.created");
+  assert.equal(factory.snapshot(start).at(0)?.status, "FAULT");
+
+  const snapshotMessage = factory.handleControlCommand({ action: "snapshot" }, start)[0];
+  assert.equal(snapshotMessage.payload.event, "simulator.snapshot");
+  assert.equal(Array.isArray(snapshotMessage.payload.data), true);
+  const exportMessage = factory.handleControlCommand({ action: "export" }, start)[0];
+  assert.equal(exportMessage.payload.event, "simulator.export");
+  assert.equal(Array.isArray(exportMessage.payload.data), true);
+});

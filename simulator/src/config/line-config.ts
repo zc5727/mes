@@ -1,5 +1,12 @@
 import { readFileSync } from "node:fs";
-import { LineDefinition } from "../types";
+import { AgvDefinition, LineDefinition } from "../types";
+
+export const AGV_DEFINITIONS: AgvDefinition[] = [
+  { id: "agv-01", name: "一号物流 AGV", lineId: "line-cnc", capacity: 100, speedMetersPerSecond: 1.2 },
+  { id: "agv-02", name: "二号物流 AGV", lineId: "line-assembly", capacity: 100, speedMetersPerSecond: 1.0 },
+  { id: "agv-03", name: "三号物流 AGV", lineId: "line-welding", capacity: 120, speedMetersPerSecond: 0.9 },
+  { id: "agv-04", name: "四号物流 AGV", lineId: "line-vision", capacity: 80, speedMetersPerSecond: 1.1 },
+];
 
 export const LINE_DEFINITIONS: LineDefinition[] = [
   {

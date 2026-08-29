@@ -1,4 +1,4 @@
-import { SimulatorOptions } from "./types";
+import { FaultType, NetworkSimulationOptions, SimulatorOptions } from "./types";
 
 const DEFAULT_TENANT_ID = "demo-tenant";
 const DEFAULT_INTERVAL_MS = 1000;
@@ -11,6 +11,8 @@ export interface CliOptions extends SimulatorOptions {
   faults: FaultCommand[];
   clearFaults: FaultCommand[];
   paused: boolean;
+  emitAgvTelemetry: boolean;
+  network?: NetworkSimulationOptions;
 }
 
 export interface FaultCommand {
@@ -19,7 +21,7 @@ export interface FaultCommand {
   type: FaultCommandType;
 }
 
-type FaultCommandType = "OVERHEAT" | "JAM" | "COMMUNICATION_LOSS" | "QUALITY_DRIFT" | "EMERGENCY_STOP";
+type FaultCommandType = FaultType;
 
 export function parseCliArgs(args: string[], env: NodeJS.ProcessEnv = process.env): CliOptions {
   const getValue = (flag: string): string | undefined => {
@@ -41,6 +43,16 @@ export function parseCliArgs(args: string[], env: NodeJS.ProcessEnv = process.en
   const parseFaultCommands = (flag: string): FaultCommand[] => args
     .flatMap((arg, index) => arg === flag && args[index + 1] ? [parseFaultCommand(args[index + 1])] : []);
 
+  const networkLatency = parseOptionalNumber(getValue("--network-latency-ms") ?? env.SIMULATOR_NETWORK_LATENCY_MS, "--network-latency-ms", 0);
+  const networkDuplicateRate = parseOptionalRate(getValue("--network-duplicate-rate") ?? env.SIMULATOR_NETWORK_DUPLICATE_RATE, "--network-duplicate-rate");
+  const networkDropRate = parseOptionalRate(getValue("--network-drop-rate") ?? env.SIMULATOR_NETWORK_DROP_RATE, "--network-drop-rate");
+  const networkSeedValue = getValue("--network-seed") ?? env.SIMULATOR_NETWORK_SEED;
+  const networkSeed = networkSeedValue === undefined ? undefined : Number(networkSeedValue);
+  if (networkSeed !== undefined && !Number.isInteger(networkSeed)) throw new Error("--network-seed must be an integer");
+  const network = networkLatency !== undefined || networkDuplicateRate !== undefined || networkDropRate !== undefined || networkSeed !== undefined
+    ? { latencyMs: networkLatency, duplicateRate: networkDuplicateRate, dropRate: networkDropRate, seed: networkSeed }
+    : undefined;
+
   return {
     tenantId: getValue("--tenant") ?? env.MES_TENANT_ID ?? DEFAULT_TENANT_ID,
     intervalMs,
@@ -52,7 +64,22 @@ export function parseCliArgs(args: string[], env: NodeJS.ProcessEnv = process.en
     timeScale,
     seed,
     paused: args.includes("--pause"),
+    emitAgvTelemetry: args.includes("--agv-telemetry"),
+    network,
   };
+}
+
+function parseOptionalNumber(value: string | undefined, flag: string, minimum: number): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < minimum) throw new Error(`${flag} must be a number greater than or equal to ${minimum}`);
+  return parsed;
+}
+
+function parseOptionalRate(value: string | undefined, flag: string): number | undefined {
+  const parsed = parseOptionalNumber(value, flag, 0);
+  if (parsed !== undefined && parsed > 1) throw new Error(`${flag} must be between 0 and 1`);
+  return parsed;
 }
 
 function parseFaultCommand(value: string): FaultCommand {

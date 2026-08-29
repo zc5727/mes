@@ -23,6 +23,12 @@ npm run start:dev
 
 后端地址：`http://localhost:3000/api/v1`
 
+默认 `MQTT_ENABLED=false`，不会连接消息代理。进行模拟器联调时，先启动 Mosquitto，再使用：
+
+```bash
+MQTT_ENABLED=true MQTT_URL=mqtt://localhost:1883 npm run start:dev
+```
+
 ## 启动本地依赖
 
 ```bash

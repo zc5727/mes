@@ -79,7 +79,7 @@ const messages = ref<ChatMessage[]>([
 
 const findLine = (input: string) => props.productionLines.find((line) => input.includes(line.name) || input.includes(line.id));
 
-const findAlarmDevice = (alarm: FactoryAlarm) => props.devices.find((device) => device.id === alarm.source)
+const findAlarmDevice = (alarm: FactoryAlarm) => props.devices.find((device) => device.id === alarm.sourceId || device.id === alarm.source)
   ?? props.selectedDevice
   ?? props.devices.find((device) => device.status === 'error' || device.status === 'warning');
 

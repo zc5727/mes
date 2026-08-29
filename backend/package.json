@@ -16,7 +16,9 @@
     "test:all": "npm test -- --runInBand && npm run test:e2e -- --runInBand",
     "verify:env": "node scripts/verify-env.mjs",
     "verify:mock": "node scripts/verify-mock-flow.mjs",
-    "smoke:api": "node scripts/smoke-api.mjs"
+    "smoke:api": "node scripts/smoke-api.mjs",
+    "smoke:mqtt": "node test/smoke-mqtt.mjs",
+    "smoke:fault": "node test/fault-drill.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
@@ -25,6 +27,7 @@
     "@nestjs/platform-express": "^11.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
+    "mqtt": "^5.15.2",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },

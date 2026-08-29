@@ -76,7 +76,7 @@ export class ProductionLineSimulator {
     this.plannedTimeSeconds += elapsedSeconds;
     const telemetry = this.devices.map((device) => device.tick(this.definition.id, elapsedSeconds, timestamp));
     const status = this.getLineStatus(telemetry);
-    if (status === "RUNNING") {
+    if (status === "RUNNING" || status === "WARNING") {
       this.operatingTimeSeconds += elapsedSeconds;
     }
 
@@ -118,6 +118,8 @@ export class ProductionLineSimulator {
 
   private getLineStatus(devices: Array<{ status: string }>): LineStatus {
     if (devices.some((device) => device.status === "FAULT")) return "FAULT";
+    if (devices.some((device) => device.status === "OFFLINE")) return "OFFLINE";
+    if (devices.some((device) => device.status === "WARNING")) return "WARNING";
     if (devices.every((device) => device.status === "STOPPED")) return "STOPPED";
     if (devices.some((device) => device.status === "RUNNING")) return "RUNNING";
     return "IDLE";

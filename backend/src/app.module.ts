@@ -8,6 +8,11 @@ import { TenantsModule } from './tenants/tenants.module';
 import { WorkOrdersModule } from './work-orders/work-orders.module';
 import { FoundationModule } from './foundation/foundation.module';
 import { AgvsModule } from './agvs/agvs.module';
+import { AlarmsModule } from './alarms/alarms.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { MqttModule } from './mqtt/mqtt.module';
+import { AgentApiModule } from './agent-api/agent-api.module';
+import { StrategiesModule } from './strategies/strategies.module';
 
 @Module({
   controllers: [HealthController],
@@ -20,6 +25,11 @@ import { AgvsModule } from './agvs/agvs.module';
     WorkOrdersModule,
     FoundationModule,
     AgvsModule,
+    AlarmsModule,
+    DashboardModule,
+    MqttModule,
+    AgentApiModule,
+    StrategiesModule,
   ],
 })
 export class AppModule {}

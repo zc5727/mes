@@ -1,0 +1,124 @@
+[
+  {
+    "topic": "mes/simulator/tenant-demo/lines/line-cnc/devices/cnc-01/telemetry",
+    "payload": {
+      "event": "device.telemetry",
+      "data": {
+        "deviceId": "cnc-01",
+        "deviceName": "CNC-01",
+        "lineId": "line-cnc",
+        "status": "RUNNING",
+        "temperatureCelsius": 42,
+        "cycleTimeSeconds": 42,
+        "totalCount": 10,
+        "goodCount": 10,
+        "defectCount": 0,
+        "activeFaults": [],
+        "timestamp": "2026-08-28T09:00:00.000Z"
+      }
+    }
+  },
+  {
+    "topic": "mes/simulator/tenant-demo/lines/line-cnc/devices/cnc-01/telemetry",
+    "payload": {
+      "event": "device.telemetry",
+      "data": {
+        "deviceId": "cnc-01",
+        "deviceName": "CNC-01",
+        "lineId": "line-cnc",
+        "status": "RUNNING",
+        "temperatureCelsius": 42,
+        "cycleTimeSeconds": 42,
+        "totalCount": 10,
+        "goodCount": 10,
+        "defectCount": 0,
+        "activeFaults": [],
+        "timestamp": "2026-08-28T09:00:00.000Z"
+      }
+    }
+  },
+  {
+    "topic": "mes/simulator/tenant-demo/lines/line-cnc/devices/cnc-01/telemetry",
+    "payload": {
+      "event": "device.telemetry",
+      "data": {
+        "deviceId": "cnc-01",
+        "deviceName": "CNC-01",
+        "lineId": "line-cnc",
+        "status": "FAULT",
+        "temperatureCelsius": 45,
+        "cycleTimeSeconds": 42,
+        "totalCount": 9,
+        "goodCount": 9,
+        "defectCount": 0,
+        "activeFaults": ["JAM"],
+        "timestamp": "2026-08-28T08:59:00.000Z"
+      }
+    }
+  },
+  {
+    "topic": "mes/simulator/tenant-demo/lines/line-assembly/devices/asm-01/telemetry",
+    "payload": {
+      "event": "device.telemetry",
+      "data": {
+        "deviceId": "asm-01",
+        "deviceName": "ASM-01",
+        "lineId": "line-assembly",
+        "status": "RUNNING",
+        "temperatureCelsius": 39,
+        "cycleTimeSeconds": 35,
+        "totalCount": 8,
+        "goodCount": 7,
+        "defectCount": 1,
+        "activeFaults": ["QUALITY_ANOMALY"],
+        "timestamp": "2026-08-28T09:01:00.000Z"
+      }
+    }
+  },
+  {
+    "topic": "mes/simulator/tenant-demo/alarms",
+    "payload": {
+      "event": "alarm.created",
+      "data": {
+        "id": "line-cnc-cnc-01-JAM",
+        "lineId": "line-cnc",
+        "deviceId": "cnc-01",
+        "type": "JAM",
+        "severity": "CRITICAL",
+        "message": "物料输送堵塞",
+        "startedAt": "2026-08-28T09:00:00.000Z"
+      }
+    }
+  },
+  {
+    "topic": "mes/simulator/tenant-demo/alarms",
+    "payload": {
+      "event": "alarm.created",
+      "data": {
+        "id": "line-cnc-cnc-01-JAM",
+        "lineId": "line-cnc",
+        "deviceId": "cnc-01",
+        "type": "JAM",
+        "severity": "CRITICAL",
+        "message": "物料输送堵塞",
+        "startedAt": "2026-08-28T09:00:00.000Z"
+      }
+    }
+  },
+  {
+    "topic": "mes/simulator/tenant-demo/alarms",
+    "payload": {
+      "event": "alarm.cleared",
+      "data": {
+        "id": "line-cnc-cnc-01-JAM",
+        "lineId": "line-cnc",
+        "deviceId": "cnc-01",
+        "type": "JAM",
+        "severity": "CRITICAL",
+        "message": "物料输送堵塞",
+        "startedAt": "2026-08-28T09:00:00.000Z",
+        "clearedAt": "2026-08-28T09:02:00.000Z"
+      }
+    }
+  }
+]
