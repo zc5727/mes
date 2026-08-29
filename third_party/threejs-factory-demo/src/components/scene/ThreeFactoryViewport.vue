@@ -105,6 +105,14 @@ onBeforeUnmount(() => {
 .three-container {
   width: 100%;
   height: 100%;
+  touch-action: none;
+  user-select: none;
+}
+
+.three-container :deep(canvas) {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .device-popover {

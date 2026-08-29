@@ -1,0 +1,15 @@
+{
+  "name": "mes-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MES 数字孪生 Tauri 桌面端",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "build:frontend": "npm --prefix ../third_party/threejs-factory-demo run build",
+    "check": "tauri info"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.4"
+  }
+}

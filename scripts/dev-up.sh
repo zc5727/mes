@@ -1,44 +1,141 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNTIME_DIR="$ROOT_DIR/.runtime"
+LOG_DIR="$RUNTIME_DIR/logs"
+mkdir -p "$LOG_DIR"
+INFRA=false
+MQTT=false
+for arg in "$@"; do
+  case "$arg" in
+    --infra) INFRA=true ;;
+    --mqtt) MQTT=true ;;
+    *) echo "未知参数：$arg" >&2; exit 2 ;;
+  esac
+done
+MQTT_URL="${MQTT_URL:-mqtt://localhost:1883}"
+TENANT_ID="${MES_TENANT_ID:-tenant-demo}"
+STARTED_PID_FILES=()
 
-mkdir -p "$RUNTIME_DIR/logs"
+cleanup_on_failure() {
+  local exit_code=$?
+  [[ "$exit_code" -eq 0 ]] && return
+  echo "启动失败（退出码 $exit_code），清理本次启动的应用进程" >&2
+  for pid_file in "${STARTED_PID_FILES[@]}"; do
+    [[ -f "$pid_file" ]] || continue
+    local pid
+    pid="$(cat "$pid_file")"
+    pkill -TERM -P "$pid" 2>/dev/null || true
+    kill "$pid" 2>/dev/null || true
+    rm -f "$pid_file"
+  done
+}
+trap cleanup_on_failure EXIT
 
-if [[ "${1:-}" == "--infra" ]]; then
-  (cd "$ROOT_DIR/backend" && docker compose up -d)
+docker_compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose -f "$ROOT_DIR/backend/docker-compose.yml" "$@"
+  elif command -v docker-compose >/dev/null 2>&1; then
+    docker-compose -f "$ROOT_DIR/backend/docker-compose.yml" "$@"
+  else
+    return 127
+  fi
+}
+start_container_fallback() {
+  local name="$1" image="$2" ports="$3" command="${4:-}"
+  if docker ps --format '{{.Names}}' | grep -Fxq "$name"; then
+    echo "基础设施 $name 已运行"
+  elif docker ps -a --format '{{.Names}}' | grep -Fxq "$name"; then
+    docker start "$name" >/dev/null
+    echo "基础设施 $name 已启动"
+  else
+    # shellcheck disable=SC2086
+    # shellcheck disable=SC2086
+    if [[ -n "$command" ]]; then
+      docker run -d --name "$name" $ports "$image" $command >/dev/null
+    else
+      docker run -d --name "$name" $ports "$image" >/dev/null
+    fi
+    echo "基础设施 $name 已创建并启动"
+  fi
+}
+start_infra() {
+  if docker compose version >/dev/null 2>&1 || command -v docker-compose >/dev/null 2>&1; then
+    if ! docker_compose up -d; then
+      echo "Docker Compose 启动基础设施失败，请检查 docker compose 日志" >&2
+      return 1
+    fi
+    echo "基础设施已通过 Docker Compose 启动"
+    return
+  fi
+  echo "Docker Compose 不可用，使用 Docker Engine 启动本地依赖" >&2
+  start_container_fallback mes-postgres postgres:16-alpine '-p 5432:5432'
+  start_container_fallback mes-mqtt eclipse-mosquitto:2 '-p 1883:1883 -p 9001:9001'
+  start_container_fallback mes-minio minio/minio:latest '-p 9000:9000 -p 9002:9001' 'server /data --console-address :9001'
+}
+wait_for_tcp() {
+  local host="$1" port="$2" label="$3" deadline=$((SECONDS + 30))
+  until nc -z "$host" "$port" >/dev/null 2>&1; do
+    if (( SECONDS >= deadline )); then echo "$label 未就绪：$host:$port" >&2; return 1; fi
+    sleep 1
+  done
+  echo "$label 已就绪：$host:$port"
+}
+wait_for_http() {
+  local url="$1" label="$2" pid_file="$3" log_name="$4" deadline=$((SECONDS + 45))
+  until curl -fsS "$url" >/dev/null 2>&1; do
+    if [[ -f "$pid_file" ]] && ! kill -0 "$(cat "$pid_file")" 2>/dev/null; then
+      echo "$label 进程已退出，查看日志：$LOG_DIR/$log_name.log" >&2
+      return 1
+    fi
+    if (( SECONDS >= deadline )); then echo "$label 健康检查超时：$url" >&2; return 1; fi
+    sleep 1
+  done
+  echo "$label 已就绪：$url"
+}
+if [[ "$INFRA" == true ]]; then
+  start_infra
+  [[ "$MQTT" == true ]] && wait_for_tcp localhost 1883 MQTT
+  wait_for_tcp localhost 5432 PostgreSQL
 fi
-
 start_service() {
-  local name="$1"
-  local directory="$2"
-  local command="$3"
-  local pid_file="$RUNTIME_DIR/${name}.pid"
-
+  local name="$1" directory="$2" command="$3" pid_file="$RUNTIME_DIR/${name}.pid"
   if [[ -f "$pid_file" ]] && kill -0 "$(cat "$pid_file")" 2>/dev/null; then
     echo "$name 已在运行，PID=$(cat "$pid_file")"
     return
   fi
-
-  nohup bash -c "cd '$ROOT_DIR/$directory' && $command" \
-    >"$RUNTIME_DIR/logs/${name}.log" 2>&1 &
+  nohup bash -c "cd '$ROOT_DIR/$directory' && $command" >"$LOG_DIR/${name}.log" 2>&1 &
   echo $! >"$pid_file"
-  echo "$name 已启动，PID=$(cat "$pid_file")，日志：$RUNTIME_DIR/logs/${name}.log"
+  STARTED_PID_FILES+=("$pid_file")
+  echo "$name 已启动，PID=$(cat "$pid_file")，日志：$LOG_DIR/${name}.log"
 }
-
-# 后端用生产模式运行，避免 Nest watch 子进程在终端关闭后被系统回收。
-start_service backend backend "npm run build && npm run start:prod"
+backend_command="npm run build && npm run start:prod"
+simulator_command="npm run dev"
+if [[ "$MQTT" == true ]]; then
+  backend_command="MQTT_ENABLED=true MQTT_URL='$MQTT_URL' npm run build && MQTT_ENABLED=true MQTT_URL='$MQTT_URL' npm run start:prod"
+  simulator_command="npm run dev -- --mqtt '$MQTT_URL' --tenant '$TENANT_ID'"
+fi
+start_service backend backend "$backend_command"
+wait_for_http http://localhost:3000/api/v1/health Backend "$RUNTIME_DIR/backend.pid" backend
 start_service frontend third_party/threejs-factory-demo "npm run dev"
-start_service simulator simulator "npm run dev"
-
+wait_for_http http://localhost:5173 Frontend "$RUNTIME_DIR/frontend.pid" frontend
+start_service simulator simulator "$simulator_command"
+if [[ "$MQTT" == true ]]; then
+  sleep 1
+  if ! kill -0 "$(cat "$RUNTIME_DIR/simulator.pid")" 2>/dev/null; then
+    echo "Simulator 启动失败，查看日志：$LOG_DIR/simulator.log" >&2
+    exit 1
+  fi
+fi
 cat <<EOF
 
-MES 演示环境已启动：
+MES 演示环境已启动并通过 readiness 检查：
   前端：  http://localhost:5173
   后端：  http://localhost:3000/api/v1/health
-  模拟器：默认输出 JSON，可通过日志查看
+  MQTT：  $([[ "$MQTT" == true ]] && echo "$MQTT_URL" || echo "未启用")
+  日志：  $LOG_DIR
 
-终止全部进程：
+查看状态：
+  $ROOT_DIR/scripts/dev-status.sh
+终止进程：
   $ROOT_DIR/scripts/dev-down.sh
-EOF

@@ -7,6 +7,23 @@ import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { MqttIngestionService } from '../mqtt/mqtt-ingestion.service';
 import type { CachedDeviceTelemetry } from '../mqtt/mqtt.types';
 
+export interface ProductionMetrics {
+  plannedQty: number;
+  completedQty: number;
+  remainingQty: number;
+  completionRate: number;
+  totalCount: number;
+  goodCount: number;
+  defectCount: number;
+  qualityRate: number | null;
+  availabilityRate: number;
+  performanceRate: number | null;
+  oee: number | null;
+  oeeAvailable: boolean;
+  source: 'work_orders_and_device_snapshot';
+  generatedAt: string;
+}
+
 export interface DashboardOverview {
   lines: {
     total: number;
@@ -24,6 +41,7 @@ export interface DashboardOverview {
     onlineRate: number;
   };
   workOrders: ReturnType<WorkOrdersService['findOverview']>;
+  productionMetrics: ProductionMetrics;
   agvs: {
     total: number;
     idle: number;
@@ -67,11 +85,46 @@ export class DashboardService {
       lines,
       devices: this.summarizeDevices(devices),
       workOrders,
+      productionMetrics: this.getProductionMetrics(tenantId),
       agvs: this.summarizeAgvs(agvs),
       alarms: this.summarizeAlarms(alarms),
       todayTasks: workOrders.inProgress + workOrders.released,
       powerConsumption: this.sumMetric(devices, 'power', 'load'),
       temperatureTrend: this.temperatureTrend(devices),
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  getProductionMetrics(tenantId: string, lineId?: string): ProductionMetrics {
+    const workOrders = this.workOrdersService.findAll(tenantId)
+      .filter((order) => !lineId || order.lineId === lineId);
+    const devices = this.currentDevices(tenantId)
+      .filter((device) => !lineId || device.lineId === lineId);
+    const plannedQty = workOrders.reduce((total, order) => total + order.plannedQty, 0);
+    const completedQty = workOrders.reduce((total, order) => total + order.completedQty, 0);
+    const totalCount = this.sumMetric(devices, 'totalCount', 'total_count');
+    const goodCount = this.sumMetric(devices, 'goodCount', 'good_count');
+    const defectCount = Math.max(0, totalCount - goodCount);
+    const hasCountTelemetry = devices.some((device) => typeof device.metrics.totalCount === 'number');
+    const qualityRate = hasCountTelemetry && totalCount > 0 ? this.percent(goodCount / totalCount) : null;
+    const availabilityRate = devices.length
+      ? this.percent(devices.filter((device) => device.status === 'online').length / devices.length)
+      : 0;
+
+    return {
+      plannedQty,
+      completedQty,
+      remainingQty: Math.max(0, plannedQty - completedQty),
+      completionRate: plannedQty ? this.percent(completedQty / plannedQty) : 0,
+      totalCount,
+      goodCount,
+      defectCount,
+      qualityRate,
+      availabilityRate,
+      performanceRate: null,
+      oee: null,
+      oeeAvailable: false,
+      source: 'work_orders_and_device_snapshot',
       generatedAt: new Date().toISOString(),
     };
   }
@@ -186,5 +239,9 @@ export class DashboardService {
       .filter((value): value is number => typeof value === 'number');
 
     return trend.length ? trend : [36, 37, 38];
+  }
+
+  private percent(value: number): number {
+    return Math.round(Math.max(0, Math.min(1, value)) * 1000) / 10;
   }
 }

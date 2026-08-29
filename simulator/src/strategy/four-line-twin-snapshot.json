@@ -1,0 +1,375 @@
+{
+  "timestamp": "2026-08-29T08:00:00.000Z",
+  "runtime": {
+    "status": "RUNNING",
+    "paused": false,
+    "timeScale": 1
+  },
+  "lines": [
+    {
+      "lineId": "line-cnc",
+      "code": "L01",
+      "name": "CNC加工线",
+      "product": "精密铝合金壳体",
+      "status": "RUNNING",
+      "oee": {
+        "availability": 0,
+        "performance": 0,
+        "quality": 1,
+        "oee": 0,
+        "plannedTimeSeconds": 0,
+        "operatingTimeSeconds": 0,
+        "totalCount": 0,
+        "goodCount": 0,
+        "defectCount": 0
+      },
+      "devices": [
+        {
+          "deviceId": "cnc-01",
+          "deviceName": "CNC-01 加工中心",
+          "kind": "CNC",
+          "status": "RUNNING",
+          "temperatureCelsius": 36,
+          "cycleTimeSeconds": 42,
+          "totalCount": 0,
+          "goodCount": 0,
+          "defectCount": 0,
+          "activeFaults": [],
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+        },
+        {
+          "deviceId": "cnc-02",
+          "deviceName": "CNC-02 加工中心",
+          "kind": "CNC",
+          "status": "RUNNING",
+          "temperatureCelsius": 36,
+          "cycleTimeSeconds": 45,
+          "totalCount": 0,
+          "goodCount": 0,
+          "defectCount": 0,
+          "activeFaults": [],
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+        },
+        {
+          "deviceId": "cnc-03",
+          "deviceName": "清洗与上下料单元",
+          "kind": "CONVEYOR",
+          "status": "RUNNING",
+          "temperatureCelsius": 36,
+          "cycleTimeSeconds": 18,
+          "totalCount": 0,
+          "goodCount": 0,
+          "defectCount": 0,
+          "activeFaults": [],
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+        }
+      ],
+      "activeAlarms": [],
+      "timestamp": "2026-08-29T08:00:00.000Z",
+      "agvs": [
+        {
+          "agvId": "agv-01",
+          "name": "一号物流 AGV",
+          "lineId": "line-cnc",
+          "status": "IDLE",
+          "batteryPercent": 100,
+          "loadPercent": 0,
+          "distanceMeters": 0,
+          "activeFaults": [],
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "lineId": "line-assembly",
+      "code": "L02",
+      "name": "装配线",
+      "product": "智能控制模块",
+      "status": "RUNNING",
+      "oee": {
+        "availability": 0,
+        "performance": 0,
+        "quality": 1,
+        "oee": 0,
+        "plannedTimeSeconds": 0,
+        "operatingTimeSeconds": 0,
+        "totalCount": 0,
+        "goodCount": 0,
+        "defectCount": 0
+      },
+      "devices": [
+        {
+          "deviceId": "asm-01",
+          "deviceName": "螺钉锁付机器人",
+          "kind": "ROBOT",
+          "status": "RUNNING",
+          "temperatureCelsius": 36,
+          "cycleTimeSeconds": 35,
+          "totalCount": 0,
+          "goodCount": 0,
+          "defectCount": 0,
+          "activeFaults": [],
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+        },
+        {
+          "deviceId": "asm-02",
+          "deviceName": "压装工作站",
+          "kind": "ROBOT",
+          "status": "RUNNING",
+          "temperatureCelsius": 36,
+          "cycleTimeSeconds": 38,
+          "totalCount": 0,
+          "goodCount": 0,
+          "defectCount": 0,
+          "activeFaults": [],
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+        },
+        {
+          "deviceId": "asm-03",
+          "deviceName": "装配输送线",
+          "kind": "CONVEYOR",
+          "status": "RUNNING",
+          "temperatureCelsius": 36,
+          "cycleTimeSeconds": 20,
+          "totalCount": 0,
+          "goodCount": 0,
+          "defectCount": 0,
+          "activeFaults": [],
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+        }
+      ],
+      "activeAlarms": [],
+      "timestamp": "2026-08-29T08:00:00.000Z",
+      "agvs": [
+        {
+          "agvId": "agv-02",
+          "name": "二号物流 AGV",
+          "lineId": "line-assembly",
+          "status": "IDLE",
+          "batteryPercent": 100,
+          "loadPercent": 0,
+          "distanceMeters": 0,
+          "activeFaults": [],
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "lineId": "line-welding",
+      "code": "L03",
+      "name": "焊接线",
+      "product": "结构件总成",
+      "status": "FAULT",
+      "oee": {
+        "availability": 0,
+        "performance": 0,
+        "quality": 1,
+        "oee": 0,
+        "plannedTimeSeconds": 0,
+        "operatingTimeSeconds": 0,
+        "totalCount": 0,
+        "goodCount": 0,
+        "defectCount": 0
+      },
+      "devices": [
+        {
+          "deviceId": "weld-01",
+          "deviceName": "六轴焊接机器人",
+          "kind": "WELDER",
+          "status": "FAULT",
+          "temperatureCelsius": 36,
+          "cycleTimeSeconds": 55,
+          "totalCount": 0,
+          "goodCount": 0,
+          "defectCount": 0,
+          "activeFaults": [
+            "OVERHEAT"
+          ],
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+        },
+        {
+          "deviceId": "weld-02",
+          "deviceName": "焊缝打磨单元",
+          "kind": "WELDER",
+          "status": "RUNNING",
+          "temperatureCelsius": 36,
+          "cycleTimeSeconds": 48,
+          "totalCount": 0,
+          "goodCount": 0,
+          "defectCount": 0,
+          "activeFaults": [],
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+        },
+        {
+          "deviceId": "weld-03",
+          "deviceName": "焊后输送线",
+          "kind": "CONVEYOR",
+          "status": "RUNNING",
+          "temperatureCelsius": 36,
+          "cycleTimeSeconds": 22,
+          "totalCount": 0,
+          "goodCount": 0,
+          "defectCount": 0,
+          "activeFaults": [],
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+        }
+      ],
+      "activeAlarms": [
+        {
+          "id": "line-welding-weld-01-OVERHEAT",
+          "lineId": "line-welding",
+          "deviceId": "weld-01",
+          "type": "OVERHEAT",
+          "severity": "CRITICAL",
+          "message": "设备温度超过安全阈值",
+          "startedAt": "2026-08-29T08:00:00.000Z"
+        }
+      ],
+      "timestamp": "2026-08-29T08:00:00.000Z",
+      "agvs": [
+        {
+          "agvId": "agv-03",
+          "name": "三号物流 AGV",
+          "lineId": "line-welding",
+          "status": "IDLE",
+          "batteryPercent": 100,
+          "loadPercent": 0,
+          "distanceMeters": 0,
+          "activeFaults": [],
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "lineId": "line-vision",
+      "code": "L04",
+      "name": "视觉检测线",
+      "product": "成品外观与尺寸检测",
+      "status": "RUNNING",
+      "oee": {
+        "availability": 0,
+        "performance": 0,
+        "quality": 1,
+        "oee": 0,
+        "plannedTimeSeconds": 0,
+        "operatingTimeSeconds": 0,
+        "totalCount": 0,
+        "goodCount": 0,
+        "defectCount": 0
+      },
+      "devices": [
+        {
+          "deviceId": "vision-01",
+          "deviceName": "2D视觉检测站",
+          "kind": "VISION",
+          "status": "RUNNING",
+          "temperatureCelsius": 36,
+          "cycleTimeSeconds": 28,
+          "totalCount": 0,
+          "goodCount": 0,
+          "defectCount": 0,
+          "activeFaults": [],
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+        },
+        {
+          "deviceId": "vision-02",
+          "deviceName": "3D尺寸检测站",
+          "kind": "VISION",
+          "status": "RUNNING",
+          "temperatureCelsius": 36,
+          "cycleTimeSeconds": 32,
+          "totalCount": 0,
+          "goodCount": 0,
+          "defectCount": 0,
+          "activeFaults": [],
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+        },
+        {
+          "deviceId": "vision-03",
+          "deviceName": "分拣输送单元",
+          "kind": "CONVEYOR",
+          "status": "RUNNING",
+          "temperatureCelsius": 36,
+          "cycleTimeSeconds": 18,
+          "totalCount": 0,
+          "goodCount": 0,
+          "defectCount": 0,
+          "activeFaults": [],
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+        }
+      ],
+      "activeAlarms": [],
+      "timestamp": "2026-08-29T08:00:00.000Z",
+      "agvs": [
+        {
+          "agvId": "agv-04",
+          "name": "四号物流 AGV",
+          "lineId": "line-vision",
+          "status": "IDLE",
+          "batteryPercent": 100,
+          "loadPercent": 0,
+          "distanceMeters": 0,
+          "activeFaults": [],
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "agvs": [
+    {
+      "agvId": "agv-01",
+      "name": "一号物流 AGV",
+      "lineId": "line-cnc",
+      "status": "IDLE",
+      "batteryPercent": 100,
+      "loadPercent": 0,
+      "distanceMeters": 0,
+      "activeFaults": [],
+      "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+    },
+    {
+      "agvId": "agv-02",
+      "name": "二号物流 AGV",
+      "lineId": "line-assembly",
+      "status": "IDLE",
+      "batteryPercent": 100,
+      "loadPercent": 0,
+      "distanceMeters": 0,
+      "activeFaults": [],
+      "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+    },
+    {
+      "agvId": "agv-03",
+      "name": "三号物流 AGV",
+      "lineId": "line-welding",
+      "status": "IDLE",
+      "batteryPercent": 100,
+      "loadPercent": 0,
+      "distanceMeters": 0,
+      "activeFaults": [],
+      "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+    },
+    {
+      "agvId": "agv-04",
+      "name": "四号物流 AGV",
+      "lineId": "line-vision",
+      "status": "IDLE",
+      "batteryPercent": 100,
+      "loadPercent": 0,
+      "distanceMeters": 0,
+      "activeFaults": [],
+      "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+    }
+  ],
+  "activeAlarms": [
+    {
+      "id": "line-welding-weld-01-OVERHEAT",
+      "lineId": "line-welding",
+      "deviceId": "weld-01",
+      "type": "OVERHEAT",
+      "severity": "CRITICAL",
+      "message": "设备温度超过安全阈值",
+      "startedAt": "2026-08-29T08:00:00.000Z"
+    }
+  ]
+}

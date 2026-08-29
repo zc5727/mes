@@ -149,3 +149,23 @@ cd ../simulator && npm run check
 ```
 
 这时 MQTT 两个 smoke 命令应判定为环境阻断，而不是业务通过；失败输出会保留连接地址、HTTP 阶段和最后一次响应，便于诊断。
+
+## 数字孪生端到端回归
+
+执行完整 MQTT 数字孪生链路：
+
+```bash
+cd backend
+npm run smoke:digital-twin
+```
+
+覆盖初始四产线快照、四产线 telemetry、产线切换、故障高亮、`alarm.created`、`alarm.cleared`、设备恢复和 MQTT 客户端断开重连。
+
+前端入口/API smoke：
+
+```bash
+cd /Users/a1/Documents/ChatGPT/mes
+node scripts/browser-smoke.mjs
+```
+
+该检查验证前端入口可加载、`#app` 挂载节点存在、脚本引用存在以及后端健康接口可访问。它不冒充真实 DOM 交互测试；四产线切换和视觉高亮仍需按浏览器验收矩阵人工确认，或在环境安装 Playwright 后补充自动化浏览器测试。

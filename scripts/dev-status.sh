@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RUNTIME_DIR="$ROOT_DIR/.runtime"
+check_process() {
+  local name="$1" pid_file="$RUNTIME_DIR/$1.pid"
+  if [[ -f "$pid_file" ]] && kill -0 "$(cat "$pid_file")" 2>/dev/null; then
+    echo "PASS $name process PID=$(cat "$pid_file")"
+  else
+    echo "INFO $name process is not managed by dev-up.sh"
+  fi
+}
+check_http() {
+  local name="$1" url="$2"
+  if curl -fsS "$url" >/dev/null 2>&1; then echo "PASS $name $url"; else echo "DOWN $name $url"; fi
+}
+check_tcp() {
+  local name="$1" port="$2"
+  if nc -z localhost "$port" >/dev/null 2>&1; then echo "PASS $name localhost:$port"; else echo "DOWN $name localhost:$port"; fi
+}
+check_process backend
+check_process frontend
+check_process simulator
+check_http backend http://localhost:3000/api/v1/health
+check_http frontend http://localhost:5173
+check_tcp mqtt 1883
+check_tcp postgres 5432

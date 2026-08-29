@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MES 智能制造运营平台",
+  "version": "0.1.0",
+  "identifier": "com.zc.mes.desktop",
+  "build": {
+    "beforeDevCommand": "npm --prefix ../third_party/threejs-factory-demo run dev",
+    "beforeBuildCommand": "npm --prefix ../third_party/threejs-factory-demo run build",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../../third_party/threejs-factory-demo/dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "MES 智能制造运营平台",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all"
+  }
+}

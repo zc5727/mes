@@ -7,203 +7,279 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 这是 MES 基座的数据边界。首轮演示仍使用内存服务，接入 Prisma 时按此模型迁移。
+enum WorkOrderStatus {
+  draft
+  released
+  in_progress
+  paused
+  completed
+  cancelled
+}
+
+enum WorkOrderPriority {
+  low
+  normal
+  high
+  urgent
+}
+
+enum ProductionOrderStatus {
+  planned
+  in_progress
+  completed
+  cancelled
+}
+
+enum DeviceStatus {
+  online
+  offline
+  maintenance
+  alarm
+}
+
+enum AlarmLevel {
+  info
+  warning
+  critical
+}
+
+enum AlarmStatus {
+  open
+  acknowledged
+  resolved
+}
+
 model Tenant {
-  id          String   @id
-  name        String
-  status      String   @default("active")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  factories   Factory[]
-  users       User[]
-  roles       Role[]
-  products    Product[]
-  documents   Document[]
-  orders      ProductionOrder[]
-  devices     Device[]
-  workOrders  WorkOrder[]
-  qualityRecords QualityRecord[]
-  strategyDecisions StrategyDecision[]
-  auditLogs   AuditLog[]
-}
+  id        String   @id @db.VarChar(40)
+  name      String   @db.VarChar(120)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-model User {
-  id          String   @id
-  tenantId    String
-  username    String
-  displayName String
-  status      String   @default("active")
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  roles       UserRole[]
-  auditLogs   AuditLog[]
-  @@unique([tenantId, username])
-  @@index([tenantId])
-}
+  factories        Factory[]
+  productionLines  ProductionLine[]
+  devices          Device[]
+  orders           ProductionOrder[]
+  workOrders       WorkOrder[]
+  reports          WorkOrderReport[]
+  alarms           Alarm[]
+  strategyRuns     StrategyRun[]
 
-model Role {
-  id          String   @id
-  tenantId    String
-  name        String
-  permissions Json
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  users       UserRole[]
-  @@unique([tenantId, name])
-}
-
-model UserRole {
-  userId      String
-  roleId      String
-  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role        Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  @@id([userId, roleId])
+  @@map("tenants")
 }
 
 model Factory {
-  id          String   @id
-  tenantId    String
-  name        String
-  address     String?
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  lines       ProductionLine[]
-  devices     Device[]
+  id        String   @id @db.VarChar(40)
+  tenantId  String   @map("tenant_id") @db.VarChar(40)
+  code      String   @db.VarChar(40)
+  name      String   @db.VarChar(120)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lines  ProductionLine[]
+
+  @@unique([tenantId, code])
   @@index([tenantId])
+  @@map("factories")
 }
 
 model ProductionLine {
-  id          String   @id
-  tenantId    String
-  factoryId   String
-  code        String
-  name        String
-  status      String   @default("active")
-  targetOee   Float    @default(85)
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  factory     Factory  @relation(fields: [factoryId], references: [id])
-  devices     Device[]
-  workOrders  WorkOrder[]
+  id        String   @id @db.VarChar(40)
+  tenantId  String   @map("tenant_id") @db.VarChar(40)
+  factoryId String   @map("factory_id") @db.VarChar(40)
+  code      String   @db.VarChar(40)
+  name      String   @db.VarChar(120)
+  type      String   @db.VarChar(60)
+  active    Boolean  @default(true)
+  targetOee Decimal? @map("target_oee") @db.Decimal(5, 2)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  factory    Factory @relation(fields: [factoryId], references: [id], onDelete: Restrict)
+  devices    Device[]
+  workOrders WorkOrder[]
+  alarms     Alarm[]
+
   @@unique([tenantId, code])
   @@index([tenantId, factoryId])
+  @@map("production_lines")
 }
 
 model Device {
-  id          String   @id
-  tenantId    String
-  factoryId   String
-  lineId      String
-  code        String
-  name        String
-  protocol    String
-  status      String   @default("offline")
-  metrics     Json
-  metadata    Json
-  lastSeenAt  DateTime?
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  factory     Factory  @relation(fields: [factoryId], references: [id])
-  line        ProductionLine @relation(fields: [lineId], references: [id])
-  @@unique([tenantId, code])
-  @@index([tenantId, lineId])
-}
+  id           String       @id @db.VarChar(40)
+  tenantId     String       @map("tenant_id") @db.VarChar(40)
+  lineId       String       @map("line_id") @db.VarChar(40)
+  code         String       @db.VarChar(80)
+  name         String       @db.VarChar(120)
+  model        String?      @db.VarChar(80)
+  protocol     String?      @db.VarChar(40)
+  status       DeviceStatus  @default(offline)
+  statusReason String?      @map("status_reason") @db.VarChar(200)
+  lastSeenAt   DateTime?    @map("last_seen_at")
+  metrics      Json?
+  metadata     Json?
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
 
-model Product {
-  id          String   @id
-  tenantId    String
-  code        String
-  name        String
-  version     String
-  bom         Json
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  documents   Document[]
-  orders      ProductionOrder[]
-  @@unique([tenantId, code, version])
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  line    ProductionLine @relation(fields: [lineId], references: [id], onDelete: Restrict)
+  reports WorkOrderReport[]
+  alarms  Alarm[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, lineId, status])
+  @@map("devices")
 }
 
 model ProductionOrder {
-  id          String   @id
-  tenantId    String
-  productId   String
-  orderNo     String
-  quantity    Int
-  dueAt       DateTime
-  priority    Int      @default(3)
-  status      String   @default("planned")
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  product     Product  @relation(fields: [productId], references: [id])
-  workOrders  WorkOrder[]
+  id           String                 @id @db.VarChar(40)
+  tenantId     String                 @map("tenant_id") @db.VarChar(40)
+  orderNo      String                 @map("order_no") @db.VarChar(80)
+  productCode  String                 @map("product_code") @db.VarChar(80)
+  productName  String                 @map("product_name") @db.VarChar(120)
+  plannedQty   Int                    @map("planned_qty")
+  completedQty Int                    @default(0) @map("completed_qty")
+  dueAt        DateTime               @map("due_at")
+  priority     WorkOrderPriority
+  status       ProductionOrderStatus  @default(planned)
+  createdAt    DateTime               @default(now()) @map("created_at")
+  updatedAt    DateTime               @updatedAt @map("updated_at")
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workOrders WorkOrder[]
+
   @@unique([tenantId, orderNo])
+  @@index([tenantId, status, dueAt])
+  @@map("production_orders")
 }
 
 model WorkOrder {
-  id          String   @id
-  tenantId    String
-  orderId     String
-  lineId      String
-  workOrderNo String
-  plannedQty  Int
-  completedQty Int @default(0)
-  status      String @default("released")
-  tenant      Tenant @relation(fields: [tenantId], references: [id])
-  order       ProductionOrder @relation(fields: [orderId], references: [id])
-  line        ProductionLine @relation(fields: [lineId], references: [id])
-  qualityRecords QualityRecord[]
-  @@unique([tenantId, workOrderNo])
+  id           String          @id @db.VarChar(40)
+  tenantId     String          @map("tenant_id") @db.VarChar(40)
+  orderId      String?         @map("order_id") @db.VarChar(40)
+  orderNo      String          @map("order_no") @db.VarChar(80)
+  productCode  String          @map("product_code") @db.VarChar(80)
+  productName  String          @map("product_name") @db.VarChar(120)
+  lineId       String          @map("line_id") @db.VarChar(40)
+  plannedQty   Int             @map("planned_qty")
+  completedQty Int             @default(0) @map("completed_qty")
+  dueAt        DateTime        @map("due_at")
+  priority     WorkOrderPriority @default(normal)
+  status       WorkOrderStatus  @default(draft)
+  statusReason String          @default("") @map("status_reason") @db.VarChar(200)
+  version      Int             @default(1)
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  tenant        Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  order         ProductionOrder?       @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  line          ProductionLine         @relation(fields: [lineId], references: [id], onDelete: Restrict)
+  reports       WorkOrderReport[]
+  statusHistory WorkOrderStatusHistory[]
+
+  @@unique([tenantId, orderNo])
+  @@index([tenantId, status, dueAt])
+  @@index([tenantId, lineId, status])
+  @@map("work_orders")
 }
 
-model QualityRecord {
-  id          String   @id
-  tenantId    String
-  workOrderId String
-  batchNo     String
-  type        String
-  result      String
-  measurements Json
-  attachments Json
-  createdAt   DateTime @default(now())
-  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id])
-  @@index([tenantId, batchNo])
+model WorkOrderReport {
+  id            String   @id @db.VarChar(40)
+  tenantId      String   @map("tenant_id") @db.VarChar(40)
+  workOrderId   String   @map("work_order_id") @db.VarChar(40)
+  deviceId      String?  @map("device_id") @db.VarChar(40)
+  quantity      Int
+  goodQty       Int      @map("good_qty")
+  defectQty     Int      @map("defect_qty")
+  sourceTraceId String   @map("source_trace_id") @db.VarChar(100)
+  reportedAt   DateTime @map("reported_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Restrict)
+  device   Device?   @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, sourceTraceId])
+  @@index([tenantId, workOrderId, reportedAt])
+  @@index([tenantId, deviceId, reportedAt])
+  @@map("work_order_reports")
 }
 
-model Document {
-  id          String   @id
-  tenantId    String
-  productId   String?
-  fileName    String
-  objectKey   String
-  sha256      String
-  version     String
-  parseStatus String   @default("pending")
-  extracted   Json
-  createdAt   DateTime @default(now())
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  product     Product? @relation(fields: [productId], references: [id])
-  @@unique([tenantId, sha256])
+model WorkOrderStatusHistory {
+  id         String          @id @db.VarChar(40)
+  tenantId   String          @map("tenant_id") @db.VarChar(40)
+  workOrderId String         @map("work_order_id") @db.VarChar(40)
+  fromStatus WorkOrderStatus? @map("from_status")
+  toStatus   WorkOrderStatus  @map("to_status")
+  reason     String          @default("") @db.VarChar(200)
+  operatorId String?         @map("operator_id") @db.VarChar(40)
+  occurredAt DateTime        @default(now()) @map("occurred_at")
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, workOrderId, occurredAt])
+  @@map("work_order_status_history")
 }
 
-model StrategyDecision {
-  id          String   @id
-  tenantId    String
-  strategyCode String
-  riskLevel   String
-  status      String   @default("draft")
-  evidence    Json
-  candidates  Json
-  approval    Json
-  execution   Json
-  createdAt   DateTime @default(now())
-  @@index([tenantId, status])
+model Alarm {
+  id         String      @id @db.VarChar(40)
+  tenantId   String      @map("tenant_id") @db.VarChar(40)
+  lineId     String?     @map("line_id") @db.VarChar(40)
+  deviceId   String?     @map("device_id") @db.VarChar(40)
+  code       String      @db.VarChar(80)
+  level      AlarmLevel
+  status     AlarmStatus @default(open)
+  message    String      @db.VarChar(500)
+  dedupeKey  String?     @map("dedupe_key") @db.VarChar(160)
+  occurredAt DateTime    @map("occurred_at")
+  resolvedAt DateTime?   @map("resolved_at")
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+
+  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  line   ProductionLine? @relation(fields: [lineId], references: [id], onDelete: Restrict)
+  device Device?         @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, status, level, occurredAt])
+  @@index([tenantId, lineId, occurredAt])
+  @@map("alarms")
 }
 
-model AuditLog {
-  id          String   @id
-  tenantId    String
-  userId      String?
-  action      String
-  resource    String
-  resourceId  String?
-  traceId     String
-  beforeData  Json?
-  afterData   Json?
-  createdAt   DateTime @default(now())
-  tenant      Tenant @relation(fields: [tenantId], references: [id])
-  user        User? @relation(fields: [userId], references: [id])
-  @@index([tenantId, createdAt])
+model StrategyRun {
+  id           String   @id @db.VarChar(40)
+  tenantId     String   @map("tenant_id") @db.VarChar(40)
+  simulationId String   @map("simulation_id") @db.VarChar(80)
+  snapshotAt   DateTime @map("snapshot_at")
+  generatedAt  DateTime @map("generated_at")
+  snapshot     Json
+  risks        Json
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  candidates StrategyCandidate[]
+
+  @@unique([tenantId, simulationId])
+  @@index([tenantId, snapshotAt])
+  @@map("strategy_runs")
+}
+
+model StrategyCandidate {
+  id                 String   @id @db.VarChar(40)
+  strategyRunId      String   @map("strategy_run_id") @db.VarChar(40)
+  action             String   @db.VarChar(60)
+  risk               String   @db.VarChar(20)
+  affectedOrders     Json     @map("affected_orders")
+  fromLine           String?  @map("from_line") @db.VarChar(40)
+  toLine             String?  @map("to_line") @db.VarChar(40)
+  expectedFinishTime DateTime @map("expected_finish_time")
+  expectedImpact     String   @map("expected_impact") @db.VarChar(500)
+  reason             String   @db.VarChar(500)
+  requiresApproval   Boolean  @default(true) @map("requires_approval")
+  score              Int
+
+  strategyRun StrategyRun @relation(fields: [strategyRunId], references: [id], onDelete: Cascade)
+
+  @@index([strategyRunId, score])
+  @@map("strategy_candidates")
 }

@@ -42,6 +42,7 @@ const devicePositions = [
 const statusPool: DeviceStatus[] = ['running', 'running', 'running', 'warning', 'error', 'offline'];
 const agvStatePool: AGVTelemetry['state'][] = ['moving', 'moving', 'moving', 'loading', 'charging', 'idle'];
 const realtimeUrl = (import.meta.env.VITE_REALTIME_URL as string | undefined)?.trim();
+const dataMode = import.meta.env.VITE_DATA_MODE === 'local' ? 'local' : 'api';
 
 export class WebSocketService {
   private readonly handlers = new Set<MessageHandler>();
@@ -67,8 +68,12 @@ export class WebSocketService {
     this.remoteEnabled = options.mode !== 'local' && Boolean(realtimeUrl);
     if (options.seed) this.seed(options.seed);
 
-    if (options.mode === 'local' || !this.remoteEnabled) {
+    if (options.mode === 'local' && dataMode === 'local') {
       this.startLocal(options.emitSnapshot !== false);
+      return;
+    }
+    if (!this.remoteEnabled) {
+      this.setConnectionState('offline');
       return;
     }
     this.connectRemote(options);

@@ -8,6 +8,8 @@ import type {
   ProductionLineTelemetry,
   SimulatorState,
 } from '@/types/factory';
+import { mapDeviceId, mapLineId } from '@/api/identityMap';
+import { positionForDevice } from '@/config/devicePositions';
 
 export type RealtimeMessage =
   | { type: 'snapshot'; payload: FactorySnapshot }
@@ -19,31 +21,6 @@ export type RealtimeMessage =
   | { type: 'simulator:update'; payload: SimulatorState }
   | { type: 'log'; payload: FactoryLog };
 
-const lineIdMap: Record<string, string> = {
-  'line-cnc': 'LINE-01',
-  'line-assembly': 'LINE-02',
-  'line-welding': 'LINE-03',
-  'line-vision': 'LINE-04',
-};
-
-const deviceIdMap: Record<string, string> = {
-  'cnc-01': 'device-cnc-01',
-  'cnc-02': 'device-cnc-02',
-  'asm-01': 'device-assembly-01',
-  'weld-01': 'device-welding-01',
-  'vision-01': 'device-vision-01',
-};
-
-const devicePositions = [
-  { x: -7.8, y: 0, z: -3.6 },
-  { x: -4.6, y: 0, z: -3.6 },
-  { x: -1.4, y: 0, z: -3.6 },
-  { x: 4.8, y: 0, z: -3.6 },
-  { x: 7.5, y: 0, z: -2.2 },
-  { x: 6.4, y: 0, z: 3.4 },
-  { x: 1.8, y: 0, z: 4.4 },
-  { x: -5.8, y: 0, z: 4.2 },
-];
 
 export function parseRealtimeMessages(input: unknown): RealtimeMessage[] {
   const envelope = asRecord(input);
@@ -75,7 +52,7 @@ function parseDirectMessage(value: Record<string, unknown>): RealtimeMessage | u
   const type = value.type;
   const payload = value.payload;
   if (typeof type !== 'string' || payload === undefined) return undefined;
-  if (type === 'snapshot' && isSnapshot(payload)) return { type, payload };
+  if (type === 'snapshot' && isSnapshot(payload)) return { type, payload: snapshotFromUnknown(payload) };
   if (type === 'device:update') return { type, payload: deviceFromUnknown(payload) };
   if (type === 'agv:update') return { type, payload: agvFromUnknown(payload) };
   if (type === 'alarm') {
@@ -112,6 +89,7 @@ function deviceMessage(data: Record<string, unknown>): RealtimeMessage {
 
 function deviceFromUnknown(value: unknown): DeviceTelemetry {
   const data = asRecord(value) ?? {};
+  const metrics = asRecord(data.metrics) ?? {};
   const id = stringValue(data.id, stringValue(data.deviceId, 'unknown-device'));
   const lineId = mapLineId(stringValue(data.lineId, ''));
   const statusValue = stringValue(data.status, 'IDLE').toUpperCase();
@@ -122,17 +100,17 @@ function deviceFromUnknown(value: unknown): DeviceTelemetry {
       : statusValue === 'STOPPED' || statusValue === 'OFFLINE'
         ? 'offline'
         : 'running';
-  const temperature = numberValue(data.temperature, numberValue(data.temperatureCelsius, 36));
+  const temperature = numberValue(data.temperature, numberValue(data.temperatureCelsius, numberValue(metrics.temperature, numberValue(metrics.temperatureCelsius, 0))));
   return {
-    id: deviceIdMap[id] ?? id,
+    id: mapDeviceId(id),
     name: stringValue(data.name, stringValue(data.deviceName, id)),
     lineId,
     zone: stringValue(data.zone, lineId),
     status,
     temperature,
-    power: numberValue(data.power, 0),
+    power: numberValue(data.power, numberValue(metrics.power, numberValue(metrics.load, 0))),
     warning: stringValue(data.warning, stringValue(data.statusReason, status === 'error' ? '设备故障' : undefined)),
-    position: positionFor(id),
+    position: positionForDevice(mapDeviceId(id), asRecord(data.position) ? pointFromUnknown(data.position) : undefined),
     observedAt: stringValue(data.timestamp, stringValue(data.lastUpdatedAt, undefined)),
   };
 }
@@ -164,14 +142,14 @@ function lineFromUnknown(value: unknown): ProductionLineTelemetry {
   return {
     id,
     name: stringValue(data.name, id),
-    workshop: id === 'LINE-01' || id === 'LINE-02' ? '一车间' : '二车间',
+    workshop: stringValue(data.workshop, '未配置车间'),
     status,
-    completionRate: 0,
-    plannedQuantity: 0,
-    completedQuantity: numberValue(oee?.goodCount, 0),
+    completionRate: numberValue(data.completionRate, 0),
+    plannedQuantity: numberValue(data.plannedQuantity, numberValue(data.plannedQty, 0)),
+    completedQuantity: numberValue(data.completedQuantity, numberValue(data.completedQty, numberValue(oee?.goodCount, 0))),
     oee: oeeMetrics?.oee ?? 0,
     oeeMetrics,
-    deviceOnline: `${Array.isArray(data.devices) ? data.devices.length : 0}`,
+    deviceOnline: stringValue(data.deviceOnline, `${Array.isArray(data.devices) ? data.devices.length : 0}`),
     risk: status === 'error' ? '设备故障' : status === 'warning' ? '需要关注' : '低风险',
   };
 }
@@ -235,6 +213,30 @@ function agvFromUnknown(value: unknown): AGVTelemetry {
   };
 }
 
+function snapshotFromUnknown(value: unknown): FactorySnapshot {
+  const data = asRecord(value) ?? {};
+  return {
+    devices: Array.isArray(data.devices) ? data.devices.map(deviceFromUnknown) : [],
+    agvs: Array.isArray(data.agvs) ? data.agvs.map(agvFromUnknown) : [],
+    alarms: Array.isArray(data.alarms) ? data.alarms.map(alarmFromUnknown) : [],
+    logs: Array.isArray(data.logs) ? data.logs.map(logFromUnknown) : [],
+    todayTasks: numberValue(data.todayTasks, 0),
+    powerConsumption: numberValue(data.powerConsumption, 0),
+    temperatureTrend: Array.isArray(data.temperatureTrend)
+      ? data.temperatureTrend.filter((item): item is number => typeof item === 'number' && Number.isFinite(item))
+      : [],
+    productionSummary: asRecord(data.productionSummary)
+      ? {
+        plannedQuantity: numberValue(asRecord(data.productionSummary)!.plannedQuantity, 0),
+        completedQuantity: numberValue(asRecord(data.productionSummary)!.completedQuantity, 0),
+        completionRate: numberValue(asRecord(data.productionSummary)!.completionRate, 0),
+      }
+      : undefined,
+    simulator: asRecord(data.simulator) ? simulatorState(data.simulator) : undefined,
+    lines: Array.isArray(data.lines) ? data.lines.map(lineFromUnknown) : undefined,
+  };
+}
+
 function logFromUnknown(value: unknown): FactoryLog {
   const data = asRecord(value) ?? {};
   return {
@@ -257,15 +259,6 @@ function simulatorState(value: unknown, timestamp?: unknown): SimulatorState {
 function isSnapshot(value: unknown): value is FactorySnapshot {
   const data = asRecord(value);
   return Boolean(data && Array.isArray(data.devices) && Array.isArray(data.agvs) && Array.isArray(data.alarms));
-}
-
-function mapLineId(value: string): string {
-  return lineIdMap[value] ?? value;
-}
-
-function positionFor(id: string): { x: number; y: number; z: number } {
-  const hash = [...id].reduce((total, character) => total + character.charCodeAt(0), 0);
-  return devicePositions[hash % devicePositions.length];
 }
 
 function pointFromUnknown(value: unknown): { x: number; y: number; z: number } {

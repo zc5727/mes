@@ -11,6 +11,11 @@ export class DashboardController {
     return { data: this.dashboardService.getOverview(tenantId), tenantId };
   }
 
+  @Get('production-metrics')
+  productionMetrics(@TenantId() tenantId: string) {
+    return { data: this.dashboardService.getProductionMetrics(tenantId), tenantId };
+  }
+
   @Get('lines/:lineId')
   line(@TenantId() tenantId: string, @Param('lineId') lineId: string) {
     return { data: this.dashboardService.getLineOverview(tenantId, lineId), tenantId };

@@ -70,6 +70,7 @@ export interface StrategyRecommendation {
   reason: string;
   affectedOrderIds: string[];
   targetLineId?: string;
+  requiresApproval: true;
 }
 
 export interface StrategySimulationResult {

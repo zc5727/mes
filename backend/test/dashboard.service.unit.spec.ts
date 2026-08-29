@@ -25,6 +25,19 @@ describe('DashboardService', () => {
       todayTasks: 1,
       powerConsumption: 272,
       temperatureTrend: [42, 42, 42, 42],
+      productionMetrics: {
+        plannedQty: 1200,
+        completedQty: 780,
+        completionRate: 65,
+        oee: null,
+        oeeAvailable: false,
+      },
+    });
+
+    expect(service.getProductionMetrics('tenant-demo')).toMatchObject({
+      remainingQty: 420,
+      availabilityRate: 80,
+      source: 'work_orders_and_device_snapshot',
     });
   });
 
@@ -47,6 +60,7 @@ describe('DashboardService', () => {
       todayTasks: 0,
       powerConsumption: 0,
       temperatureTrend: [36, 37, 38],
+      productionMetrics: { plannedQty: 0, completedQty: 0, completionRate: 0, oee: null },
     });
   });
 });

@@ -189,4 +189,47 @@ npm test
 npm run build
 ```
 
+## 四产线故障演练验收
+
+该演练使用固定随机种子 `20260829`，不会连接或控制真实设备。它会验证四条产线的设备遥测、AGV 遥测、故障告警、告警清除、设备恢复，以及策略层的只读转移建议。
+
+执行完整测试：
+
+```bash
+cd /Users/a1/Documents/ChatGPT/mes/simulator
+npm test
+```
+
+只执行故障闭环：
+
+```bash
+npm run build && node --test dist/strategy/four-line-drill.test.js
+```
+
+预期输出：
+
+```text
+ok - runs the four-line fault drill from telemetry to approved recovery advice
+tests 1
+pass 1
+fail 0
+```
+
+验收链路为：
+
+```text
+12 条 device.telemetry + 4 条 agv.telemetry
+→ LINE-03/WELD-01 产生 alarm.created
+→ 策略输出 FAILOVER_TRANSFER
+→ executionAllowed=false、requiresApproval=true
+→ reset 清除故障并产生 alarm.cleared
+→ WELD-01 与 LINE-03 恢复 RUNNING
+```
+
+演练 Fixture：
+
+```text
+/Users/a1/Documents/ChatGPT/mes/simulator/src/strategy/four-line-twin-snapshot.json
+```
+
 该目录保持独立，不依赖前端核心页面；后续可由后端采集适配层订阅 MQTT，再转发给 MES API、数字孪生页面或告警中心。

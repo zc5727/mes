@@ -239,6 +239,7 @@ function buildRecommendations(plans: StrategyOrderPlan[], lines: LineRuntime[]):
       type: "FAILOVER_TRANSFER",
       reason: "原优先产线不可用，已选择兼容且负载较低的备用产线",
       affectedOrderIds: transferred.map((plan) => plan.orderId),
+      requiresApproval: true,
     });
   }
 
@@ -248,6 +249,7 @@ function buildRecommendations(plans: StrategyOrderPlan[], lines: LineRuntime[]):
       type: "LOAD_BALANCE",
       reason: "多个兼容产线共同承接订单，避免订单集中到单条产线",
       affectedOrderIds: plans.filter((plan) => plan.assignedLineId).map((plan) => plan.orderId),
+      requiresApproval: true,
     });
   }
 
@@ -257,6 +259,7 @@ function buildRecommendations(plans: StrategyOrderPlan[], lines: LineRuntime[]):
       type: "MATERIAL_SHORTAGE",
       reason: "补充缺口物料后重新运行只读仿真，不自动下发采购或领料动作",
       affectedOrderIds: materialBlocked.map((plan) => plan.orderId),
+      requiresApproval: true,
     });
   }
 
@@ -266,6 +269,7 @@ function buildRecommendations(plans: StrategyOrderPlan[], lines: LineRuntime[]):
       type: "MAINTENANCE_RECOVERY",
       reason: "维修或设备恢复时间会改变可用产能，建议完成维修后重新评估",
       affectedOrderIds: plans.filter((plan) => plan.affected).map((plan) => plan.orderId),
+      requiresApproval: true,
     });
   }
 
@@ -275,6 +279,7 @@ function buildRecommendations(plans: StrategyOrderPlan[], lines: LineRuntime[]):
       type: "DELAY_MITIGATION",
       reason: "存在延期风险，仅输出建议，不执行插单、停线或设备控制",
       affectedOrderIds: delayed.map((plan) => plan.orderId),
+      requiresApproval: true,
     });
   }
   return recommendations;

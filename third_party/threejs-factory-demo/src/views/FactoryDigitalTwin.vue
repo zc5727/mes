@@ -10,7 +10,9 @@
       :simulation="simulator"
     />
     <div v-if="loading" class="data-banner">正在接入 MES 数据...</div>
-    <div v-else-if="loadError" class="data-banner data-banner--warning">实时数据暂不可用，已保留最近一次数据并继续重试</div>
+    <div v-else-if="loadError" class="data-banner data-banner--warning">
+      {{ hasData ? '实时数据暂不可用，已保留最近一次数据并继续重试' : 'MES 数据暂不可用，当前无实时数据，请检查服务和权限' }}
+    </div>
     <section class="simulation-controls panel" aria-label="本地仿真控制">
       <div class="simulation-controls__title">故障注入 · 本地仿真</div>
       <select v-model="controlDeviceId" :disabled="!isLocalFallback" aria-label="选择设备">
@@ -48,6 +50,8 @@
       :online-rate="selectedLineOnlineRate"
       :selected-line="selectedLine"
       :production-summary="productionSummary"
+      @view-work-order="handleViewWorkOrder"
+      @create-inspection="handleCreateInspection"
     />
     <BottomLogs :logs="logs" />
     <FactoryAssistant
@@ -74,10 +78,12 @@ import ThreeFactoryViewport from '@/components/scene/ThreeFactoryViewport.vue';
 import { fetchFactorySnapshot } from '@/api/mesApi';
 import { useFactoryStore } from '@/store/factoryStore';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
+import { createId, formatClock } from '@/utils/time';
 import { websocketService, type RealtimeConnectionState } from '@/websocket/WebSocketService';
 import type { RealtimeMessage } from '@/websocket/protocol';
 
 const store = useFactoryStore();
+const DATA_MODE = import.meta.env.VITE_DATA_MODE === 'local' ? 'local' : 'api';
 const selectedLineId = ref('LINE-01');
 const loading = ref(true);
 const loadError = ref(false);
@@ -89,6 +95,10 @@ const fallbackLineDefinitions: ProductionLineTelemetry[] = [
   { id: 'LINE-03', name: '焊接线', workshop: '二车间', status: 'error', completionRate: 64, plannedQuantity: 240, completedQuantity: 154, oee: 61, deviceOnline: '2/4', risk: '设备停机' },
   { id: 'LINE-04', name: '视觉检测线', workshop: '二车间', status: 'running', completionRate: 91, plannedQuantity: 510, completedQuantity: 464, oee: 89, deviceOnline: '3/3', risk: '低风险' },
 ];
+const emptyLine: ProductionLineTelemetry = {
+  id: '', name: '暂无产线数据', workshop: '暂无数据', status: 'idle', completionRate: 0,
+  plannedQuantity: 0, completedQuantity: 0, oee: 0, deviceOnline: '0/0', risk: '暂无数据',
+};
 const {
   devices,
   agvs,
@@ -107,7 +117,7 @@ const {
 } = storeToRefs(store);
 
 const lineSummaries = computed<ProductionLineTelemetry[]>(() => {
-  const lineDefinitions = productionLines.value.length ? productionLines.value : fallbackLineDefinitions;
+  const lineDefinitions = productionLines.value.length || DATA_MODE !== 'local' ? productionLines.value : fallbackLineDefinitions;
   return lineDefinitions.map((line) => {
     const lineDevices = devices.value.filter((device) => device.lineId === line.id);
     const hasError = lineDevices.some((device) => device.status === 'error');
@@ -127,7 +137,7 @@ const lineSummaries = computed<ProductionLineTelemetry[]>(() => {
   });
 });
 
-const selectedLine = computed(() => lineSummaries.value.find((line) => line.id === selectedLineId.value) ?? lineSummaries.value[0] ?? fallbackLineDefinitions[0]);
+const selectedLine = computed(() => lineSummaries.value.find((line) => line.id === selectedLineId.value) ?? lineSummaries.value[0] ?? emptyLine);
 const lineDevices = computed(() => devices.value.filter((device) => device.lineId === selectedLineId.value));
 const lineAgvs = computed(() => agvs.value.filter((agv) => agv.lineId === selectedLineId.value));
 const lineAlarms = computed(() => alarms.value.filter((alarm) => !alarm.lineId || alarm.lineId === selectedLineId.value));
@@ -136,7 +146,8 @@ const selectedLineOnlineRate = computed(() => {
   return Math.round((lineDevices.value.filter((device) => device.status !== 'offline').length / lineDevices.value.length) * 100);
 });
 const activeSelectedDevice = computed(() => selectedDevice.value?.lineId === selectedLineId.value ? selectedDevice.value : null);
-const isLocalFallback = computed(() => store.dataSource === 'simulator');
+const isLocalFallback = computed(() => DATA_MODE === 'local' && store.dataSource === 'simulator');
+const hasData = computed(() => devices.value.length > 0 || productionLines.value.length > 0);
 
 watch(lineDevices, (nextDevices) => {
   if (!nextDevices.some((device) => device.id === controlDeviceId.value)) {
@@ -164,6 +175,14 @@ const injectFault = () => {
 
 const recoverDevice = () => {
   if (isLocalFallback.value) websocketService.recoverLocalDevice(controlDeviceId.value);
+};
+
+const handleViewWorkOrder = (deviceId: string) => {
+  store.pushLog({ id: createId('log'), time: formatClock(), message: `查看设备 ${deviceId} 的当前工单` });
+};
+
+const handleCreateInspection = (deviceId: string) => {
+  store.pushLog({ id: createId('log'), time: formatClock(), message: `已创建设备 ${deviceId} 点检草稿（待现场确认）` });
 };
 
 const ensureLineSelection = () => {
@@ -213,6 +232,12 @@ const startRealtime = (forceLocal = false) => {
 };
 
 onMounted(async () => {
+  if (DATA_MODE === 'local') {
+    store.setDataSource('simulator');
+    startRealtime(true);
+    loading.value = false;
+    return;
+  }
   try {
     await refreshApiSnapshot();
     startRealtime();
@@ -224,22 +249,15 @@ onMounted(async () => {
       });
     }, 3_000);
   } catch (error) {
-    console.info('MES API unavailable, using local simulator', error);
+    console.info('MES API unavailable; local simulator is disabled in api mode', error);
     loadError.value = true;
-    store.setDataSource('simulator');
-    startRealtime(true);
+    store.setDataSource('api');
     apiRefreshTimer = window.setInterval(() => {
-      const wasFallback = store.dataSource === 'simulator';
       void refreshApiSnapshot()
-        .then(() => {
-          if (wasFallback) {
-            websocketService.disconnect();
-            startRealtime();
-          }
-        })
+        .then(() => undefined)
         .catch(() => {
           loadError.value = true;
-          store.setConnectionState('fallback');
+          store.setConnectionState('offline');
         });
     }, 5_000);
   } finally {

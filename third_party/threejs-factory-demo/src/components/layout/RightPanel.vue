@@ -39,7 +39,10 @@
         <p>{{ selectedDevice.zone }} · {{ selectedDevice.id }}</p>
         <div class="detail-grid"><span>温度</span><strong>{{ selectedDevice.temperature.toFixed(1) }}℃</strong><span>功率</span><strong>{{ selectedDevice.power.toFixed(1) }}kW</strong><span>当前工单</span><strong>进行中</strong></div>
         <div v-if="selectedDevice.warning" class="selected-warning">{{ selectedDevice.warning }}，建议安排点检。</div>
-        <div class="object-actions"><button type="button">查看工单</button><button type="button">创建点检</button></div>
+        <div class="object-actions">
+          <button type="button" @click="$emit('view-work-order', selectedDevice.id)">查看工单</button>
+          <button type="button" @click="$emit('create-inspection', selectedDevice.id)">创建点检</button>
+        </div>
       </div>
       <div v-else class="empty-state">点击三维场景或左侧设备，查看对象详情。</div>
       <div class="panel-title agv-title">AGV运输</div>
@@ -80,6 +83,11 @@ defineProps<{
   onlineRate: number;
   selectedLine: ProductionLineTelemetry;
   productionSummary?: ProductionSummary;
+}>();
+
+defineEmits<{
+  (event: 'view-work-order', deviceId: string): void;
+  (event: 'create-inspection', deviceId: string): void;
 }>();
 
 const tagType = (state: AGVState) => {

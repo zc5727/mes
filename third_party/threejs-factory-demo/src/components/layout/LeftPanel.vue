@@ -16,6 +16,7 @@
           <span class="line-main"><strong>{{ line.name }}</strong><small>{{ line.workshop }} · OEE {{ line.oee }}%</small></span>
           <span class="line-rate">{{ line.completionRate }}%</span>
         </button>
+        <div v-if="!productionLines.length" class="empty-state">暂无产线数据，请检查 MES API 或数据权限。</div>
       </div>
       <div class="flow-title">当前生产流</div>
       <div class="flow-track"><span class="done">备料</span><i></i><span class="done">粗加工</span><i></i><span class="active-step">检测</span><i></i><span>入库</span></div>
@@ -40,6 +41,7 @@
         <button
           v-for="device in devices"
           :key="device.id"
+          type="button"
           class="device-row"
           :class="{ active: selectedDeviceId === device.id }"
           @click="$emit('select-device', device.id)"

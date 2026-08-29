@@ -29,6 +29,24 @@ npm run start:dev
 MQTT_ENABLED=true MQTT_URL=mqtt://localhost:1883 npm run start:dev
 ```
 
+后端启动后可执行真实 MQTT Smoke，验证 `telemetry/alarm → 内存状态 → Dashboard/Alarm API`：
+
+```bash
+npm run smoke:mqtt
+```
+
+如果连接失败，先确认 Broker 和后端日志：
+
+```bash
+docker ps --filter name=mes-mqtt
+docker logs --tail=100 mes-mqtt
+curl -i http://localhost:3000/api/v1/health
+```
+
+后端日志中应看到 `MQTT broker connected` 和 `Subscribed to ...telemetry, ...alarms`。如果看到
+`MQTT broker error`、`MQTT broker is offline` 或 `MQTT subscription failed`，优先检查
+`MQTT_URL`、1883 端口、Broker 访问权限和 Topic 配置。
+
 ## 启动本地依赖
 
 ```bash

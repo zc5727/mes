@@ -13,6 +13,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { MqttModule } from './mqtt/mqtt.module';
 import { AgentApiModule } from './agent-api/agent-api.module';
 import { StrategiesModule } from './strategies/strategies.module';
+import { DigitalTwinModule } from './digital-twin/digital-twin.module';
 
 @Module({
   controllers: [HealthController],
@@ -30,6 +31,7 @@ import { StrategiesModule } from './strategies/strategies.module';
     MqttModule,
     AgentApiModule,
     StrategiesModule,
+    DigitalTwinModule,
   ],
 })
 export class AppModule {}
