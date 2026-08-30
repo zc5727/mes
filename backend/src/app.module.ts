@@ -16,6 +16,11 @@ import { StrategiesModule } from './strategies/strategies.module';
 import { DigitalTwinModule } from './digital-twin/digital-twin.module';
 import { MasterDataModule } from './master-data/master-data.module';
 import { AuditModule } from './audit/audit.module';
+import { MaintenanceModule } from './maintenance/maintenance.module';
+import { DatabaseModule } from './database/database.module';
+import { DocumentsModule } from './documents/documents.module';
+import { QualityModule } from './quality/quality.module';
+import { DeviceConnectionsModule } from './device-connections/device-connections.module';
 
 @Module({
   controllers: [HealthController],
@@ -36,6 +41,11 @@ import { AuditModule } from './audit/audit.module';
     DigitalTwinModule,
     MasterDataModule,
     AuditModule,
+    MaintenanceModule,
+    DatabaseModule,
+    DocumentsModule,
+    QualityModule,
+    DeviceConnectionsModule,
   ],
 })
 export class AppModule {}

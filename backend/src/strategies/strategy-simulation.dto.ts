@@ -82,6 +82,10 @@ export class StrategySimulationDto {
   @IsDateString()
   timestamp!: string;
 
+  @IsOptional()
+  @IsString()
+  factoryId?: string;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => StrategyLineDto)

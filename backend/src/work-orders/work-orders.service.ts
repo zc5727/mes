@@ -6,6 +6,7 @@ import { UpdateWorkOrderDto } from './dto/update-work-order.dto';
 import { ReportWorkOrderDto } from './dto/report-work-order.dto';
 import { OrdersService } from '../orders/orders.service';
 import { ProductionLinesService } from '../production-lines/production-lines.service';
+import { DevicesService } from '../devices/devices.service';
 
 type WorkOrderStatus = 'draft' | 'released' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
 type WorkOrderPriority = 'low' | 'normal' | 'high' | 'urgent';
@@ -33,12 +34,14 @@ export interface WorkOrderReport {
   defectQty: number;
   deviceId: string | null;
   sourceTraceId: string;
+  batchNo: string | null;
+  serialNumbers: string[];
   reportedAt: string;
 }
 
 const allowedTransitions: Record<WorkOrderStatus, WorkOrderStatus[]> = {
   draft: ['released', 'cancelled'],
-  released: ['in_progress', 'paused', 'cancelled'],
+  released: ['in_progress', 'cancelled'],
   in_progress: ['paused', 'completed', 'cancelled'],
   paused: ['released', 'in_progress', 'cancelled'],
   completed: [],
@@ -50,6 +53,7 @@ export class WorkOrdersService {
   constructor(
     @Optional() private readonly ordersService: OrdersService = new OrdersService(),
     @Optional() private readonly productionLinesService: ProductionLinesService = new ProductionLinesService(),
+    @Optional() private readonly devicesService?: DevicesService,
   ) {}
 
   private readonly reports: WorkOrderReport[] = [];
@@ -146,6 +150,9 @@ export class WorkOrdersService {
 
   update(tenantId: string, id: string, dto: UpdateWorkOrderDto): WorkOrder {
     const current = this.findOne(tenantId, id);
+    if (current.status === 'completed' || current.status === 'cancelled') {
+      throw new ConflictException(`Work orders in ${current.status} status cannot be edited`);
+    }
     if (dto.lineId) this.productionLinesService.findOne(tenantId, dto.lineId);
     const plannedQty = dto.plannedQty ?? current.plannedQty;
     const completedQty = dto.completedQty ?? current.completedQty;
@@ -163,6 +170,10 @@ export class WorkOrdersService {
       completedQty,
       updatedAt: timestamp(),
     };
+    if (dto.lineId && dto.lineId !== current.lineId) {
+      this.productionLinesService.unregisterWorkOrder(tenantId, current.lineId);
+      this.productionLinesService.registerWorkOrder(tenantId, dto.lineId);
+    }
     this.workOrders.set(id, updated);
     return updated;
   }
@@ -171,16 +182,27 @@ export class WorkOrdersService {
     const current = this.findOne(tenantId, id);
     if (current.status !== 'in_progress') throw new ConflictException('Only in-progress work orders can report production');
     if (current.completedQty + dto.quantity > current.plannedQty) throw new ConflictException('Report quantity exceeds planned quantity');
+    if (dto.sourceTraceId && this.reports.some((item) => item.tenantId === tenantId && item.sourceTraceId === dto.sourceTraceId)) {
+      throw new ConflictException(`Report trace ${dto.sourceTraceId} already exists`);
+    }
+    if (dto.deviceId && this.devicesService) {
+      const device = this.devicesService.findOne(tenantId, dto.deviceId);
+      if (device.lineId !== current.lineId) throw new ConflictException('Report device must belong to work order line');
+    }
     const goodQty = dto.goodQty ?? dto.quantity;
     const defectQty = dto.defectQty ?? dto.quantity - goodQty;
     if (goodQty < 0 || defectQty < 0 || goodQty > dto.quantity || defectQty > dto.quantity) {
       throw new ConflictException('goodQty and defectQty must be within quantity');
     }
     if (goodQty + defectQty !== dto.quantity) throw new ConflictException('goodQty + defectQty must equal quantity');
+    const serialNumbers = dto.serialNumbers ?? [];
+    if (serialNumbers.length && serialNumbers.length !== dto.quantity) throw new ConflictException('serialNumbers count must equal quantity');
+    if (new Set(serialNumbers).size !== serialNumbers.length) throw new ConflictException('serialNumbers must be unique');
     const report: WorkOrderReport = {
       id: createId('report'), workOrderId: id, tenantId, quantity: dto.quantity,
       goodQty, defectQty, deviceId: dto.deviceId ?? null,
       sourceTraceId: dto.sourceTraceId ?? createId('trace'), reportedAt: timestamp(),
+      batchNo: dto.batchNo?.trim() || null, serialNumbers,
     };
     this.reports.push(report);
     const completedQty = current.completedQty + dto.quantity;

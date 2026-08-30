@@ -102,7 +102,17 @@ async function poll(path, predicate, label) {
 async function request(path, init = {}) {
   const response = await fetch(`${config.api}${path}`, {
     ...init,
-    headers: { 'content-type': 'application/json', 'x-tenant-id': config.tenant, ...(init.headers ?? {}) },
+    headers: {
+      'content-type': 'application/json',
+      'x-tenant-id': config.tenant,
+      'x-user-id': 'fault-drill-runner',
+      'x-role': 'plant_manager',
+      'x-factory-id': 'factory-demo',
+      'x-scope': '*',
+      'x-session-id': `fault-drill-${process.pid}`,
+      'x-trace-id': `fault-drill-trace-${Date.now()}`,
+      ...(init.headers ?? {}),
+    },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
   });
   if (!response.ok) throw new Error(`${path} HTTP ${response.status}: ${await response.text()}`);

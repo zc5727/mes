@@ -53,6 +53,30 @@ curl -i http://localhost:3000/api/v1/health
 docker compose up -d
 ```
 
+## PostgreSQL 持久化
+
+MQTT 状态默认仍使用内存，避免开发环境因数据库不可用而无法启动。需要启用设备状态和告警恢复时：
+
+```bash
+npm run db:generate
+npm run db:init
+DATABASE_ENABLED=true npm run start:dev
+```
+
+`db:init` 会部署 Prisma migration，并初始化演示租户、工厂、四条产线和 12 台设备。启用持久化后，MQTT telemetry 与告警投影会写入 PostgreSQL；数据库短暂不可用时仍保留内存投影并输出错误日志。
+
+### 设备接入契约
+
+除 MQTT 模拟器链路外，不能发布 MQTT 的边缘网关可调用：
+
+```bash
+curl -X POST http://localhost:3000/api/v1/ingestion/device-events \
+  -H 'content-type: application/json' -H 'x-tenant-id: tenant-demo' \
+  -d '{"eventId":"evt-001","deviceId":"cnc-01","lineId":"line-cnc","eventType":"telemetry","eventTime":"2026-08-28T09:10:00.000Z","traceId":"trace-001","status":"RUNNING","quality":"GOOD","payload":{"temp":41.2,"total_count":12,"good_count":12,"defect_count":0}}'
+```
+
+HTTP 接入与 MQTT 使用同一设备状态缓存，支持事件时间乱序过滤、重复回放幂等和常用点位别名映射（`temp`、`total_count` 等）。当前 HTTP 入口只接收 telemetry；告警仍通过 `alarm.created`/`alarm.cleared` MQTT 主题进入。开启 `DATABASE_ENABLED=true` 后，事件日志、当前状态和连接事件分别写入 `device_events`、`current_states`、`connection_events`，并在重启时恢复 MQTT 状态。
+
 ## 下一步开发顺序
 
 1. 租户、用户和权限

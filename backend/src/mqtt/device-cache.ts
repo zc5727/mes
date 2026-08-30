@@ -50,6 +50,10 @@ export class DeviceTelemetryCache {
     this.records.clear();
   }
 
+  restore(records: CachedDeviceTelemetry[]): void {
+    for (const record of records) this.records.set(this.key(record.tenantId, record.lineId, record.deviceId), record);
+  }
+
   private key(tenantId: string, lineId: string, deviceId: string): string {
     return `${tenantId}/${lineId}/${deviceId}`;
   }

@@ -50,7 +50,9 @@ export class OrdersService {
 
   recordProgress(tenantId: string, id: string, completedQty: number): ProductionOrder {
     const order = this.findOne(tenantId, id);
-    const nextQty = Math.min(order.plannedQty, Math.max(order.completedQty, completedQty));
+    if (completedQty < order.completedQty) throw new ConflictException('completedQty cannot be decreased');
+    if (completedQty > order.plannedQty) throw new ConflictException('completedQty cannot be greater than plannedQty');
+    const nextQty = completedQty;
     const status: ProductionOrder['status'] = nextQty === order.plannedQty ? 'completed' : 'in_progress';
     const updated: ProductionOrder = { ...order, completedQty: nextQty, status, updatedAt: timestamp() };
     this.orders.set(id, updated);

@@ -13,6 +13,23 @@
 
 该过程只验证“故障—风险—建议—恢复建议”的闭环，不代表系统已经执行转移或恢复操作。
 
+## 治理与结果追踪
+
+每次正式 API 调用都会记录租户、调用人、仿真 ID、快照时间、候选数量、推荐动作和审批边界。结果保存在内存追踪表中，按租户隔离：
+
+```text
+GET /api/v1/strategies/simulations/:simulationId
+GET /api/v1/strategies/audit-records
+```
+
+记录明确标记 `requiresApproval=true` 和 `executionAllowed=false`。这些接口只能读取仿真结果与调用记录，不提供设备控制或工单修改能力。
+
+## M4 统一结果与权限边界
+
+五类候选统一返回 `score`、`scoreBreakdown` 和 `impactAssessment`；仿真结果同时回显只读 `snapshot`、聚合影响评估、`requiresApproval=true` 和 `executionAllowed=false`。高风险候选会创建 `pending` 审批记录，审批不等于执行，当前模块没有真实设备或工单控制调用。
+
+HTTP 仿真和结果查询必须携带 `x-user-id`、`x-role`、`x-factory-id`、`x-scope`、`x-session-id`、`x-trace-id`。后端校验角色、工厂和产线/设备/工单范围；策略调用审计包含 `operator`、`object`、`before`、`after`、`reason`、`traceId`、`result`。
+
 ## 验证命令
 
 ```bash

@@ -1,0 +1,27 @@
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { TenantId } from '../common/tenant.decorator';
+import { CreateQualityRecordDto, QualityTransitionDto, UpdateQualityDraftDto } from './dto/quality-record.dto';
+import { QualityService } from './quality.service';
+
+@Controller('foundation/quality-records')
+export class QualityController {
+  constructor(private readonly qualityService: QualityService) {}
+
+  @Get()
+  list(@TenantId() tenantId: string) { return { data: this.qualityService.list(tenantId), tenantId }; }
+
+  @Post()
+  create(@TenantId() tenantId: string, @Body() dto: CreateQualityRecordDto) { return { data: this.qualityService.create(tenantId, dto), tenantId }; }
+
+  @Patch(':id')
+  updateDraft(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateQualityDraftDto) { return { data: this.qualityService.updateDraft(tenantId, id, dto), tenantId }; }
+
+  @Post(':id/submit')
+  submit(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: QualityTransitionDto) { return { data: this.qualityService.submit(tenantId, id, dto), tenantId }; }
+
+  @Post(':id/confirm')
+  confirm(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: QualityTransitionDto) { return { data: this.qualityService.confirm(tenantId, id, dto), tenantId }; }
+
+  @Post(':id/reject')
+  reject(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: QualityTransitionDto) { return { data: this.qualityService.reject(tenantId, id, dto), tenantId }; }
+}

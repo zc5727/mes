@@ -6,6 +6,25 @@ export type StrategyAction =
   | 'schedule_recovery'
   | 'expedite_work_order';
 
+export type StrategyRole =
+  | 'system_admin'
+  | 'plant_manager'
+  | 'production_supervisor'
+  | 'equipment_supervisor'
+  | 'quality_supervisor'
+  | 'team_leader'
+  | 'operator'
+  | 'auditor';
+
+export interface StrategyRequestContext {
+  userId: string;
+  role: StrategyRole;
+  factoryId: string;
+  scope: string[];
+  sessionId: string;
+  traceId: string;
+}
+
 export interface StrategyDevice {
   id: string;
   lineId: string;
@@ -31,6 +50,7 @@ export interface StrategyWorkOrder {
 
 export interface StrategySnapshot {
   timestamp: string;
+  factoryId?: string;
   lines: StrategyLine[];
   devices: StrategyDevice[];
   workOrders: StrategyWorkOrder[];
@@ -55,12 +75,47 @@ export interface StrategyCandidate {
   reason: string;
   requiresApproval: true;
   score: number;
+  scoreBreakdown: StrategyScore;
+  impactAssessment: StrategyImpactAssessment;
+}
+
+export interface StrategyScore {
+  total: number;
+  factors: {
+    priority: number;
+    urgency: number;
+    risk: number;
+    feasibility: number;
+  };
+}
+
+export interface StrategyImpactAssessment {
+  affectedOrders: string[];
+  affectedLines: string[];
+  affectedDevices: string[];
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+  summary: string;
+  executionAllowed: false;
+}
+
+export interface StrategyAggregateImpactAssessment {
+  affectedOrders: string[];
+  affectedLines: string[];
+  affectedDevices: string[];
+  candidateCount: number;
+  highRiskCandidateCount: number;
+  executionAllowed: false;
 }
 
 export interface StrategySimulationResult {
   simulationId: string;
   generatedAt: string;
+  snapshot: StrategySnapshot;
   risks: Array<{ level: RiskLevel; message: string; evidence: StrategyEvidence[] }>;
   candidates: StrategyCandidate[];
   recommended: StrategyCandidate | null;
+  requiresApproval: true;
+  executionAllowed: false;
+  impactAssessment: StrategyAggregateImpactAssessment;
 }

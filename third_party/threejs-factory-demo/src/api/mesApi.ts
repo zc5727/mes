@@ -174,6 +174,74 @@ export function deleteProductionLine(id: string) {
   return request<{ id: string; deleted: true }>(`/production-lines/${encodeURIComponent(id)}`, 'DELETE');
 }
 
+export interface CreateWorkOrderInput {
+  orderNo: string;
+  productCode: string;
+  productName: string;
+  lineId: string;
+  plannedQty: number;
+  dueAt: string;
+  priority?: 'low' | 'normal' | 'high' | 'urgent';
+}
+
+export function createWorkOrder(input: CreateWorkOrderInput) {
+  return post<Record<string, unknown>>('/work-orders', input);
+}
+
+export interface CreateDeviceInput {
+  lineId: string;
+  code: string;
+  name: string;
+  model?: string;
+  protocol?: 'opcua' | 'modbus-tcp' | 'mqtt' | 'simulator';
+}
+
+export function createDevice(input: CreateDeviceInput) {
+  return post<Record<string, unknown>>('/devices', input);
+}
+
+export function createDocument(data: Record<string, unknown>) {
+  return post<Record<string, unknown>>('/foundation/documents', { data });
+}
+
+export interface CreateQualityRecordInput {
+  formKey?: string;
+  formVersion?: string;
+  workOrderId?: string;
+  batchNo: string;
+  lineId: string;
+  deviceId?: string;
+  operatorId: string;
+  values: Record<string, unknown>;
+}
+
+export function createQualityRecord(input: CreateQualityRecordInput) {
+  return post<Record<string, unknown>>('/foundation/quality-records', input);
+}
+
+export function uploadDocument(file: File, input: { documentKey: string; uploadedBy: string; lineId?: string; productCode?: string }) {
+  const body = new FormData();
+  body.append('file', file);
+  Object.entries(input).forEach(([key, value]) => { if (value) body.append(key, value); });
+  return requestFormData<Record<string, unknown>>('/foundation/documents/upload', body);
+}
+
+export function saveDocumentAnalysisDraft(id: string, analysisDraft: Record<string, unknown>, actorId: string) {
+  return post<Record<string, unknown>>(`/foundation/documents/${encodeURIComponent(id)}/analysis-draft`, { analysisDraft, actorId });
+}
+
+export function confirmDocumentAnalysis(id: string, reviewerId: string, analysis?: Record<string, unknown>) {
+  return post<Record<string, unknown>>(`/foundation/documents/${encodeURIComponent(id)}/analysis/confirm`, { reviewerId, analysis });
+}
+
+export function simulateStrategy(data: Record<string, unknown>) {
+  return post<Record<string, unknown>>('/strategies/simulate', data);
+}
+
+export function createApproval(resource: string, resourceId: string, comment?: string) {
+  return post<Record<string, unknown>>('/audit/approvals', { resource, resourceId, comment });
+}
+
 async function get<T>(path: string): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -208,6 +276,16 @@ async function request<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE', bod
   } finally {
     window.clearTimeout(timeout);
   }
+}
+
+async function requestFormData<T>(path: string, body: FormData): Promise<T> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, { method: 'POST', headers: { 'x-tenant-id': TENANT_ID }, body, signal: controller.signal });
+    if (!response.ok) throw new Error(`MES API ${response.status}: ${path}`);
+    return unwrap<T>(await response.json() as T | { data: T });
+  } finally { window.clearTimeout(timeout); }
 }
 
 async function getOptional<T>(path: string): Promise<T | undefined> {

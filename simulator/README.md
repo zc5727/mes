@@ -161,6 +161,18 @@ mes/control/{tenantId}/twin/command
 
 故障注入会先发布 `alarm.created`，恢复会发布 `alarm.cleared`。
 
+## 协议接入模拟
+
+`src/protocols/event-adapter.ts` 提供无网络副作用的统一事件适配器，将 MQTT 和 HTTP 事件，以及 Modbus TCP 寄存器帧、OPC UA 节点值帧，规范化为同一份 `device.telemetry` 数据契约。它只产生遥测事件，不接受设备控制命令。
+
+协议适配契约测试：
+
+```bash
+npm run build && node --test dist/protocols/event-adapter.test.js
+```
+
+测试覆盖 MQTT/HTTP 等价映射、Modbus 状态/故障码、OPC UA 节点值、非法帧拒绝和控制命令隔离。后续接入真实 Modbus TCP 或 OPC UA 客户端时，只需将读取到的寄存器/节点值转换为对应模拟帧，再复用该适配器和校验逻辑。
+
 ## 故障注入
 
 故障注入接口已封装在 `FactorySimulator` 和 `ProductionLineSimulator` 中，供后续 REST、WebSocket 或测试脚本调用：

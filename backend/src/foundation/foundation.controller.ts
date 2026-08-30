@@ -8,24 +8,6 @@ interface RecordBody { data?: Record<string, unknown>; status?: string }
 export class FoundationController {
   constructor(private readonly service: FoundationService) {}
 
-  @Get('quality-records')
-  listQuality(@TenantId() tenantId: string) { return this.service.list(tenantId, 'quality-record'); }
-
-  @Post('quality-records')
-  createQuality(@TenantId() tenantId: string, @Body() body: RecordBody) { return this.service.create(tenantId, 'quality-record', body.data ?? {}); }
-
-  @Patch('quality-records/:id/status')
-  updateQuality(@TenantId() tenantId: string, @Param('id') id: string, @Body() body: RecordBody) { return this.service.updateStatus(tenantId, 'quality-record', id, body.status ?? 'confirmed'); }
-
-  @Get('documents')
-  listDocuments(@TenantId() tenantId: string) { return this.service.list(tenantId, 'document'); }
-
-  @Post('documents')
-  createDocument(@TenantId() tenantId: string, @Body() body: RecordBody) { return this.service.create(tenantId, 'document', body.data ?? {}); }
-
-  @Patch('documents/:id/status')
-  updateDocument(@TenantId() tenantId: string, @Param('id') id: string, @Body() body: RecordBody) { return this.service.updateStatus(tenantId, 'document', id, body.status ?? 'confirmed'); }
-
   @Get('strategies')
   listStrategies(@TenantId() tenantId: string) { return this.service.list(tenantId, 'strategy-decision'); }
 

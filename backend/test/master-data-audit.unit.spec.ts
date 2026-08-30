@@ -19,4 +19,17 @@ describe('business foundation APIs', () => {
     expect(service.decide('tenant-a', approval.id, 'approved').status).toBe('approved');
     expect(service.listApprovals('tenant-b')).toHaveLength(0);
   });
+
+  it('supports tenant-scoped production calendars', () => {
+    const service = new MasterDataService();
+    const calendar = service.create('tenant-a', 'calendar', {
+      code: 'CAL-20260830', name: '日班日历', date: '2026-08-30', plannedHours: 8,
+    });
+
+    expect(service.list('tenant-a', 'calendar')).toEqual([calendar]);
+    expect(service.list('tenant-b', 'calendar')).toHaveLength(0);
+    expect(() => service.create('tenant-a', 'calendar', {
+      code: 'CAL-20260830', name: '重复日历', date: '2026-08-30',
+    })).toThrow('already exists');
+  });
 });

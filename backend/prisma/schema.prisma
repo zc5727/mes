@@ -246,6 +246,76 @@ model Alarm {
   @@map("alarms")
 }
 
+model MqttDeviceState {
+  tenantId  String   @map("tenant_id") @db.VarChar(40)
+  lineId    String   @map("line_id") @db.VarChar(80)
+  deviceId  String   @map("device_id") @db.VarChar(80)
+  eventTime DateTime @map("event_time")
+  payload   Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@id([tenantId, lineId, deviceId])
+  @@index([tenantId, eventTime])
+  @@map("mqtt_device_states")
+}
+
+model MqttAlarmState {
+  tenantId  String   @map("tenant_id") @db.VarChar(40)
+  alarmId   String   @map("alarm_id") @db.VarChar(160)
+  eventTime DateTime @map("event_time")
+  active    Boolean
+  payload   Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@id([tenantId, alarmId])
+  @@index([tenantId, active, eventTime])
+  @@map("mqtt_alarm_states")
+}
+
+model DeviceEvent {
+  id        String   @id @db.VarChar(160)
+  tenantId  String   @map("tenant_id") @db.VarChar(40)
+  lineId    String?  @map("line_id") @db.VarChar(80)
+  deviceId  String?  @map("device_id") @db.VarChar(80)
+  eventType String   @map("event_type") @db.VarChar(40)
+  eventTime DateTime @map("event_time")
+  traceId   String?  @map("trace_id") @db.VarChar(120)
+  quality   String?  @db.VarChar(40)
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, deviceId, eventTime])
+  @@index([tenantId, eventType, eventTime])
+  @@map("device_events")
+}
+
+model CurrentState {
+  tenantId  String   @map("tenant_id") @db.VarChar(40)
+  lineId    String   @map("line_id") @db.VarChar(80)
+  deviceId  String   @map("device_id") @db.VarChar(80)
+  status    String   @db.VarChar(40)
+  eventTime DateTime @map("event_time")
+  payload   Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@id([tenantId, lineId, deviceId])
+  @@index([tenantId, status, eventTime])
+  @@map("current_states")
+}
+
+model ConnectionEvent {
+  id        String   @id @db.VarChar(160)
+  tenantId  String   @map("tenant_id") @db.VarChar(40)
+  gatewayId String?  @map("gateway_id") @db.VarChar(80)
+  status    String   @db.VarChar(40)
+  eventTime DateTime @map("event_time")
+  details   Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, eventTime])
+  @@map("connection_events")
+}
+
 model StrategyRun {
   id           String   @id @db.VarChar(40)
   tenantId     String   @map("tenant_id") @db.VarChar(40)

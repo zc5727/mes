@@ -1,39 +1,122 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import { TenantId } from '../common/tenant.decorator';
 import { StrategyEngineService } from './strategy-engine.service';
-import { StrategySimulationResult, StrategySnapshot } from './strategy.types';
+import { StrategyGovernanceService } from './strategy-governance.service';
+import { StrategyAuthorizationService } from './strategy-authorization.service';
+import { StrategyRequestContext, StrategySimulationResult, StrategySnapshot } from './strategy.types';
 import { StrategySimulationDto } from './strategy-simulation.dto';
 
 @Controller('strategies')
 export class StrategiesController {
-  constructor(private readonly strategyEngine: StrategyEngineService) {}
+  constructor(
+    private readonly strategyEngine: StrategyEngineService,
+    private readonly governance?: StrategyGovernanceService,
+    private readonly authorization: StrategyAuthorizationService = new StrategyAuthorizationService(),
+  ) {}
 
   @Post('simulate')
   @HttpCode(HttpStatus.OK)
-  simulate(@Body() dto: StrategySimulationDto): { data: StrategySimulationResult } {
+  simulate(
+    @TenantId() tenantIdOrDto: string | StrategySimulationDto,
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-role') role?: string,
+    @Headers('x-factory-id') factoryId?: string,
+    @Headers('x-scope') scope?: string,
+    @Headers('x-session-id') sessionId?: string,
+    @Headers('x-trace-id') traceId?: string,
+    @Body() dto?: StrategySimulationDto,
+  ): { data: StrategySimulationResult; audit?: ReturnType<StrategyGovernanceService['recordSimulation']> } {
+    // The single-argument form remains available for existing in-process callers;
+    // HTTP requests use tenant/user headers and the validated body parameter.
+    const legacyCall = typeof tenantIdOrDto !== 'string';
+    const tenantId = legacyCall ? 'tenant-demo' : tenantIdOrDto;
+    const input = legacyCall ? tenantIdOrDto : dto;
+    if (!input) throw new Error('strategy simulation snapshot is required');
     // The engine receives a snapshot copy. It can only calculate suggestions;
     // this endpoint never writes devices, work orders, or production state.
     const snapshot: StrategySnapshot = {
-      timestamp: dto.timestamp,
-      lines: dto.lines.map((line) => ({ ...line })),
-      devices: dto.devices.map((device) => ({ ...device })),
-      workOrders: dto.workOrders.map((order) => ({ ...order })),
-      materialShortages: dto.materialShortages?.map((item) => ({
+      timestamp: input.timestamp,
+      lines: input.lines.map((line) => ({ ...line })),
+      devices: input.devices.map((device) => ({ ...device })),
+      workOrders: input.workOrders.map((order) => ({ ...order })),
+      materialShortages: input.materialShortages?.map((item) => ({
         materialCode: item.materialCode,
         affectedWorkOrderIds: [...item.affectedWorkOrderIds],
       })),
     };
 
-    return { data: this.strategyEngine.simulate(snapshot) };
+    let context: StrategyRequestContext | undefined;
+    if (!legacyCall) {
+      try {
+        context = this.authorization.fromHeaders({ userId, role, factoryId, scope, sessionId, traceId });
+        this.authorization.assertCanSimulate(context, snapshot);
+      } catch (error: unknown) {
+        this.governance?.recordDeniedSimulation(
+          tenantId,
+          userId?.trim() || 'unknown',
+          error instanceof Error ? error.message : 'strategy authorization failed',
+          traceId?.trim() || 'missing-trace-id',
+        );
+        throw error;
+      }
+    }
+
+    const result = this.strategyEngine.simulate(snapshot);
+    const requestedBy = context?.userId || userId?.trim() || 'api-user';
+    const audit = this.governance?.recordSimulation(tenantId, requestedBy, snapshot, result, context);
+    return audit ? { data: result, audit } : { data: result };
+  }
+
+  @Get('simulations/:simulationId')
+  getSimulation(
+    @TenantId() tenantId: string,
+    @Param('simulationId') simulationId: string,
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-role') role?: string,
+    @Headers('x-factory-id') factoryId?: string,
+    @Headers('x-scope') scope?: string,
+    @Headers('x-session-id') sessionId?: string,
+    @Headers('x-trace-id') traceId?: string,
+  ) {
+    if (!this.governance) return { data: null, tenantId };
+    const context = this.authorization.fromHeaders({ userId, role, factoryId, scope, sessionId, traceId });
+    this.authorization.assertCanRead(context);
+    const tracked = this.governance.getSimulation(tenantId, simulationId);
+    this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
+    return { data: tracked, tenantId };
+  }
+
+  @Get('audit-records')
+  listAuditRecords(
+    @TenantId() tenantId: string,
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-role') role?: string,
+    @Headers('x-factory-id') factoryId?: string,
+    @Headers('x-scope') scope?: string,
+    @Headers('x-session-id') sessionId?: string,
+    @Headers('x-trace-id') traceId?: string,
+  ) {
+    const context = this.authorization.fromHeaders({ userId, role, factoryId, scope, sessionId, traceId });
+    this.authorization.assertCanRead(context);
+    return { data: this.governance?.listCalls(tenantId) ?? [], tenantId };
   }
 
   @Post('preflight')
   preflight(@Body() dto: StrategySimulationDto) {
-    return { data: this.strategyEngine.preflight({
-      timestamp: dto.timestamp,
-      lines: dto.lines.map((line) => ({ ...line })),
-      devices: dto.devices.map((device) => ({ ...device })),
-      workOrders: dto.workOrders.map((order) => ({ ...order })),
-      materialShortages: dto.materialShortages?.map((item) => ({ ...item, affectedWorkOrderIds: [...item.affectedWorkOrderIds] })),
-    }) };
+    return { data: this.strategyEngine.preflight(this.toSnapshot(dto)) };
+  }
+
+  private toSnapshot(input: StrategySimulationDto): StrategySnapshot {
+    return {
+      timestamp: input.timestamp,
+      factoryId: input.factoryId,
+      lines: input.lines.map((line) => ({ ...line })),
+      devices: input.devices.map((device) => ({ ...device })),
+      workOrders: input.workOrders.map((order) => ({ ...order })),
+      materialShortages: input.materialShortages?.map((item) => ({
+        ...item,
+        affectedWorkOrderIds: [...item.affectedWorkOrderIds],
+      })),
+    };
   }
 }

@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
+import { IsArray, IsInt, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
 
 export class ReportWorkOrderDto {
   @IsInt()
@@ -24,4 +24,14 @@ export class ReportWorkOrderDto {
   @IsOptional()
   @IsString()
   sourceTraceId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  batchNo?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  serialNumbers?: string[];
 }

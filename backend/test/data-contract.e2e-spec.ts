@@ -92,4 +92,26 @@ describe('MES API data contracts (e2e)', () => {
         }));
       });
   });
+
+  it('accepts an HTTP gateway telemetry event with idempotent replay', async () => {
+    const event = {
+      eventId: 'http-event-001', deviceId: 'cnc-01', lineId: 'line-cnc',
+      eventType: 'telemetry', eventTime: '2026-08-28T09:10:00.000Z',
+      traceId: 'trace-http-001', status: 'RUNNING', quality: 'GOOD',
+      payload: { temp: 41.2, total_count: 12, good_count: 12, defect_count: 0 },
+    };
+    await request(app.getHttpServer())
+      .post('/api/v1/ingestion/device-events')
+      .set('x-tenant-id', 'tenant-demo')
+      .send(event)
+      .expect(202)
+      .expect(({ body }) => expect(body.data).toEqual({ accepted: true, duplicate: false, eventId: 'http-event-001' }));
+
+    await request(app.getHttpServer())
+      .post('/api/v1/ingestion/device-events')
+      .set('x-tenant-id', 'tenant-demo')
+      .send(event)
+      .expect(202)
+      .expect(({ body }) => expect(body.data).toEqual({ accepted: false, duplicate: true, eventId: 'http-event-001' }));
+  });
 });

@@ -105,6 +105,10 @@ function parseTelemetry(value: unknown): SimulatorTelemetry | undefined {
     defectCount: value.defectCount,
     activeFaults: [...value.activeFaults],
     timestamp: value.timestamp,
+    ...(isNonEmptyString(value.traceId) ? { traceId: value.traceId } : {}),
+    ...(isNonEmptyString(value.eventId) ? { eventId: value.eventId } : {}),
+    ...(isNonEmptyString(value.gatewayId) ? { gatewayId: value.gatewayId } : {}),
+    ...(isNonEmptyString(value.quality) ? { quality: value.quality } : {}),
   };
 }
 

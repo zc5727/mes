@@ -7,7 +7,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "test": "npm run build && node --test dist/*.test.js dist/metrics/*.test.js dist/simulator/*.test.js dist/strategy/*.test.js dist/twin/*.test.js",
+    "test": "npm run build && node --test dist/*.test.js dist/metrics/*.test.js dist/protocols/*.test.js dist/simulator/*.test.js dist/strategy/*.test.js dist/twin/*.test.js",
     "check": "npm run build && npm test"
   },
   "dependencies": {

@@ -4,6 +4,7 @@ import { DeviceTelemetryCache } from './device-cache';
 import { createDefaultMqttClient } from './mqtt-client.factory';
 import { MqttIngestionService } from './mqtt-ingestion.service';
 import { SimulatorControlController } from './simulator-control.controller';
+import { IngestionController } from './ingestion.controller';
 import { MQTT_CLIENT_FACTORY, MQTT_INGESTION_OPTIONS } from './mqtt.types';
 import { AuditModule } from '../audit/audit.module';
 
@@ -22,11 +23,13 @@ import { AuditModule } from '../audit/audit.module';
         reconnectPeriodMs: readPositiveInteger(process.env.MQTT_RECONNECT_PERIOD_MS),
         telemetryTopic: process.env.MQTT_TELEMETRY_TOPIC?.trim() || undefined,
         alarmsTopic: process.env.MQTT_ALARMS_TOPIC?.trim() || undefined,
+        tenantId: process.env.MES_TENANT_ID?.trim() || undefined,
+        gatewayId: process.env.MQTT_GATEWAY_ID?.trim() || undefined,
       }),
     },
     MqttIngestionService,
   ],
-  controllers: [SimulatorControlController],
+  controllers: [SimulatorControlController, IngestionController],
   exports: [MqttIngestionService, DeviceTelemetryCache, AlarmDeduplicator],
 })
 export class MqttModule {}

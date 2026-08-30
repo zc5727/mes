@@ -64,6 +64,10 @@ export class AlarmDeduplicator {
     this.states.clear();
   }
 
+  restore(states: AlarmState[]): void {
+    for (const state of states) this.states.set(this.key(state.tenantId, state.alarm.id), state);
+  }
+
   private latestTimestamp(state: AlarmState): number {
     const startedAt = Date.parse(state.alarm.startedAt);
     const clearedAt = state.alarm.clearedAt ? Date.parse(state.alarm.clearedAt) : Number.NEGATIVE_INFINITY;

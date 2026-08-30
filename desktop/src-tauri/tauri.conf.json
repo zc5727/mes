@@ -29,6 +29,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all"
+    "targets": "all",
+    "resources": ["../../scripts/desktop-runtime.sh"]
   }
 }

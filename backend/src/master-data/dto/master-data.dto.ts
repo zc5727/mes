@@ -21,3 +21,11 @@ export class CreateShiftDto {
   @IsISO8601() endAt!: string;
   @IsOptional() @IsString() @MaxLength(80) supervisor?: string;
 }
+
+export class CreateCalendarDto {
+  @IsString() @MinLength(2) @MaxLength(40) code!: string;
+  @IsString() @MinLength(2) @MaxLength(100) name!: string;
+  @IsISO8601() date!: string;
+  @IsOptional() @IsInt() @Min(0) @Max(24) plannedHours?: number;
+  @IsOptional() @IsString() @MaxLength(200) description?: string;
+}

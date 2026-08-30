@@ -72,6 +72,7 @@ test("returns a read-only plan with completion time, load and reasons", () => {
   assert.equal(result.lineLoads.length, 3);
   assert.ok(result.lineLoads.some((line) => line.assignedUnits > 0));
   assert.ok(result.orderPlans.every((order) => order.reason.length > 0));
+  assert.ok(result.recommendations.every((recommendation) => recommendation.requiresApproval === true));
   assert.deepEqual(input, before);
 });
 
@@ -137,4 +138,21 @@ test("waits for maintenance recovery and reports the resulting risk", () => {
   assert.equal(plan.expectedCompletionAt, "2026-08-28T12:00:00.000Z");
   assert.equal(load?.availableAt, "2026-08-28T10:00:00.000Z");
   assert.ok(result.recommendations.some((recommendation) => recommendation.type === "MAINTENANCE_RECOVERY"));
+});
+
+test("reports delay mitigation as a suggestion without execution", () => {
+  const result = simulateStrategy(scenario({
+    orders: [{
+      orderId: "order-due-soon",
+      product: "P-100",
+      quantity: 500,
+      preferredLineId: "line-cnc",
+      dueAt: "2026-08-28T09:00:00.000Z",
+    }],
+  }));
+
+  assert.equal(result.delayRisk, "HIGH");
+  assert.ok(result.recommendations.some((recommendation) => recommendation.type === "DELAY_MITIGATION"));
+  assert.equal(result.executionAllowed, false);
+  assert.ok(result.recommendations.every((recommendation) => recommendation.requiresApproval === true));
 });

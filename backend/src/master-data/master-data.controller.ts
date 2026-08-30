@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
-import { CreateProcessDto, CreateProductDto, CreateShiftDto } from './dto/master-data.dto';
+import { CreateCalendarDto, CreateProcessDto, CreateProductDto, CreateShiftDto } from './dto/master-data.dto';
 import { MasterDataService } from './master-data.service';
 
 @Controller('master-data')
@@ -15,4 +15,7 @@ export class MasterDataController {
   @Get('shifts') shifts(@TenantId() tenantId: string) { return { data: this.service.list(tenantId, 'shift'), tenantId }; }
   @Post('shifts') createShift(@TenantId() tenantId: string, @Body() dto: CreateShiftDto) { return { data: this.service.create(tenantId, 'shift', dto), tenantId }; }
   @Get('shifts/:id') shift(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.findOne(tenantId, 'shift', id), tenantId }; }
+  @Get('calendars') calendars(@TenantId() tenantId: string) { return { data: this.service.list(tenantId, 'calendar'), tenantId }; }
+  @Post('calendars') createCalendar(@TenantId() tenantId: string, @Body() dto: CreateCalendarDto) { return { data: this.service.create(tenantId, 'calendar', dto), tenantId }; }
+  @Get('calendars/:id') calendar(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.findOne(tenantId, 'calendar', id), tenantId }; }
 }

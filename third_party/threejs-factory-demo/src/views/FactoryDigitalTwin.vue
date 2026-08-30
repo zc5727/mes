@@ -38,6 +38,7 @@
       :selected-device="activeSelectedDevice"
       @select-device="handleSceneSelect"
     />
+    <OperationsPanel :selected-line="selectedLine" :selected-device="activeSelectedDevice" :lines="lineSummaries" :devices="devices" />
     <LeftPanel
       :alarms="lineAlarms"
       :devices="lineDevices"
@@ -97,6 +98,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import BottomLogs from '@/components/layout/BottomLogs.vue';
 import FactoryAssistant from '@/components/layout/FactoryAssistant.vue';
 import LeftPanel from '@/components/layout/LeftPanel.vue';
+import OperationsPanel from '@/components/layout/OperationsPanel.vue';
 import RightPanel from '@/components/layout/RightPanel.vue';
 import TopBar from '@/components/layout/TopBar.vue';
 import ThreeFactoryViewport from '@/components/scene/ThreeFactoryViewport.vue';

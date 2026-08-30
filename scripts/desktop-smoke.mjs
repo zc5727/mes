@@ -29,6 +29,7 @@ let frontendBuildCommand;
 const record = (name, passed, detail) => checks.push({ name, passed, detail });
 
 const tauriDir = join(appDir, 'src-tauri');
+const runtimeScript = join(rootDir, 'scripts', 'desktop-runtime.sh');
 const configPath = ['tauri.conf.json', 'tauri.conf.json5']
   .map((name) => join(tauriDir, name))
   .find((path) => existsSync(path));
@@ -42,6 +43,17 @@ record(
   configPath ?? `${tauriDir}/tauri.conf.json(.5) not found`,
 );
 record('Rust manifest', existsSync(cargoPath), cargoPath);
+record('desktop runtime supervisor', existsSync(runtimeScript), runtimeScript);
+
+for (const scriptName of ['desktop.sh', 'desktop-run.sh', 'desktop-runtime.sh', 'desktop-stop.sh', 'desktop-status.sh']) {
+  const scriptPath = join(rootDir, 'scripts', scriptName);
+  if (!existsSync(scriptPath)) {
+    record(`shell script ${scriptName}`, false, scriptPath);
+    continue;
+  }
+  const syntax = spawnSync('bash', ['-n', scriptPath], { encoding: 'utf8', stdio: 'pipe' });
+  record(`shell syntax ${scriptName}`, syntax.status === 0, syntax.status === 0 ? 'valid' : (syntax.stderr || syntax.stdout).trim());
+}
 
 if (configPath?.endsWith('.json')) {
   try {
@@ -52,12 +64,29 @@ if (configPath?.endsWith('.json')) {
     record('Tauri config JSON', true, 'valid JSON');
     record('frontend target', hasFrontendTarget, 'build.frontendDist or build.devUrl');
     record('window definition', hasWindow, 'app.windows');
+    const resources = Array.isArray(config.bundle?.resources) ? config.bundle.resources : [];
+    record('runtime resource bundle', resources.some((resource) => String(resource).includes('desktop-runtime.sh')), 'bundle.resources');
   } catch (error) {
     record('Tauri config JSON', false, `invalid JSON: ${error.message}`);
   }
 } else if (configPath) {
   record('Tauri config syntax', true, 'JSON5 requires the Tauri CLI for full parsing');
 }
+
+if (existsSync(join(tauriDir, 'src', 'lib.rs'))) {
+  const rustSource = readFileSync(join(tauriDir, 'src', 'lib.rs'), 'utf8');
+  record('Rust single-instance plugin', rustSource.includes('tauri_plugin_single_instance'), 'source registration');
+  record('Rust runtime supervision', rustSource.includes('start_runtime') && rustSource.includes('stop_runtime'), 'startup/exit hooks');
+  record('Rust reverse cleanup signal', rustSource.includes('kill') && rustSource.includes('TERM'), 'SIGTERM before wait');
+}
+
+const runtimeSelfTest = spawnSync('bash', [runtimeScript, '--self-test'], {
+  cwd: rootDir,
+  encoding: 'utf8',
+  stdio: 'pipe',
+  env: { ...process.env, MES_RUNTIME_DIR: join(rootDir, '.runtime', 'desktop-smoke'), MES_DESKTOP_NO_DIALOG: '1' },
+});
+record('runtime self-test', runtimeSelfTest.status === 0, runtimeSelfTest.status === 0 ? 'passed' : (runtimeSelfTest.stderr || runtimeSelfTest.stdout).trim());
 
 if (existsSync(packagePath)) {
   try {

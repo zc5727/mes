@@ -20,17 +20,24 @@ describe('MQTT startup configuration', () => {
   });
 
   it('does not create a client when MQTT is enabled without a broker URL', () => {
+    const configuredUrl = process.env.MQTT_URL;
+    delete process.env.MQTT_URL;
     const clientFactory: MqttClientFactory = jest.fn();
-    const service = new MqttIngestionService(
-      clientFactory,
-      { enabled: true },
-      new DeviceTelemetryCache(),
-      new AlarmDeduplicator(),
-    );
+    try {
+      const service = new MqttIngestionService(
+        clientFactory,
+        { enabled: true },
+        new DeviceTelemetryCache(),
+        new AlarmDeduplicator(),
+      );
 
-    service.start();
+      service.start();
 
-    expect(clientFactory).not.toHaveBeenCalled();
-    expect(service.isConnected()).toBe(false);
+      expect(clientFactory).not.toHaveBeenCalled();
+      expect(service.isConnected()).toBe(false);
+    } finally {
+      if (configuredUrl === undefined) delete process.env.MQTT_URL;
+      else process.env.MQTT_URL = configuredUrl;
+    }
   });
 });

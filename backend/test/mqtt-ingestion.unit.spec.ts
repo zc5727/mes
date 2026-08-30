@@ -157,6 +157,27 @@ describe('simulator MQTT ingestion', () => {
     }]);
   });
 
+  it('accepts a normalized HTTP gateway event and maps common point aliases', () => {
+    const client = new FakeMqttClient();
+    const { service } = createService(client);
+    const result = service.ingestHttpEvent('demo-tenant', {
+      deviceId: 'cnc-01', lineId: 'line-cnc', eventType: 'telemetry',
+      eventTime: '2026-08-28T09:05:00.000Z', traceId: 'trace-1',
+      payload: { temp: 45, total_count: 10, good_count: 9, defect_count: 1 },
+      status: 'RUNNING', quality: 'GOOD',
+    });
+
+    expect(result).toEqual({ accepted: true, duplicate: false, eventId: 'trace-1' });
+    expect(service.getDevice('demo-tenant', 'line-cnc', 'cnc-01')).toMatchObject({
+      temperatureCelsius: 45, totalCount: 10, goodCount: 9, defectCount: 1,
+      traceId: 'trace-1', quality: 'GOOD',
+    });
+    expect(service.ingestHttpEvent('demo-tenant', {
+      deviceId: 'cnc-01', lineId: 'line-cnc', eventType: 'telemetry',
+      eventTime: '2026-08-28T09:05:00.000Z', traceId: 'trace-1', payload: {}, status: 'RUNNING',
+    })).toMatchObject({ accepted: false, duplicate: true });
+  });
+
   it('returns a diagnosable 503 when the broker rejects a control publish', async () => {
     const client = new FakeMqttClient();
     const { service } = createService(client);

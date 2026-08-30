@@ -41,6 +41,11 @@ export interface SimulatorTelemetry {
   defectCount: number;
   activeFaults: SimulatorFaultType[];
   timestamp: string;
+  /** Optional protocol metadata used for tracing and idempotent persistence. */
+  traceId?: string;
+  gatewayId?: string;
+  quality?: string;
+  eventId?: string;
 }
 
 export interface SimulatorAlarm {
@@ -94,6 +99,8 @@ export interface MqttIngestionOptions {
   reconnectPeriodMs?: number;
   telemetryTopic?: string;
   alarmsTopic?: string;
+  tenantId?: string;
+  gatewayId?: string;
 }
 
 export type SimulatorControlAction =

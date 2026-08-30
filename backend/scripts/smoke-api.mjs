@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 const port = Number(process.env.SMOKE_PORT ?? 3199);
 const baseUrl = process.env.SMOKE_BASE_URL ?? `http://127.0.0.1:${port}/api/v1`;
@@ -27,8 +29,12 @@ async function waitForHealth() {
 
 try {
   if (shouldStart) {
-    server = spawn(process.execPath, ['dist/main.js'], {
-      cwd: fileURLToPath(new URL('..', import.meta.url)),
+    const backendDir = fileURLToPath(new URL('..', import.meta.url));
+    const entrypoint = existsSync(join(backendDir, 'dist/src/main.js'))
+      ? 'dist/src/main.js'
+      : 'dist/main.js';
+    server = spawn(process.execPath, [entrypoint], {
+      cwd: backendDir,
       env: { ...process.env, NODE_ENV: 'test', PORT: String(port) },
       stdio: 'ignore',
     });

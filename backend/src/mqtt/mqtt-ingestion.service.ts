@@ -1,8 +1,11 @@
-import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { AlarmDeduplicator } from './alarm-deduplicator';
+import { MqttStatePersistenceService } from '../database/mqtt-state-persistence.service';
 import { DeviceTelemetryCache } from './device-cache';
 import { createDefaultMqttClient } from './mqtt-client.factory';
 import { parseSimulatorMessage } from './mqtt-parser';
+import { IngestDeviceEventDto } from './dto/ingest-device-event.dto';
+import { mapGatewayPoints } from './point-mapping';
 import {
   DEFAULT_ALARMS_TOPIC,
   DEFAULT_TELEMETRY_TOPIC,
@@ -12,6 +15,7 @@ import {
   MqttClientLike,
   MqttIngestionOptions,
   SimulatorControlCommand,
+  SimulatorTelemetry,
 } from './mqtt.types';
 
 @Injectable()
@@ -27,9 +31,15 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     @Optional() @Inject(MQTT_INGESTION_OPTIONS) private readonly options: MqttIngestionOptions = {},
     private readonly deviceCache: DeviceTelemetryCache = new DeviceTelemetryCache(),
     private readonly alarmDeduplicator: AlarmDeduplicator = new AlarmDeduplicator(),
+    @Optional() private readonly persistence?: MqttStatePersistenceService,
   ) {}
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
+    const restored = await this.persistence?.restore();
+    if (restored) {
+      this.deviceCache.restore(restored.telemetry);
+      this.alarmDeduplicator.restore(restored.alarms);
+    }
     this.start();
   }
 
@@ -102,6 +112,43 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     return this.alarmDeduplicator.listActive(tenantId);
   }
 
+  /**
+   * Ingests a normalized HTTP gateway event through the same memory projection
+   * as MQTT. This is intentionally telemetry/alarm ingestion only; no device
+   * command is reachable from this endpoint.
+   */
+  ingestHttpEvent(tenantId: string, event: IngestDeviceEventDto): { accepted: boolean; duplicate: boolean; eventId: string } {
+    const payload = mapGatewayPoints(event.payload ?? {});
+    const eventId = event.eventId ?? event.traceId ?? `${event.deviceId}:${event.eventTime}:${event.eventType}`;
+    if (event.eventType !== 'telemetry') {
+      throw new BadRequestException('HTTP device-events currently accepts telemetry only; publish alarms via MQTT');
+    }
+    const status = this.normalizeStatus(event.status ?? payload.status);
+    const telemetry = {
+      deviceId: event.deviceId,
+      deviceName: String(payload.deviceName ?? event.deviceId),
+      lineId: event.lineId,
+      status,
+      temperatureCelsius: this.numberPoint(payload.temperatureCelsius, 0),
+      cycleTimeSeconds: this.numberPoint(payload.cycleTimeSeconds, 0),
+      totalCount: this.integerPoint(payload.totalCount, 0),
+      goodCount: this.integerPoint(payload.goodCount, 0),
+      defectCount: this.integerPoint(payload.defectCount, 0),
+      activeFaults: [],
+      timestamp: event.eventTime,
+      eventId,
+      traceId: event.traceId,
+      gatewayId: event.gatewayId,
+      quality: event.quality,
+    } satisfies SimulatorTelemetry;
+    if (telemetry.goodCount + telemetry.defectCount > telemetry.totalCount) {
+      throw new BadRequestException('goodCount + defectCount cannot exceed totalCount');
+    }
+    const result = this.deviceCache.upsert(tenantId, telemetry, 'http://gateway/device-events');
+    if (result.accepted) void this.persistence?.saveTelemetry(result.current);
+    return { accepted: result.accepted, duplicate: !result.accepted, eventId };
+  }
+
   async publishSimulatorControl(tenantId: string, command: SimulatorControlCommand): Promise<string> {
     if (!this.client || !this.connected || !this.client.publish) {
       throw new ServiceUnavailableException('MQTT simulator control is unavailable while the broker is disconnected');
@@ -130,6 +177,7 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
 
     client.on('connect', () => {
       this.connected = true;
+      void this.persistence?.recordConnection(this.connectionTenantId(), 'connected', { broker: this.resolveOptions().url ?? null, gatewayId: this.resolveOptions().gatewayId ?? null });
       const options = this.resolveOptions();
       this.logger.log(
         `MQTT broker connected at ${this.displayUrl(options.url)}; subscribing to telemetry and alarm topics`,
@@ -138,14 +186,17 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     });
     client.on('reconnect', () => {
       this.connected = false;
+      void this.persistence?.recordConnection(this.connectionTenantId(), 'reconnecting', {});
       this.logger.log('MQTT broker reconnecting');
     });
     client.on('close', () => {
       this.connected = false;
+      void this.persistence?.recordConnection(this.connectionTenantId(), 'closed', {});
       this.logger.warn('MQTT broker connection closed; cached state is retained and reconnect will be attempted');
     });
     client.on('offline', () => {
       this.connected = false;
+      void this.persistence?.recordConnection(this.connectionTenantId(), 'offline', {});
       this.logger.warn('MQTT broker is offline; check Mosquitto/process status and MQTT_URL');
     });
     client.on('error', (error) => {
@@ -191,11 +242,13 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (message.kind === 'telemetry') {
-      this.deviceCache.upsert(message.tenantId, message.data, message.topic);
+      const result = this.deviceCache.upsert(message.tenantId, message.data, message.topic);
+      if (result.accepted) void this.persistence?.saveTelemetry(result.current);
       return;
     }
 
-    this.alarmDeduplicator.apply(message.tenantId, message.event, message.data);
+    const result = this.alarmDeduplicator.apply(message.tenantId, message.event, message.data);
+    if (result.accepted) void this.persistence?.saveAlarm(result.state);
   }
 
   private resolveOptions(): Required<Pick<MqttIngestionOptions, 'enabled'>> & MqttIngestionOptions {
@@ -218,5 +271,28 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     } catch {
       return '<invalid MQTT_URL>';
     }
+  }
+
+  private connectionTenantId(): string {
+    return this.resolveOptions().tenantId ?? process.env.MES_TENANT_ID ?? 'tenant-demo';
+  }
+
+  private normalizeStatus(value: unknown): SimulatorTelemetry['status'] {
+    const normalized = String(value ?? 'IDLE').toUpperCase();
+    if (normalized === 'RUNNING' || normalized === 'IDLE' || normalized === 'STOPPED' || normalized === 'FAULT') return normalized;
+    throw new BadRequestException(`Unsupported device status: ${normalized}`);
+  }
+
+  private numberPoint(value: unknown, fallback: number): number {
+    if (value === undefined || value === null || value === '') return fallback;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) throw new BadRequestException('Numeric device point is invalid');
+    return parsed;
+  }
+
+  private integerPoint(value: unknown, fallback: number): number {
+    const parsed = this.numberPoint(value, fallback);
+    if (!Number.isInteger(parsed) || parsed < 0) throw new BadRequestException('Count device point must be a non-negative integer');
+    return parsed;
   }
 }

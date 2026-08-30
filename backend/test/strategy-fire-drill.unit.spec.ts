@@ -39,10 +39,14 @@ describe('strategy fire drill fixture', () => {
       'utf8',
     )) as StrategySimulationDto;
     const result = new StrategiesController(new StrategyEngineService()).simulate(fixture).data;
-    const agentResultFields = ['simulationId', 'generatedAt', 'risks', 'candidates', 'recommended'];
+    const agentResultFields = [
+      'simulationId', 'generatedAt', 'snapshot', 'risks', 'candidates', 'recommended',
+      'requiresApproval', 'executionAllowed', 'impactAssessment',
+    ];
     const candidateFields = [
       'id', 'action', 'risk', 'affectedOrders', 'expectedFinishTime',
-      'expectedImpact', 'reason', 'requiresApproval', 'score',
+      'expectedImpact', 'reason', 'requiresApproval', 'score', 'scoreBreakdown',
+      'impactAssessment',
     ];
 
     expect(Object.keys(result).sort()).toEqual(agentResultFields.sort());
