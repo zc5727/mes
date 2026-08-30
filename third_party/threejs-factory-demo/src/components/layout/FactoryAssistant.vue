@@ -6,7 +6,7 @@
         <strong>厂长智能助手</strong>
       </div>
       <div class="assistant-head-actions">
-        <span class="assistant-status"><i></i>在线</span>
+        <span class="assistant-status"><i></i>未接入 Nanobot</span>
         <button
           type="button"
           class="assistant-toggle"

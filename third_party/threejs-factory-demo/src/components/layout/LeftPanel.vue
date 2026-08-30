@@ -4,18 +4,27 @@
       <div class="panel-title">工厂导航</div>
       <div class="breadcrumb">南沙示范工厂 / {{ selectedLine?.workshop ?? '全部车间' }}</div>
       <div class="shop-tree">
-        <button type="button" class="tree-row active"><span>⌄</span>一车间</button>
-        <button type="button" class="tree-row"><span>└</span>加工产线 <em>4台</em></button>
-        <button type="button" class="tree-row"><span>└</span>装配产线 <em>2台</em></button>
-        <button type="button" class="tree-row"><span>└</span>原料与成品仓 <em>12项</em></button>
+        <button type="button" class="tree-row active" @click="$emit('select-line', selectedLineId)"><span>⌄</span>一车间</button>
+        <button type="button" class="tree-row" @click="$emit('select-line', 'LINE-01')"><span>└</span>加工产线 <em>4台</em></button>
+        <button type="button" class="tree-row" @click="$emit('select-line', 'LINE-02')"><span>└</span>装配产线 <em>2台</em></button>
+        <div class="tree-row tree-row--static"><span>└</span>原料与成品仓 <em>12项</em></div>
       </div>
-      <div class="flow-title line-overview-title"><span>生产线总览</span><em>{{ devices.length }} 台设备</em></div>
+      <div class="flow-title line-overview-title">
+        <span>生产线总览</span>
+        <button type="button" class="add-line-button" :disabled="!canManageLines" @click="$emit('add-line')">＋ 新增产线</button>
+      </div>
       <div class="line-list">
-        <button v-for="line in productionLines" :key="line.id" type="button" class="line-card" :class="[{ active: selectedLineId === line.id }, `line-${line.status}`]" @click="$emit('select-line', line.id)">
-          <span class="line-state"></span>
-          <span class="line-main"><strong>{{ line.name }}</strong><small>{{ line.workshop }} · OEE {{ line.oee }}%</small></span>
-          <span class="line-rate">{{ line.completionRate }}%</span>
-        </button>
+        <div v-for="line in productionLines" :key="line.id" class="line-row">
+          <button type="button" class="line-card" :class="[{ active: selectedLineId === line.id }, `line-${line.status}`]" @click="$emit('select-line', line.id)">
+            <span class="line-state"></span>
+            <span class="line-main"><strong>{{ line.name }}</strong><small>{{ line.workshop }} · OEE {{ line.oee }}%</small></span>
+            <span class="line-rate">{{ line.completionRate }}%</span>
+          </button>
+          <span v-if="canManageLines" class="line-actions">
+            <button type="button" title="编辑产线" @click="$emit('edit-line', line.id)">编辑</button>
+            <button type="button" title="删除产线" @click="$emit('delete-line', line.id)">删除</button>
+          </span>
+        </div>
         <div v-if="!productionLines.length" class="empty-state">暂无产线数据，请检查 MES API 或数据权限。</div>
       </div>
       <div class="flow-title">当前生产流</div>
@@ -66,11 +75,15 @@ defineProps<{
   productionLines: ProductionLineTelemetry[];
   selectedLineId: string;
   selectedLine?: ProductionLineTelemetry;
+  canManageLines: boolean;
 }>();
 
 defineEmits<{
   (event: 'select-device', id: string): void;
   (event: 'select-line', id: string): void;
+  (event: 'add-line'): void;
+  (event: 'edit-line', id: string): void;
+  (event: 'delete-line', id: string): void;
 }>();
 </script>
 
@@ -87,7 +100,18 @@ defineEmits<{
   gap: 14px;
 }
 
-.shop-block { padding-bottom:12px; }
+.block.shop-block {
+  padding-bottom: 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(104, 200, 255, 0.45) rgba(255, 255, 255, 0.04);
+  scrollbar-width: thin;
+}
+
+.shop-block::-webkit-scrollbar { width: 5px; }
+.shop-block::-webkit-scrollbar-thumb { border-radius: 5px; background: rgba(104, 200, 255, 0.42); }
+.shop-block::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.04); }
 .breadcrumb { margin:0 0 9px; color:#6fa8d6; font-size:11px; }
 .shop-tree { display:grid; gap:3px; }
 .tree-row { display:flex; align-items:center; gap:8px; padding:6px 8px; border:0; background:transparent; color:#b9d9f3; cursor:pointer; font-size:12px; text-align:left; }
@@ -95,6 +119,9 @@ defineEmits<{
 .tree-row em { margin-left:auto; color:#6e97b9; font-size:10px; font-style:normal; }
 .tree-row.active,.tree-row:hover { background:rgba(29,143,255,.13); color:#eef8ff; }
 .flow-title { margin:14px 0 8px; color:#83add0; font-size:11px; }
+.add-line-button { margin-left:auto; padding:3px 6px; border:1px solid rgba(104,200,255,.28); background:rgba(29,143,255,.08); color:#9ed2ff; cursor:pointer; font-size:10px; }
+.add-line-button:disabled { cursor:not-allowed; opacity:.45; }
+.add-line-button:hover { border-color:#68c8ff; background:rgba(29,143,255,.18); }
 .line-overview-title { display:flex; align-items:center; justify-content:space-between; }.line-overview-title em { color:#6e97b9; font-size:10px; font-style:normal; }
 .flow-track { display:flex; align-items:center; gap:4px; color:#7c9ab7; font-size:10px; }
 .flow-track span { padding:5px 6px; border:1px solid rgba(111,183,255,.16); }
@@ -102,12 +129,16 @@ defineEmits<{
 .flow-track .active-step { color:#ffe3a1; border-color:rgba(255,200,87,.5); }
 .flow-track i { width:8px; height:1px; background:#496d8d; }
 .line-list { display:grid; gap:4px; }
+.line-row { display:flex; align-items:center; gap:4px; }
 .line-card { display:flex; align-items:center; gap:7px; width:100%; padding:6px 7px; border:1px solid rgba(111,183,255,.12); background:rgba(255,255,255,.035); color:#cbe6ff; cursor:pointer; text-align:left; }
 .line-card:hover,.line-card.active { border-color:rgba(29,143,255,.75); background:rgba(29,143,255,.12); }
 .line-state { width:7px; height:7px; flex:0 0 auto; border-radius:50%; background:#39f5b6; box-shadow:0 0 10px currentColor; }
 .line-warning .line-state { background:#ffc857; color:#ffc857; }.line-error .line-state { background:#ff4d6d; color:#ff4d6d; }.line-idle .line-state { background:#7f8fa3; color:#7f8fa3; }
 .line-main { min-width:0; flex:1; }.line-main strong,.line-main small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.line-main strong { font-size:11px; }.line-main small { margin-top:2px; color:#7799b8; font-size:9px; }
 .line-rate { color:#72f5ba; font-size:12px; font-weight:700; font-variant-numeric:tabular-nums; }
+.line-actions { display:flex; gap:2px; }
+.line-actions button { padding:4px; border:0; background:transparent; color:#7eaed6; cursor:pointer; font-size:9px; }
+.line-actions button:hover { color:#eef8ff; }
 
 .block {
   display: flex;

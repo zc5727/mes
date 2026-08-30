@@ -6,6 +6,10 @@ export type ProductionLineStatus = 'running' | 'warning' | 'error' | 'idle';
 
 export interface ProductionLineTelemetry {
   id: string;
+  factoryId?: string;
+  code?: string;
+  type?: string;
+  targetOee?: number;
   name: string;
   workshop: string;
   status: ProductionLineStatus;

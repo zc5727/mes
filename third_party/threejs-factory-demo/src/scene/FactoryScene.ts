@@ -339,7 +339,8 @@ export class FactoryScene {
     );
     board.position.set(1.5, 1.35, -5.65);
     this.scene.add(board);
-    const sprite = this.createTextSprite('OEE 86.7% / ENERGY 2.5MW', 0x4dffb5, 320, 80);
+    // 看板只展示连接状态，不在场景层伪造 OEE 或能耗指标；真实指标由 Vue 面板绑定快照数据。
+    const sprite = this.createTextSprite('MES LIVE / REALTIME DATA', 0x4dffb5, 320, 80);
     sprite.position.set(1.5, 1.35, -5.72);
     sprite.scale.set(2.0, 0.5, 1);
     this.scene.add(sprite);

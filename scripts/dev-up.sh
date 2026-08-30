@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RUNTIME_DIR="$ROOT_DIR/.runtime"
+RUNTIME_DIR="${MES_RUNTIME_DIR:-$ROOT_DIR/.runtime}"
 LOG_DIR="$RUNTIME_DIR/logs"
 mkdir -p "$LOG_DIR"
 INFRA=false
 MQTT=false
+FRONTEND=true
 for arg in "$@"; do
   case "$arg" in
     --infra) INFRA=true ;;
     --mqtt) MQTT=true ;;
+    --no-frontend) FRONTEND=false ;;
     *) echo "未知参数：$arg" >&2; exit 2 ;;
   esac
 done
@@ -71,7 +73,11 @@ start_infra() {
   echo "Docker Compose 不可用，使用 Docker Engine 启动本地依赖" >&2
   start_container_fallback mes-postgres postgres:16-alpine '-p 5432:5432'
   start_container_fallback mes-mqtt eclipse-mosquitto:2 '-p 1883:1883 -p 9001:9001'
-  start_container_fallback mes-minio minio/minio:latest '-p 9000:9000 -p 9002:9001' 'server /data --console-address :9001'
+  # MinIO is optional for the current metadata-only demo. A registry/network
+  # failure must not prevent the backend, simulator and MQTT from starting.
+  if ! start_container_fallback mes-minio minio/minio:latest '-p 9000:9000 -p 9002:9001' 'server /data --console-address :9001'; then
+    echo "可选基础设施 MinIO 启动失败，继续启动 MES（当前版本不依赖对象存储）" >&2
+  fi
 }
 wait_for_tcp() {
   local host="$1" port="$2" label="$3" deadline=$((SECONDS + 30))
@@ -99,10 +105,15 @@ if [[ "$INFRA" == true ]]; then
   wait_for_tcp localhost 5432 PostgreSQL
 fi
 start_service() {
-  local name="$1" directory="$2" command="$3" pid_file="$RUNTIME_DIR/${name}.pid"
+  local name="$1" directory="$2" command="$3" port="${4:-}"
+  local pid_file="$RUNTIME_DIR/${name}.pid"
   if [[ -f "$pid_file" ]] && kill -0 "$(cat "$pid_file")" 2>/dev/null; then
     echo "$name 已在运行，PID=$(cat "$pid_file")"
     return
+  fi
+  if [[ -n "$port" ]] && nc -z localhost "$port" >/dev/null 2>&1; then
+    echo "$name 无法启动：localhost:$port 已被占用，拒绝创建第二实例" >&2
+    return 1
   fi
   nohup bash -c "cd '$ROOT_DIR/$directory' && $command" >"$LOG_DIR/${name}.log" 2>&1 &
   echo $! >"$pid_file"
@@ -115,10 +126,12 @@ if [[ "$MQTT" == true ]]; then
   backend_command="MQTT_ENABLED=true MQTT_URL='$MQTT_URL' npm run build && MQTT_ENABLED=true MQTT_URL='$MQTT_URL' npm run start:prod"
   simulator_command="npm run dev -- --mqtt '$MQTT_URL' --tenant '$TENANT_ID'"
 fi
-start_service backend backend "$backend_command"
+start_service backend backend "$backend_command" 3000
 wait_for_http http://localhost:3000/api/v1/health Backend "$RUNTIME_DIR/backend.pid" backend
-start_service frontend third_party/threejs-factory-demo "npm run dev"
-wait_for_http http://localhost:5173 Frontend "$RUNTIME_DIR/frontend.pid" frontend
+if [[ "$FRONTEND" == true ]]; then
+  start_service frontend third_party/threejs-factory-demo "npm run dev" 5173
+  wait_for_http http://localhost:5173 Frontend "$RUNTIME_DIR/frontend.pid" frontend
+fi
 start_service simulator simulator "$simulator_command"
 if [[ "$MQTT" == true ]]; then
   sleep 1

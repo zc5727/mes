@@ -5,8 +5,10 @@ import { createDefaultMqttClient } from './mqtt-client.factory';
 import { MqttIngestionService } from './mqtt-ingestion.service';
 import { SimulatorControlController } from './simulator-control.controller';
 import { MQTT_CLIENT_FACTORY, MQTT_INGESTION_OPTIONS } from './mqtt.types';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
+  imports: [AuditModule],
   providers: [
     DeviceTelemetryCache,
     AlarmDeduplicator,

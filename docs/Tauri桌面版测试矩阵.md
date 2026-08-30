@@ -4,7 +4,7 @@
 
 本文是 MES 数字孪生桌面化的测试方案，覆盖 Tauri 安装、启动、本地服务编排、窗口交互、网络异常和退出行为。测试对象仍是四条产线的模拟 MES，不接真实 PLC、不执行自动控制、不包含 SaaS/Nanobot。
 
-当前结论：仓库尚未创建 Tauri wrapper（未发现 `desktop/src-tauri`、`tauri.conf.*` 或 Tauri package script），因此桌面专属用例暂不能判定通过；现有 Web 版交互可作为桌面 WebView 的前置基线。
+当前结论：仓库已创建 Tauri wrapper，并已生成 macOS `.app`/`.dmg`；桌面专属运行时用例仍未完成，现有 Web 版交互只能作为桌面 WebView 的前置基线。
 
 ## 2. 已有测试基础
 
@@ -34,8 +34,8 @@ cd /Users/a1/Documents/ChatGPT/mes
 
 | ID | 优先级 | 场景 | 前置条件 | 操作与预期 | 当前状态 |
 |---|---|---|---|---|---|
-| D01 | P0 | 安装包安装 | 产出 `.dmg/.msi/.AppImage` | 安装成功、版本可见、卸载无残留 | BLOCKED：无打包工程 |
-| D02 | P0 | 首次启动 | 安装完成 | 启动桌面窗口，加载数字孪生首页，不白屏 | BLOCKED |
+| D01 | P0 | 安装包安装 | 产出 `.dmg/.msi/.AppImage` | 安装成功、版本可见、卸载无残留 | READY：macOS `.app/.dmg` 已生成，安装/卸载待人工 |
+| D02 | P0 | 首次启动 | 安装完成 | 启动桌面窗口，加载数字孪生首页，不白屏 | READY：wrapper 已存在，首次启动待人工 |
 | D03 | P0 | 自动拉起本地服务 | 后端/模拟器未启动 | 桌面端按顺序拉起服务，等待 health/readiness 后加载页面；失败必须显示明确错误 | BLOCKED：需定义进程编排 |
 | D04 | P0 | 服务异常 | 可注入后端启动失败/退出 | 页面显示服务不可用；不假报在线；恢复服务后可重连 | READY：Web 降级可复用，桌面进程监管待测 |
 | D05 | P0 | API 断线重连 | 页面已加载 | 断开 3000 端口，保留最后快照并提示；恢复后重新获取状态，不重复告警 | READY：Web 层可复用 |
@@ -82,7 +82,7 @@ cd /Users/a1/Documents/ChatGPT/mes
 node scripts/desktop-smoke.mjs --app-dir=desktop
 ```
 
-当前预期退出码为 `2`，因为 Tauri 工程尚不存在；CI 只做基线扫描时可用：
+工程创建前预期退出码为 `2`；当前结构检查应为 `0`。CI 只做基线扫描时可用：
 
 ```bash
 node scripts/desktop-smoke.mjs --app-dir=desktop --allow-missing
@@ -114,3 +114,17 @@ node scripts/desktop-smoke.mjs --app-dir=desktop --build
 | Windows | `cargo check`、前端构建、Tauri 配置校验 | `.msi/.nsis` 安装卸载、WebView2 缺失、Firewall/Defender 拦截、窗口关闭消息和端口冲突 |
 
 跨平台构建不能替代目标系统验收。每个平台至少需要在目标系统执行 D01、D02、D03、D06、D07、D08、D09 和 D13；macOS 还要验证签名，Windows 还要验证 WebView2，Linux 还要验证图形会话和打包依赖。
+
+## 8. macOS 最终验收记录（2026-08-29）
+
+| 项目 | 实际证据 | 结论 |
+|---|---|---|
+| 从 DMG 解出并打开 `.app` | `open` 返回 `0`，应用进程 `mes-desktop` 成功出现，窗口可被 macOS UI Scripting 识别 | 部分通过：进程/窗口启动通过，未完成业务页面视觉和三维手势自动化 |
+| DMG 挂载/卸载 | `hdiutil attach -readonly` 成功；挂载目录含 `.app`；`hdiutil detach` 成功且挂载点释放 | 通过 |
+| 窗口缩放 | UI Scripting 将窗口设置为 `1100x720`、`1440x900`，系统返回对应尺寸 | 通过窗口 API；三维拖拽/滚轮未自动化 |
+| 不同路径副本单实例 | `/tmp/mes-instance-a.app` 和 `/tmp/mes-instance-b.app` 同时 `open`，各自进程数为 `1` | 未通过：不同路径副本可同时运行；待实现单实例策略 |
+| 关闭后进程清理 | 关闭菜单自动化未找到菜单项，随后终止主进程；主进程退出 | 部分通过：进程可清理，但正常菜单退出路径未完成验证 |
+| `codesign` | `codesign --verify --deep --strict` 失败：`code has no resources but signature indicates they must be present`；无 `TeamIdentifier` | 未通过：当前为 ad-hoc/不完整签名 |
+| 公证/Gatekeeper | `spctl -a -vv --type execute` 失败，继承上述签名错误 | 环境阻塞：需要 Developer ID Application 证书、签名身份和 Apple 公证账号 |
+
+当前 macOS 阻塞项：单实例、正常退出菜单链路、三维手势自动化、正式签名和公证。上述失败均已保留为验收结果，不伪造为通过。

@@ -37,11 +37,11 @@
       <div v-if="selectedDevice" class="selected-device">
         <div class="selected-head"><strong>{{ selectedDevice.name }}</strong><ElTag size="small" :type="statusTag(selectedDevice.status)">{{ statusLabel(selectedDevice.status) }}</ElTag></div>
         <p>{{ selectedDevice.zone }} · {{ selectedDevice.id }}</p>
-        <div class="detail-grid"><span>温度</span><strong>{{ selectedDevice.temperature.toFixed(1) }}℃</strong><span>功率</span><strong>{{ selectedDevice.power.toFixed(1) }}kW</strong><span>当前工单</span><strong>进行中</strong></div>
+        <div class="detail-grid"><span>温度</span><strong>{{ selectedDevice.temperature.toFixed(1) }}℃</strong><span>功率</span><strong>{{ selectedDevice.power.toFixed(1) }}kW</strong><span>当前工单</span><strong>后端未返回</strong></div>
         <div v-if="selectedDevice.warning" class="selected-warning">{{ selectedDevice.warning }}，建议安排点检。</div>
         <div class="object-actions">
-          <button type="button" @click="$emit('view-work-order', selectedDevice.id)">查看工单</button>
-          <button type="button" @click="$emit('create-inspection', selectedDevice.id)">创建点检</button>
+          <button type="button" disabled title="后端工单详情接口尚未接入">查看工单（未接入）</button>
+          <button type="button" disabled title="后端点检接口尚未接入">创建点检（未接入）</button>
         </div>
       </div>
       <div v-else class="empty-state">点击三维场景或左侧设备，查看对象详情。</div>
@@ -186,6 +186,7 @@ const lineStatusLabel = (status: ProductionLineTelemetry['status']) => ({ runnin
 .selected-warning { margin-top:9px; padding:7px; color:#ffc857; background:rgba(255,200,87,.1); font-size:11px; line-height:1.4; }
 .object-actions { display:flex; gap:7px; margin-top:9px; }
 .object-actions button { padding:6px 8px; border:1px solid rgba(104,200,255,.3); background:transparent; color:#9ed2ff; cursor:pointer; font-size:11px; }
+.object-actions button:disabled { cursor:not-allowed; opacity:.48; }
 .empty-state { padding:20px 10px; color:#7898b6; font-size:12px; line-height:1.5; }
 .agv-title { margin-top:10px; }
 

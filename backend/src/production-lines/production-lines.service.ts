@@ -1,8 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { createId, MockEntity, timestamp } from '../common/mock.types';
 import { CreateProductionLineDto } from './dto/create-production-line.dto';
 import { UpdateLineStatusDto } from './dto/update-line-status.dto';
 import { UpdateProductionLineDto } from './dto/update-production-line.dto';
+import { FactoriesService } from '../factories/factories.service';
 
 export interface ProductionLine extends MockEntity {
   factoryId: string;
@@ -16,6 +17,10 @@ export interface ProductionLine extends MockEntity {
 
 @Injectable()
 export class ProductionLinesService {
+  private readonly workOrderReferences = new Map<string, number>();
+
+  constructor(@Optional() private readonly factoriesService: FactoriesService = new FactoriesService()) {}
+
   private readonly lines = new Map<string, ProductionLine>([
     ['line-cnc', this.createSeed('line-cnc', 'tenant-demo', 'L001', 'CNC加工线', '机加工', 85, 'active')],
     ['line-assembly', this.createSeed('line-assembly', 'tenant-demo', 'L002', '精密装配线', '装配', 88, 'active')],
@@ -52,6 +57,7 @@ export class ProductionLinesService {
   }
 
   create(tenantId: string, dto: CreateProductionLineDto): ProductionLine {
+    this.factoriesService.findOne(tenantId, dto.factoryId);
     const duplicate = this.findAll(tenantId).some((line) => line.code === dto.code);
     if (duplicate) {
       throw new ConflictException(`Production line code ${dto.code} already exists`);
@@ -77,20 +83,33 @@ export class ProductionLinesService {
 
   update(tenantId: string, id: string, dto: UpdateProductionLineDto): ProductionLine {
     const current = this.findOne(tenantId, id);
+    if (dto.factoryId && dto.factoryId !== current.factoryId) {
+      this.factoriesService.findOne(tenantId, dto.factoryId);
+    }
     if (dto.code && dto.code !== current.code) {
       const duplicate = this.findAll(tenantId).some((line) => line.code === dto.code);
       if (duplicate) {
         throw new ConflictException(`Production line code ${dto.code} already exists`);
       }
     }
-
-    const updated: ProductionLine = { ...current, ...dto, updatedAt: timestamp() };
+    if (dto.status && dto.status !== 'active' && !dto.reason?.trim()) {
+      throw new ConflictException(`A reason is required when line is ${dto.status}`);
+    }
+    const updated: ProductionLine = {
+      ...current,
+      ...dto,
+      statusReason: dto.status ? (dto.status === 'active' ? '' : dto.reason!.trim()) : current.statusReason,
+      updatedAt: timestamp(),
+    };
     this.lines.set(id, updated);
     return updated;
   }
 
   updateStatus(tenantId: string, id: string, dto: UpdateLineStatusDto): ProductionLine {
     const current = this.findOne(tenantId, id);
+    if (dto.status !== 'active' && !dto.reason?.trim()) {
+      throw new ConflictException(`A reason is required when line is ${dto.status}`);
+    }
     const updated: ProductionLine = {
       ...current,
       status: dto.status,
@@ -102,9 +121,32 @@ export class ProductionLinesService {
   }
 
   remove(tenantId: string, id: string): { id: string; deleted: true } {
-    this.findOne(tenantId, id);
+    const line = this.findOne(tenantId, id);
+    if (line.status !== 'inactive') {
+      throw new ConflictException('Only inactive production lines can be deleted');
+    }
+    if ((this.workOrderReferences.get(this.referenceKey(tenantId, id)) ?? 0) > 0) {
+      throw new ConflictException('Production lines with work orders cannot be deleted');
+    }
     this.lines.delete(id);
     return { id, deleted: true };
+  }
+
+  registerWorkOrder(tenantId: string, lineId: string): void {
+    this.findOne(tenantId, lineId);
+    const key = this.referenceKey(tenantId, lineId);
+    this.workOrderReferences.set(key, (this.workOrderReferences.get(key) ?? 0) + 1);
+  }
+
+  unregisterWorkOrder(tenantId: string, lineId: string): void {
+    const key = this.referenceKey(tenantId, lineId);
+    const remaining = (this.workOrderReferences.get(key) ?? 0) - 1;
+    if (remaining > 0) this.workOrderReferences.set(key, remaining);
+    else this.workOrderReferences.delete(key);
+  }
+
+  private referenceKey(tenantId: string, lineId: string): string {
+    return `${tenantId}:${lineId}`;
   }
 
   private createSeed(

@@ -17,6 +17,9 @@ const REQUEST_TIMEOUT_MS = 8_000;
 
 interface ApiLine {
   id: string;
+  factoryId?: string;
+  code?: string;
+  type?: string;
   name: string;
   status: 'active' | 'inactive' | 'maintenance' | 'running' | 'warning' | 'error' | 'idle';
   workshop?: string;
@@ -90,6 +93,23 @@ interface FetchSnapshotResult {
   dashboard?: ApiDashboardOverview;
 }
 
+export interface SimulatorControlCommand {
+  action: 'fault' | 'reset' | 'recover';
+  lineId?: string;
+  deviceId?: string;
+  faultType?: 'OVERHEAT' | 'JAM' | 'COMMUNICATION_LOSS' | 'QUALITY_DRIFT' | 'EMERGENCY_STOP' | 'MATERIAL_SHORTAGE' | 'QUALITY_ANOMALY';
+  requestedBy?: string;
+}
+
+export interface CreateProductionLineInput {
+  factoryId: string;
+  code: string;
+  name: string;
+  type: string;
+  targetOee?: number;
+  status?: 'active' | 'inactive' | 'maintenance';
+}
+
 const lineIdMap: Record<string, string> = {
   'line-cnc': 'LINE-01',
   'line-assembly': 'LINE-02',
@@ -138,12 +158,49 @@ export async function fetchFactorySnapshot(): Promise<FetchSnapshotResult> {
   };
 }
 
+export function controlSimulator(command: SimulatorControlCommand) {
+  return post<{ accepted: boolean; commandId: string }>('/simulator/control', command);
+}
+
+export function createProductionLine(input: CreateProductionLineInput) {
+  return post<ApiLine>('/production-lines', input);
+}
+
+export function updateProductionLine(id: string, input: Partial<CreateProductionLineInput>) {
+  return request<ApiLine>(`/production-lines/${encodeURIComponent(id)}`, 'PATCH', input);
+}
+
+export function deleteProductionLine(id: string) {
+  return request<{ id: string; deleted: true }>(`/production-lines/${encodeURIComponent(id)}`, 'DELETE');
+}
+
 async function get<T>(path: string): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       headers: { 'x-tenant-id': TENANT_ID },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`MES API ${response.status}: ${path}`);
+    return unwrap<T>(await response.json() as T | { data: T });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, 'POST', body);
+}
+
+async function request<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE', body?: unknown): Promise<T> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers: { 'x-tenant-id': TENANT_ID, 'content-type': 'application/json' },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`MES API ${response.status}: ${path}`);
@@ -226,6 +283,10 @@ function toLine(line: ApiLine, devices: DeviceTelemetry[]): ProductionLineTeleme
   const oee = oeeMetrics?.oee ?? line.oee ?? 0;
   return {
     id,
+    factoryId: line.factoryId,
+    code: line.code,
+    type: line.type,
+    targetOee: line.targetOee,
     name: line.name,
     workshop: line.workshop ?? '未配置车间',
     status,

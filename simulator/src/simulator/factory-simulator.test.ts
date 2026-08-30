@@ -63,3 +63,44 @@ test("control protocol covers lifecycle, speed, fault, snapshot and export", () 
   assert.equal(exportMessage.payload.event, "simulator.export");
   assert.equal(Array.isArray(exportMessage.payload.data), true);
 });
+
+test("scoped reset clears only the requested fault, device or line", () => {
+  const factory = new FactorySimulator("test-tenant", 1000, () => 0.5, LINE_DEFINITIONS.slice(0, 2));
+  const timestamp = new Date("2026-08-29T08:00:00.000Z");
+  const inject = (lineId: string, deviceId: string, faultType: "JAM" | "OVERHEAT") => factory.handleControlCommand({
+    action: "fault",
+    lineId,
+    deviceId,
+    faultType,
+    timestamp: timestamp.toISOString(),
+  }, timestamp);
+
+  inject("line-cnc", "cnc-01", "JAM");
+  inject("line-cnc", "cnc-01", "OVERHEAT");
+  inject("line-assembly", "asm-01", "JAM");
+
+  const deviceReset = factory.handleControlCommand({
+    action: "reset",
+    lineId: "line-cnc",
+    deviceId: "cnc-01",
+    faultType: "JAM",
+    timestamp: timestamp.toISOString(),
+  }, timestamp);
+  const cncDevice = factory.snapshot(timestamp).find((line) => line.lineId === "line-cnc")?.devices
+    .find((device) => device.deviceId === "cnc-01");
+  const assemblyDevice = factory.snapshot(timestamp).find((line) => line.lineId === "line-assembly")?.devices
+    .find((device) => device.deviceId === "asm-01");
+  assert.equal(deviceReset.filter((message) => message.payload.event === "alarm.cleared").length, 1);
+  assert.deepEqual(cncDevice?.activeFaults, ["OVERHEAT"]);
+  assert.deepEqual(assemblyDevice?.activeFaults, ["JAM"]);
+
+  factory.handleControlCommand({
+    action: "reset",
+    lineId: "line-cnc",
+    timestamp: timestamp.toISOString(),
+  }, timestamp);
+  assert.deepEqual(factory.snapshot(timestamp).find((line) => line.lineId === "line-cnc")?.devices
+    .find((device) => device.deviceId === "cnc-01")?.activeFaults, []);
+  assert.deepEqual(factory.snapshot(timestamp).find((line) => line.lineId === "line-assembly")?.devices
+    .find((device) => device.deviceId === "asm-01")?.activeFaults, ["JAM"]);
+});

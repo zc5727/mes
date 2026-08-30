@@ -17,6 +17,7 @@ export class CreateProductionLineDto {
   name!: string;
 
   @IsString()
+  @MinLength(2)
   @MaxLength(60)
   type!: string;
 

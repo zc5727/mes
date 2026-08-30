@@ -14,6 +14,8 @@ import { MqttModule } from './mqtt/mqtt.module';
 import { AgentApiModule } from './agent-api/agent-api.module';
 import { StrategiesModule } from './strategies/strategies.module';
 import { DigitalTwinModule } from './digital-twin/digital-twin.module';
+import { MasterDataModule } from './master-data/master-data.module';
+import { AuditModule } from './audit/audit.module';
 
 @Module({
   controllers: [HealthController],
@@ -32,6 +34,8 @@ import { DigitalTwinModule } from './digital-twin/digital-twin.module';
     AgentApiModule,
     StrategiesModule,
     DigitalTwinModule,
+    MasterDataModule,
+    AuditModule,
   ],
 })
 export class AppModule {}

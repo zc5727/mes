@@ -3,6 +3,25 @@ import { StrategyCandidate, StrategySnapshot, StrategySimulationResult, RiskLeve
 
 @Injectable()
 export class StrategyEngineService {
+  preflight(snapshot: StrategySnapshot): { accepted: boolean; errors: string[] } {
+    const errors: string[] = [];
+    const lineIds = new Set(snapshot.lines.map((line) => line.id));
+    const deviceIds = new Set<string>();
+    snapshot.devices.forEach((device) => {
+      if (deviceIds.has(device.id)) errors.push(`duplicate device id: ${device.id}`);
+      deviceIds.add(device.id);
+      if (!lineIds.has(device.lineId)) errors.push(`device ${device.id} references unknown line ${device.lineId}`);
+    });
+    const orderIds = new Set<string>();
+    snapshot.workOrders.forEach((order) => {
+      if (orderIds.has(order.id)) errors.push(`duplicate work order id: ${order.id}`);
+      orderIds.add(order.id);
+      if (!lineIds.has(order.lineId)) errors.push(`work order ${order.id} references unknown line ${order.lineId}`);
+      if (order.remainingQty < 0) errors.push(`work order ${order.id} has negative remaining quantity`);
+    });
+    return { accepted: errors.length === 0, errors };
+  }
+
   simulate(snapshot: StrategySnapshot): StrategySimulationResult {
     const risks = this.identifyRisks(snapshot);
     const candidates = [

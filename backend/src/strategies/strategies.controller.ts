@@ -25,4 +25,15 @@ export class StrategiesController {
 
     return { data: this.strategyEngine.simulate(snapshot) };
   }
+
+  @Post('preflight')
+  preflight(@Body() dto: StrategySimulationDto) {
+    return { data: this.strategyEngine.preflight({
+      timestamp: dto.timestamp,
+      lines: dto.lines.map((line) => ({ ...line })),
+      devices: dto.devices.map((device) => ({ ...device })),
+      workOrders: dto.workOrders.map((order) => ({ ...order })),
+      materialShortages: dto.materialShortages?.map((item) => ({ ...item, affectedWorkOrderIds: [...item.affectedWorkOrderIds] })),
+    }) };
+  }
 }

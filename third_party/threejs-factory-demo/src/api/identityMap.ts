@@ -17,3 +17,9 @@ export const deviceIdMap: Record<string, string> = {
 
 export const mapLineId = (value: string): string => lineIdMap[value] ?? value;
 export const mapDeviceId = (value: string): string => deviceIdMap[value] ?? value;
+
+export const toBackendLineId = (value: string): string =>
+  Object.entries(lineIdMap).find(([, canonical]) => canonical === value)?.[0] ?? value;
+
+export const toBackendDeviceId = (value: string): string =>
+  Object.entries(deviceIdMap).find(([, canonical]) => canonical === value)?.[0] ?? value;

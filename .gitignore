@@ -23,3 +23,6 @@ coverage/
 
 # Local development runtime files
 .runtime/
+
+# Plan document render intermediates
+qa_render_plan*/

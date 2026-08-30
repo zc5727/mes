@@ -157,6 +157,16 @@ describe('simulator MQTT ingestion', () => {
     }]);
   });
 
+  it('returns a diagnosable 503 when the broker rejects a control publish', async () => {
+    const client = new FakeMqttClient();
+    const { service } = createService(client);
+    client.emit('connect');
+    client.publish = jest.fn().mockRejectedValue(new Error('socket closed'));
+
+    await expect(service.publishSimulatorControl('demo-tenant', { action: 'reset' }))
+      .rejects.toMatchObject({ status: 503, message: 'MQTT simulator control publish failed: socket closed' });
+  });
+
   it('re-subscribes after reconnect without duplicating message handlers or clearing state', async () => {
     const client = new FakeMqttClient();
     const { factory, service } = createService(client);

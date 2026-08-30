@@ -11,6 +11,7 @@ const CONTROL_ACTIONS: SimulatorControlAction[] = [
   'speed',
   'fault',
   'reset',
+  'recover',
   'snapshot',
   'export',
 ];
@@ -83,7 +84,26 @@ export function validateSimulatorControlCommand(command: SimulatorControlDto): v
     return;
   }
 
+  if (command.action === 'reset' || command.action === 'recover') {
+    if (command.deviceId !== undefined && command.lineId === undefined) {
+      throw new BadRequestException(`${command.action} deviceId requires lineId`);
+    }
+    if (command.faultType !== undefined && command.deviceId === undefined) {
+      throw new BadRequestException(`${command.action} faultType requires deviceId`);
+    }
+    return;
+  }
+
   if (command.speed !== undefined || command.lineId || command.deviceId || command.faultType) {
     throw new BadRequestException(`${command.action} does not accept control arguments`);
   }
+}
+
+/**
+ * Converts the API-friendly recover alias into the simulator protocol action.
+ * The simulator currently understands `reset`; keeping the alias at the API
+ * boundary lets clients use domain language without changing the wire format.
+ */
+export function normalizeSimulatorControlCommand(command: SimulatorControlDto): SimulatorControlDto {
+  return command.action === 'recover' ? { ...command, action: 'reset' } : command;
 }

@@ -140,6 +140,7 @@ export class WorkOrdersService {
       updatedAt: now,
     };
     this.workOrders.set(workOrder.id, workOrder);
+    this.productionLinesService.registerWorkOrder(tenantId, workOrder.lineId);
     return workOrder;
   }
 
@@ -228,6 +229,7 @@ export class WorkOrdersService {
     }
 
     this.workOrders.delete(id);
+    this.productionLinesService.unregisterWorkOrder(tenantId, workOrder.lineId);
     return { id, deleted: true };
   }
 }

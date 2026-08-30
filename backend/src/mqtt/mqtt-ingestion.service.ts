@@ -113,7 +113,14 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
       commandId,
     });
     const topic = `mes/control/${tenantId}/simulator/command`;
-    await this.client.publish(topic, payload);
+    try {
+      await this.client.publish(topic, payload);
+    } catch (error: unknown) {
+      this.logger.error(`MQTT simulator control publish failed on ${topic}: ${this.errorMessage(error)}`);
+      throw new ServiceUnavailableException(
+        `MQTT simulator control publish failed: ${this.errorMessage(error)}`,
+      );
+    }
     return commandId;
   }
 

@@ -104,6 +104,8 @@ export type SimulatorControlAction =
   | 'speed'
   | 'fault'
   | 'reset'
+  /** API alias for reset; normalized before publishing to the simulator. */
+  | 'recover'
   | 'snapshot'
   | 'export';
 

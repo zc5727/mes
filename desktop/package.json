@@ -4,7 +4,7 @@
   "private": true,
   "description": "MES 数字孪生 Tauri 桌面端",
   "scripts": {
-    "dev": "tauri dev",
+    "dev": "bash ../scripts/desktop-run.sh",
     "build": "tauri build",
     "build:frontend": "npm --prefix ../third_party/threejs-factory-demo run build",
     "check": "tauri info"

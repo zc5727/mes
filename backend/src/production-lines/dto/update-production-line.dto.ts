@@ -33,4 +33,9 @@ export class UpdateProductionLineDto {
   @IsOptional()
   @IsIn(['active', 'inactive', 'maintenance'])
   status?: 'active' | 'inactive' | 'maintenance';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
 }

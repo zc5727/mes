@@ -23,6 +23,8 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 5173
+    port: 5173,
+    // Tauri devUrl is fixed to 5173; never silently move Vite to another port.
+    strictPort: true
   }
 });
