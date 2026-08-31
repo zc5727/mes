@@ -23,6 +23,7 @@ for pid_file in "$RUNTIME_DIR"/*.pid; do
   fi
   rm -f "$pid_file"
 done
+rm -f "$RUNTIME_DIR/ports.env"
 if [[ "${1:-}" == "--infra" ]]; then
   compose_file="${MES_RUNTIME_COMPOSE_FILE:-$ROOT_DIR/backend/docker-compose.yml}"
   if docker compose version >/dev/null 2>&1; then

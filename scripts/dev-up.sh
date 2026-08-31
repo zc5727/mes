@@ -18,10 +18,23 @@ for arg in "$@"; do
   esac
 done
 MQTT_URL="${MQTT_URL:-mqtt://localhost:1883}"
+POSTGRES_HOST_PORT="${MES_POSTGRES_HOST_PORT:-5432}"
+MQTT_HOST_PORT="${MES_MQTT_HOST_PORT:-1883}"
+MQTT_WS_HOST_PORT="${MES_MQTT_WS_HOST_PORT:-9001}"
+MINIO_HOST_PORT="${MES_MINIO_HOST_PORT:-9000}"
+MINIO_CONSOLE_HOST_PORT="${MES_MINIO_CONSOLE_HOST_PORT:-9002}"
+export MES_POSTGRES_HOST_PORT="$POSTGRES_HOST_PORT"
+export MES_MQTT_HOST_PORT="$MQTT_HOST_PORT"
+export MES_MQTT_WS_HOST_PORT="$MQTT_WS_HOST_PORT"
+export MES_MINIO_HOST_PORT="$MINIO_HOST_PORT"
+export MES_MINIO_CONSOLE_HOST_PORT="$MINIO_CONSOLE_HOST_PORT"
 TENANT_ID="${MES_TENANT_ID:-tenant-demo}"
 DATABASE_ENABLED_VALUE="${DATABASE_ENABLED:-false}"
 DATABASE_REQUIRED_VALUE="${DATABASE_REQUIRED:-false}"
 STARTED_PID_FILES=()
+printf 'MES_POSTGRES_HOST_PORT=%q\nMES_MQTT_HOST_PORT=%q\nMES_MQTT_WS_HOST_PORT=%q\nMES_MINIO_HOST_PORT=%q\nMES_MINIO_CONSOLE_HOST_PORT=%q\n' \
+  "$POSTGRES_HOST_PORT" "$MQTT_HOST_PORT" "$MQTT_WS_HOST_PORT" "$MINIO_HOST_PORT" "$MINIO_CONSOLE_HOST_PORT" \
+  >"$RUNTIME_DIR/ports.env"
 
 cleanup_on_failure() {
   local exit_code="$?"
@@ -81,10 +94,10 @@ start_infra() {
     return
   fi
   echo "Docker Compose 不可用，使用 Docker Engine 启动本地依赖" >&2
-  start_container_fallback mes-postgres postgres:16-alpine '-p 5432:5432'
-  start_container_fallback mes-mqtt eclipse-mosquitto:2 '-p 1883:1883 -p 9001:9001'
+  start_container_fallback mes-postgres postgres:16-alpine "-p ${POSTGRES_HOST_PORT}:5432"
+  start_container_fallback mes-mqtt eclipse-mosquitto:2 "-p ${MQTT_HOST_PORT}:1883 -p ${MQTT_WS_HOST_PORT}:9001"
   if [[ "${MES_OBJECT_STORAGE:-false}" == true || "${MES_OBJECT_STORAGE:-false}" == minio || "${MES_OBJECT_STORAGE:-false}" == s3 ]]; then
-    start_container_fallback mes-minio minio/minio:latest '-p 9000:9000 -p 9002:9001' 'server /data --console-address :9001'
+    start_container_fallback mes-minio minio/minio:latest "-p ${MINIO_HOST_PORT}:9000 -p ${MINIO_CONSOLE_HOST_PORT}:9001" 'server /data --console-address :9001'
   fi
 }
 wait_for_tcp() {
