@@ -27,6 +27,7 @@ export const AGENT_READ_ONLY_TOOLS = [
   'get_maintenance_plans',
   'get_inventory_batches',
   'get_spare_parts',
+  'get_audit_logs',
   'get_simulation_snapshot',
   'get_strategy_result',
   'get_strategy_history',
@@ -158,6 +159,13 @@ export interface DeviceStatusArguments { deviceId: string; lineId?: string }
 export interface WorkOrderProgressArguments { workOrderId: string }
 export interface DelayRiskArguments { workOrderId: string }
 export interface StrategyResultArguments { simulationId: string }
+export interface AuditLogArguments {
+  action?: string;
+  resource?: string;
+  result?: string;
+  traceId?: string;
+  limit?: number;
+}
 
 export function isReadOnlyAgentTool(value: unknown): value is AgentReadOnlyTool {
   return typeof value === 'string' && (AGENT_READ_ONLY_TOOLS as readonly string[]).includes(value);

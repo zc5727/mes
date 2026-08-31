@@ -1,8 +1,8 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { RequireCapability } from '../../common/route-capability.decorator';
 import { TenantId } from '../../common/tenant.decorator';
+import { SidecarReconcileDto } from './dto/sidecar-reconcile.dto';
 import { SidecarService } from './sidecar.service';
-import type { ReconciliationDomain, ReconciliationItem } from './sidecar.types';
 
 @Controller('integrations/sidecar')
 export class SidecarController {
@@ -10,5 +10,5 @@ export class SidecarController {
   @Get('health') health() { return this.service.health(); }
   @Post('reconcile')
   @RequireCapability('write')
-  reconcile(@TenantId() tenantId: string, @Body() body: { domain: ReconciliationDomain; local: ReconciliationItem[]; fixture?: ReconciliationItem[] }) { return this.service.reconcile(tenantId, body.domain, body.local, body.fixture); }
+  reconcile(@TenantId() tenantId: string, @Body() body: SidecarReconcileDto) { return this.service.reconcile(tenantId, body.domain, body.local, body.fixture); }
 }

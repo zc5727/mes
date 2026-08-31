@@ -57,7 +57,7 @@ export class MaintenanceService implements OnModuleInit {
     return this.create(tenantId, { alarmId: alarm.id, lineId: alarm.lineId, deviceId: alarm.sourceId, type: 'repair', title: `告警维修：${alarm.message}`, description: `由告警 ${alarm.id} 自动创建`, plannedAt: timestamp() });
   }
 
-  create(tenantId: string, dto: CreateMaintenanceDto): MaintenanceWorkOrder {
+  create(tenantId: string, dto: CreateMaintenanceDto, actorId = 'system'): MaintenanceWorkOrder {
     const device = this.devices.findOne(tenantId, dto.deviceId);
     this.lines.findOne(tenantId, dto.lineId);
     if (device.lineId !== dto.lineId) throw new ConflictException('Maintenance device must belong to line');
@@ -69,62 +69,65 @@ export class MaintenanceService implements OnModuleInit {
     const item: MaintenanceWorkOrder = { id: createId('maintenance'), tenantId, lineId: dto.lineId, deviceId: dto.deviceId, alarmId: dto.alarmId?.trim() || null, inspectionRequired: dto.inspectionRequired ?? Boolean(dto.alarmId), inspectionStatus: 'pending', type: dto.type, title: dto.title, description: dto.description ?? '', status: 'draft', plannedAt: dto.plannedAt, completedAt: null, createdAt: now, updatedAt: now };
     this.orders.set(item.id, item);
     void this.persistence?.saveMaintenance(item);
+    this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'maintenance.created', resource: 'maintenance_work_order', resourceId: item.id, after: item as unknown as Record<string, unknown>, details: { deviceId: item.deviceId, lineId: item.lineId, alarmId: item.alarmId } });
     return item;
   }
 
-  updateStatus(tenantId: string, id: string, dto: UpdateMaintenanceStatusDto): MaintenanceWorkOrder {
+  updateStatus(tenantId: string, id: string, dto: UpdateMaintenanceStatusDto, actorId = 'system'): MaintenanceWorkOrder {
     const current = this.findOne(tenantId, id);
     if (!transitions[current.status].includes(dto.status)) throw new ConflictException(`Cannot change maintenance order from ${current.status} to ${dto.status}`);
     if ((dto.status === 'cancelled' || dto.status === 'completed') && !dto.reason?.trim()) throw new ConflictException('A reason is required for maintenance completion or cancellation');
     if (dto.status === 'completed' && current.inspectionRequired && current.inspectionStatus !== 'passed') throw new ConflictException('A passed point inspection is required before maintenance completion');
     const updated = { ...current, status: dto.status, completedAt: dto.status === 'completed' ? timestamp() : current.completedAt, updatedAt: timestamp() };
     this.orders.set(id, updated);
-    this.audit?.record(tenantId, 'system', { action: `maintenance.${dto.status}`, resource: 'maintenance_work_order', resourceId: id, details: { from: current.status, to: dto.status, reason: dto.reason ?? '', alarmId: current.alarmId } });
+    this.audit?.record(tenantId, actorId.trim() || 'system', { action: `maintenance.${dto.status}`, resource: 'maintenance_work_order', resourceId: id, before: current as unknown as Record<string, unknown>, after: updated as unknown as Record<string, unknown>, details: { from: current.status, to: dto.status, reason: dto.reason ?? '', alarmId: current.alarmId } });
     void this.persistence?.saveMaintenance(updated);
     return updated;
   }
 
-  recordInspection(tenantId: string, id: string, dto: MaintenanceInspectionDto): MaintenanceWorkOrder {
+  recordInspection(tenantId: string, id: string, dto: MaintenanceInspectionDto, actorId = 'system'): MaintenanceWorkOrder {
     const current = this.findOne(tenantId, id);
     if (current.status !== 'in_progress') throw new ConflictException('Point inspection requires an in-progress maintenance order');
     const updated = { ...current, inspectionStatus: dto.result, updatedAt: timestamp() };
     this.orders.set(id, updated);
-    this.audit?.record(tenantId, 'system', { action: `maintenance.point_inspection.${dto.result}`, resource: 'maintenance_work_order', resourceId: id, details: { remark: dto.remark, alarmId: current.alarmId } });
+    this.audit?.record(tenantId, actorId.trim() || 'system', { action: `maintenance.point_inspection.${dto.result}`, resource: 'maintenance_work_order', resourceId: id, before: current as unknown as Record<string, unknown>, after: updated as unknown as Record<string, unknown>, details: { remark: dto.remark, alarmId: current.alarmId } });
     void this.persistence?.saveMaintenance(updated);
     return updated;
   }
 
-  createPreventivePlan(tenantId: string, dto: CreatePreventivePlanDto): PreventivePlan {
+  createPreventivePlan(tenantId: string, dto: CreatePreventivePlanDto, actorId = 'system'): PreventivePlan {
     this.devices.findOne(tenantId, dto.deviceId);
     const plan: PreventivePlan = { id: createId('pm'), tenantId, deviceId: dto.deviceId, title: dto.title.trim(), intervalHours: dto.intervalHours ?? 720, nextDueAt: dto.nextDueAt, active: true, createdAt: timestamp() };
     this.plans.set(plan.id, plan);
     void this.persistence?.saveAux({ id: plan.id, tenantId, domain: 'preventive-plan', payload: plan as unknown as Record<string, unknown>, createdAt: plan.createdAt, updatedAt: plan.createdAt });
+    this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'maintenance.preventive_plan_created', resource: 'preventive_plan', resourceId: plan.id, after: plan as unknown as Record<string, unknown>, details: { deviceId: plan.deviceId } });
     return plan;
   }
   listPreventivePlans(tenantId: string): PreventivePlan[] { return [...this.plans.values()].filter((plan) => plan.tenantId === tenantId); }
   duePreventivePlans(tenantId: string, at = new Date()): PreventivePlan[] {
     return this.listPreventivePlans(tenantId).filter((plan) => plan.active && new Date(plan.nextDueAt).getTime() <= at.getTime());
   }
-  triggerDuePreventivePlans(tenantId: string, at = new Date()): MaintenanceWorkOrder[] {
+  triggerDuePreventivePlans(tenantId: string, at = new Date(), actorId = 'system'): MaintenanceWorkOrder[] {
     return this.duePreventivePlans(tenantId, at).flatMap((plan) => {
       const marker = `preventive-plan:${plan.id}`;
       const existing = this.list(tenantId).find((item) => item.type === 'preventive' && item.description === marker && item.status !== 'cancelled');
       if (existing) return [existing];
       const device = this.devices.findOne(tenantId, plan.deviceId);
-      return [this.create(tenantId, { lineId: device.lineId, deviceId: plan.deviceId, type: 'preventive', title: plan.title, description: marker, plannedAt: plan.nextDueAt })];
+      return [this.create(tenantId, { lineId: device.lineId, deviceId: plan.deviceId, type: 'preventive', title: plan.title, description: marker, plannedAt: plan.nextDueAt }, actorId)];
     });
   }
-  createSparePart(tenantId: string, dto: CreateSparePartDto): SparePart {
+  createSparePart(tenantId: string, dto: CreateSparePartDto, actorId = 'system'): SparePart {
     const key = `${tenantId}:${dto.code.trim()}`;
     if (this.parts.has(key)) throw new ConflictException(`Spare part ${dto.code} already exists`);
     const part: SparePart = { id: createId('part'), tenantId, code: dto.code.trim(), name: dto.name.trim(), stock: dto.stock ?? 0, minimumStock: dto.minimumStock ?? 0, updatedAt: timestamp() };
     if (part.stock < 0 || part.minimumStock < 0) throw new BadRequestException('Spare part stock cannot be negative');
     this.parts.set(key, part);
     void this.persistence?.saveAux({ id: part.id, tenantId, domain: 'spare-part', payload: part as unknown as Record<string, unknown>, createdAt: part.updatedAt, updatedAt: part.updatedAt });
+    this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'maintenance.spare_part_created', resource: 'spare_part', resourceId: part.id, after: part as unknown as Record<string, unknown>, details: { code: part.code } });
     return part;
   }
   listSpareParts(tenantId: string): SparePart[] { return [...this.parts.values()].filter((part) => part.tenantId === tenantId); }
-  consumeSparePart(tenantId: string, dto: ConsumeSparePartDto): SparePart {
+  consumeSparePart(tenantId: string, dto: ConsumeSparePartDto, actorId = 'system'): SparePart {
     if (!Number.isInteger(dto.quantity) || dto.quantity <= 0) throw new BadRequestException('Spare part quantity must be a positive integer');
     const key = `${tenantId}:${dto.code.trim()}`;
     if (dto.operationId && this.partMovements.has(`${tenantId}:${dto.operationId}`)) return this.partMovements.get(`${tenantId}:${dto.operationId}`)!;
@@ -135,9 +138,10 @@ export class MaintenanceService implements OnModuleInit {
     this.parts.set(key, updated);
     void this.persistence?.saveAux({ id: updated.id, tenantId, domain: 'spare-part', payload: updated as unknown as Record<string, unknown>, createdAt: updated.updatedAt, updatedAt: updated.updatedAt });
     if (dto.operationId) this.partMovements.set(`${tenantId}:${dto.operationId}`, updated);
+    this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'maintenance.spare_part_consumed', resource: 'spare_part', resourceId: updated.id, before: part as unknown as Record<string, unknown>, after: updated as unknown as Record<string, unknown>, details: { code: updated.code, quantity: dto.quantity, operationId: dto.operationId } });
     return updated;
   }
-  returnSparePart(tenantId: string, dto: ConsumeSparePartDto): SparePart {
+  returnSparePart(tenantId: string, dto: ConsumeSparePartDto, actorId = 'system'): SparePart {
     if (!Number.isInteger(dto.quantity) || dto.quantity <= 0) throw new BadRequestException('Spare part quantity must be a positive integer');
     const key = `${tenantId}:${dto.code.trim()}`;
     if (dto.operationId && this.partReturnMovements.has(`${tenantId}:${dto.operationId}`)) return this.partReturnMovements.get(`${tenantId}:${dto.operationId}`)!;
@@ -147,6 +151,7 @@ export class MaintenanceService implements OnModuleInit {
     this.parts.set(key, updated);
     void this.persistence?.saveAux({ id: updated.id, tenantId, domain: 'spare-part', payload: updated as unknown as Record<string, unknown>, createdAt: updated.updatedAt, updatedAt: updated.updatedAt });
     if (dto.operationId) this.partReturnMovements.set(`${tenantId}:${dto.operationId}`, updated);
+    this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'maintenance.spare_part_returned', resource: 'spare_part', resourceId: updated.id, before: part as unknown as Record<string, unknown>, after: updated as unknown as Record<string, unknown>, details: { code: updated.code, quantity: dto.quantity, operationId: dto.operationId } });
     return updated;
   }
   metrics(tenantId: string, deviceId?: string) {

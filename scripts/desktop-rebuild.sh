@@ -10,6 +10,14 @@ APP="$MACOS_BUNDLE_DIR/MES 智能制造运营平台.app"
 
 if [[ -d "$APP" ]]; then
   pkill -f "$APP/Contents/MacOS/mes-desktop" 2>/dev/null || true
+  for _ in $(seq 1 10); do
+    pgrep -f "$APP/Contents/MacOS/mes-desktop" >/dev/null 2>&1 || break
+    sleep 1
+  done
+  if pgrep -f "$APP/Contents/MacOS/mes-desktop" >/dev/null 2>&1; then
+    echo "旧版桌面程序仍在运行，拒绝覆盖构建：$APP" >&2
+    exit 1
+  fi
 fi
 
 echo "正在重建 MES 本地桌面程序..."

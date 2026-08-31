@@ -32,7 +32,7 @@ export interface Approval {
 }
 @Injectable()
 export class AuditService implements OnModuleInit {
-  private readonly audit = new Map<string, AuditEntry[]>();
+  private readonly audit = new Map<string, GovernedAuditEntry[]>();
   private readonly approvals = new Map<string, Approval[]>();
 
   constructor(
@@ -45,7 +45,7 @@ export class AuditService implements OnModuleInit {
     snapshot?.approvals.forEach((approval) => this.restoreApproval(approval));
   }
 
-  list(tenantId: string) { return this.audit.get(tenantId) ?? []; }
+  list(tenantId: string): GovernedAuditEntry[] { return this.audit.get(tenantId) ?? []; }
   restore(entry: GovernedAuditEntry): void {
     if (this.list(entry.tenantId).some((item) => item.id === entry.id)) return;
     this.audit.set(entry.tenantId, [...this.list(entry.tenantId), entry]);

@@ -153,7 +153,7 @@ export class DocumentsService implements OnModuleInit {
         from: current.status,
         to: status,
       })],
-    });
+    }, dto.actorId, 'document.status_changed');
   }
 
   saveAnalysisDraft(tenantId: string, id: string, analysisDraft: Record<string, unknown>, actorId: string): DocumentRecord {
@@ -164,7 +164,7 @@ export class DocumentsService implements OnModuleInit {
       analysisDraft,
       updatedAt: now,
       trace: [...current.trace, this.trace('analysis_draft_saved', now, actorId.trim(), createId('trace'))],
-    });
+    }, actorId, 'document.analysis_draft_saved');
   }
 
   confirmAnalysis(tenantId: string, id: string, dto: ConfirmDocumentAnalysisDto): DocumentRecord {
@@ -178,7 +178,7 @@ export class DocumentsService implements OnModuleInit {
       analysisConfirmedAt: now,
       updatedAt: now,
       trace: [...current.trace, this.trace('analysis_confirmed', now, dto.reviewerId.trim(), createId('trace'))],
-    });
+    }, dto.reviewerId, 'document.analysis_confirmed');
   }
 
   private listByKey(tenantId: string, documentKey: string): DocumentRecord[] {
@@ -187,13 +187,16 @@ export class DocumentsService implements OnModuleInit {
       .sort((left, right) => left.version - right.version);
   }
 
-  private replace(current: DocumentRecord, patch: Partial<DocumentRecord>): DocumentRecord {
+  private replace(current: DocumentRecord, patch: Partial<DocumentRecord>, actorId = 'system', action = 'document.updated'): DocumentRecord {
     const updated = { ...current, ...patch };
     this.records.set(current.tenantId, (this.records.get(current.tenantId) ?? []).map((item) => item.id === current.id ? updated : item));
     void this.persistence?.saveDocument(updated);
-    this.auditService?.record(current.tenantId, String(patch['uploadedBy'] ?? 'system'), {
-      action: 'document.updated', resource: 'document', resourceId: current.id,
+    this.auditService?.record(current.tenantId, actorId.trim() || 'system', {
+      action, resource: 'document', resourceId: current.id,
+      before: { status: current.status, analysisStatus: current.analysisStatus, analysisDraft: current.analysisDraft },
+      after: { status: updated.status, analysisStatus: updated.analysisStatus, analysisDraft: updated.analysisDraft },
       details: { changedFields: Object.keys(patch) },
+      traceId: updated.trace.at(-1)?.traceId,
     });
     return updated;
   }

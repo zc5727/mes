@@ -113,6 +113,8 @@ export class AgentApiService {
         return this.inventoryBatches(tenantId);
       case 'get_spare_parts':
         return this.spareParts(tenantId);
+      case 'get_audit_logs':
+        return this.auditLogs(tenantId, args, context);
       case 'get_simulation_snapshot':
         return this.simulationSnapshot(tenantId, args, context);
       case 'get_strategy_result':
@@ -276,6 +278,90 @@ export class AgentApiService {
     return this.maintenanceService?.listSpareParts(tenantId) ?? [];
   }
 
+  private auditLogs(tenantId: string, args: Record<string, unknown>, context?: StrategyRequestContext) {
+    if (!this.auditService) return [];
+    const action = this.optionalFilter(args.action);
+    const resource = this.optionalFilter(args.resource);
+    const result = this.optionalFilter(args.result);
+    const traceId = this.optionalFilter(args.traceId);
+    const limit = this.limit(args.limit);
+    return this.auditService.list(tenantId)
+      .filter((entry) => !action || entry.action === action)
+      .filter((entry) => !resource || entry.resource === resource)
+      .filter((entry) => !result || entry.result === result)
+      .filter((entry) => !traceId || this.stringValue(entry.details.traceId) === traceId)
+      .filter((entry) => !context || this.canReadAuditEntry(context, entry))
+      .slice(-limit)
+      .map((entry) => this.maskSensitive(entry as unknown as Record<string, unknown>) as unknown as typeof entry);
+  }
+
+  private canReadAuditEntry(context: StrategyRequestContext, entry: { resource: string; resourceId?: string; details: Record<string, unknown> }): boolean {
+    const factoryId = this.stringValue(entry.details.factoryId);
+    if (factoryId && factoryId !== context.factoryId) return false;
+
+    const lineIds = new Set<string>();
+    this.addString(lineIds, entry.details.lineId);
+    this.addStrings(lineIds, entry.details.lineIds);
+    const before = this.recordValue(entry.details.before);
+    const after = this.recordValue(entry.details.after);
+    this.addStrings(lineIds, before?.lineIds);
+    this.addString(lineIds, before?.lineId);
+    this.addStrings(lineIds, after?.lineIds);
+    this.addString(lineIds, after?.lineId);
+    if (lineIds.size > 0) return [...lineIds].every((lineId) => this.canReadLine(context, lineId));
+
+    const resourceKind = this.auditResourceKind(entry.resource);
+    if (resourceKind && entry.resourceId) {
+      try {
+        this.authorization?.assertResourceAccess(context, resourceKind, entry.resourceId);
+        return true;
+      } catch (error: unknown) {
+        if (error instanceof ForbiddenException) return false;
+        throw error;
+      }
+    }
+    return true;
+  }
+
+  private auditResourceKind(resource: string): string | undefined {
+    const kinds: Record<string, string> = {
+      line: 'line',
+      'production-line': 'line',
+      device: 'device',
+      work_order: 'workOrder',
+      'work-order': 'workOrder',
+    };
+    return kinds[resource];
+  }
+
+  private optionalFilter(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  }
+
+  private limit(value: unknown): number {
+    if (typeof value !== 'number' || !Number.isInteger(value)) return 100;
+    return Math.min(200, Math.max(1, value));
+  }
+
+  private stringValue(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  }
+
+  private addString(target: Set<string>, value: unknown): void {
+    const normalized = this.stringValue(value);
+    if (normalized) target.add(normalized);
+  }
+
+  private addStrings(target: Set<string>, value: unknown): void {
+    if (Array.isArray(value)) value.forEach((item) => this.addString(target, item));
+  }
+
+  private recordValue(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : undefined;
+  }
+
   private canReadLine(context: StrategyRequestContext, lineId: string): boolean {
     try {
       this.authorization?.assertResourceAccess(context, 'line', lineId);
@@ -387,6 +473,7 @@ export class AgentApiService {
   }
 
   private sourceFor(tool: AgentReadOnlyTool | string): 'mes' | 'strategy-governance' | 'audit' {
+    if (tool === 'get_audit_logs') return 'audit';
     if (tool === 'get_strategy_history' || tool === 'get_strategy_result' || tool === 'get_simulation_snapshot' || tool === 'get_strategy_approval_status') {
       return 'strategy-governance';
     }

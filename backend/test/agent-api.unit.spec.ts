@@ -16,6 +16,7 @@ describe('nanobot read-only tool contract', () => {
       'get_maintenance_plans',
       'get_inventory_batches',
       'get_spare_parts',
+      'get_audit_logs',
       'get_simulation_snapshot',
       'get_strategy_result',
       'get_strategy_history',

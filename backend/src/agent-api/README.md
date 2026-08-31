@@ -28,10 +28,17 @@
 | `get_active_alarms` | 可选 `lineId`、`deviceId`、`level` |
 | `get_work_order_progress` | `workOrderId` |
 | `get_delay_risk` | `workOrderId` |
+| `get_quality_records` | 可选 `lineId` |
+| `get_quality_issues` | 无 |
+| `get_maintenance_work_orders` | 无 |
+| `get_maintenance_plans` | 无 |
+| `get_inventory_batches` | 无 |
+| `get_spare_parts` | 无 |
+| `get_audit_logs` | 可选 `action`、`resource`、`result`、`traceId`、`limit` |
 | `get_simulation_snapshot` | 可选 `simulationId` |
 | `get_strategy_result` | `simulationId` |
 
-成功和失败响应都包含 `traceId` 与 `meta`：`sourceTimestamp`、`permissionDecision`、`requiresApproval`。`audit` 包含 `calledAt`、`tenantId`、`sessionId`、`traceId`、`requestedBy` 和已脱敏的 `arguments`。只读工具覆盖 dashboard、设备、告警、工单、质量、维护、库存和策略仿真查询；失败响应使用 `error.code` 与 `error.message`，不返回堆栈。
+成功和失败响应都包含 `traceId` 与 `meta`：`sourceTimestamp`、`permissionDecision`、`requiresApproval`。`audit` 包含 `calledAt`、`tenantId`、`sessionId`、`traceId`、`requestedBy` 和已脱敏的 `arguments`。只读工具覆盖 dashboard、设备、告警、工单、质量、维护、库存、审计和策略仿真查询；审计查询仅限当前租户，并按工厂/产线范围过滤，返回字段会脱敏。失败响应使用 `error.code` 与 `error.message`，不返回堆栈。
 
 `GET /api/v1/agent-api/tools` 返回工具白名单。
 

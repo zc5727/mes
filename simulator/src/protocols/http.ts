@@ -153,16 +153,21 @@ function readBody(message: IncomingMessage, maxBytes: number, timeoutMs: number)
     let length = 0;
     const chunks: Buffer[] = [];
     const timer = setTimeout(() => finish(new HttpRequestError(408, "HTTP request body timed out")), timeoutMs);
+    let settled = false;
     const finish = (error?: Error): void => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       message.removeAllListeners("data");
       message.removeAllListeners("end");
-      message.removeAllListeners("error");
       error ? reject(error) : resolve(Buffer.concat(chunks).toString("utf8"));
     };
     message.on("data", (chunk: Buffer) => {
       length += chunk.length;
-      if (length > maxBytes) finish(new HttpRequestError(413, "HTTP request body is too large"));
+      if (length > maxBytes) {
+        message.resume();
+        finish(new HttpRequestError(413, "HTTP request body is too large"));
+      }
       else chunks.push(chunk);
     });
     message.once("end", () => finish());

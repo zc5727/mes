@@ -34,24 +34,26 @@ export class QualityService implements OnModuleInit {
   }
 
   listRules(tenantId: string): QualityRule[] { return this.rules.get(tenantId) ?? []; }
-  createRule(tenantId: string, dto: CreateQualityRuleDto): QualityRule {
+  createRule(tenantId: string, dto: CreateQualityRuleDto, actorId = 'system'): QualityRule {
     if (this.listRules(tenantId).some((rule) => rule.key === dto.key.trim())) throw new ConflictException(`Quality rule ${dto.key} already exists`);
     const rule: QualityRule = { id: createId('qrule'), tenantId, key: dto.key.trim(), name: dto.name.trim(), inspectionType: dto.inspectionType, requiredFields: dto.requiredFields.map((field) => field.trim()), createdAt: timestamp() };
     this.rules.set(tenantId, [...this.listRules(tenantId), rule]);
     void this.persistence?.saveAux({ id: rule.id, tenantId, domain: 'quality-rule', payload: rule as unknown as Record<string, unknown>, createdAt: rule.createdAt, updatedAt: rule.createdAt });
+    this.auditService?.record(tenantId, actorId.trim() || 'system', { action: 'quality.rule_created', resource: 'quality_rule', resourceId: rule.id, after: rule as unknown as Record<string, unknown>, details: { key: rule.key } });
     return rule;
   }
 
   listIssues(tenantId: string): QualityIssue[] { return this.issues.get(tenantId) ?? []; }
-  createIssue(tenantId: string, dto: CreateQualityIssueDto): QualityIssue {
+  createIssue(tenantId: string, dto: CreateQualityIssueDto, actorId = 'system'): QualityIssue {
     this.findOne(tenantId, dto.qualityRecordId);
     const now = timestamp();
     const issue: QualityIssue = { id: createId('ncr'), tenantId, qualityRecordId: dto.qualityRecordId, code: dto.code.trim(), description: dto.description.trim(), status: 'open', capa: dto.capa?.trim() || null, createdAt: now, updatedAt: now };
     this.issues.set(tenantId, [...this.listIssues(tenantId), issue]);
     void this.persistence?.saveAux({ id: issue.id, tenantId, domain: 'quality-issue', payload: issue as unknown as Record<string, unknown>, createdAt: issue.createdAt, updatedAt: issue.updatedAt });
+    this.auditService?.record(tenantId, actorId.trim() || 'system', { action: 'quality.issue_created', resource: 'quality_issue', resourceId: issue.id, after: issue as unknown as Record<string, unknown>, details: { qualityRecordId: issue.qualityRecordId, code: issue.code } });
     return issue;
   }
-  updateIssue(tenantId: string, id: string, dto: UpdateQualityIssueDto): QualityIssue {
+  updateIssue(tenantId: string, id: string, dto: UpdateQualityIssueDto, actorId = 'system'): QualityIssue {
     const current = this.listIssues(tenantId).find((issue) => issue.id === id);
     if (!current) throw new NotFoundException(`Quality issue ${id} not found`);
     if (current.status === 'closed') throw new ConflictException('Closed quality issues cannot be edited');
@@ -59,6 +61,7 @@ export class QualityService implements OnModuleInit {
     const updated = { ...current, status: dto.status, capa: dto.capa?.trim() || current.capa, updatedAt: timestamp() };
     this.issues.set(tenantId, this.listIssues(tenantId).map((issue) => issue.id === id ? updated : issue));
     void this.persistence?.saveAux({ id: updated.id, tenantId, domain: 'quality-issue', payload: updated as unknown as Record<string, unknown>, createdAt: updated.createdAt, updatedAt: updated.updatedAt });
+    this.auditService?.record(tenantId, actorId.trim() || 'system', { action: 'quality.issue_updated', resource: 'quality_issue', resourceId: updated.id, before: current as unknown as Record<string, unknown>, after: updated as unknown as Record<string, unknown>, details: { status: updated.status } });
     return updated;
   }
 
@@ -84,10 +87,11 @@ export class QualityService implements OnModuleInit {
     this.validateRule(record);
     this.records.set(tenantId, [...(this.records.get(tenantId) ?? []), record]);
     void this.persistence?.saveQuality(record);
+    this.auditService?.record(tenantId, record.operatorId, { action: 'quality.record_created', resource: 'quality_record', resourceId: record.id, after: record as unknown as Record<string, unknown>, traceId: record.traceId, details: { formKey: record.formKey, inspectionType: record.inspectionType } });
     return record;
   }
 
-  updateDraft(tenantId: string, id: string, dto: UpdateQualityDraftDto): QualityRecord {
+  updateDraft(tenantId: string, id: string, dto: UpdateQualityDraftDto, actorId = 'system'): QualityRecord {
     const current = this.findOne(tenantId, id);
     if (current.status !== 'draft') throw new ConflictException('Only draft quality records can be edited');
     const now = timestamp();
@@ -102,7 +106,9 @@ export class QualityService implements OnModuleInit {
       trace: [...current.trace, { type: 'draft_updated' as const, at: now, actorId: current.operatorId, traceId: createId('trace') }],
     };
     this.validateReferences(tenantId, updated, false);
-    return this.replace(updated);
+    const result = this.replace(updated);
+    this.auditService?.record(tenantId, actorId.trim() || 'system', { action: 'quality.draft_updated', resource: 'quality_record', resourceId: result.id, before: { status: current.status, values: current.values, batchNo: current.batchNo }, after: { status: result.status, values: result.values, batchNo: result.batchNo }, traceId: result.trace.at(-1)?.traceId });
+    return result;
   }
 
   submit(tenantId: string, id: string, dto: QualityTransitionDto): QualityRecord {

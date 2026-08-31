@@ -40,6 +40,18 @@ test("MTConnect rejects a synthetic document with inconsistent production counts
   }
 });
 
+test("MTConnect rejects control methods at its read-only HTTP boundary", async () => {
+  const server = new MtConnectTelemetrySimulator(identity, values, "127.0.0.1", 16016);
+  await server.start();
+  try {
+    const response = await requestMethod("POST", "127.0.0.1", 16016, "/current");
+    assert.equal(response.statusCode, 405);
+    assert.equal(response.headers.allow, "GET");
+  } finally {
+    await server.close();
+  }
+});
+
 test("ProtocolRunner exposes MTConnect as a canonical contract entry", async () => {
   const message = await new ProtocolRunner({ protocol: "mtconnect", host: "127.0.0.1", port: 16007, values: {
     tenantId: "tenant-runner", lineId: "line-cnc", deviceId: "cnc-runner", timestamp: identity.timestamp,
@@ -93,6 +105,17 @@ function read(host: string, port: number, path: string): Promise<string> {
       const chunks: Buffer[] = [];
       response.on("data", (chunk: Buffer) => chunks.push(chunk));
       response.once("end", () => response.statusCode === 200 ? resolve(Buffer.concat(chunks).toString()) : reject(new Error(`HTTP ${response.statusCode}`)));
+    });
+    client.once("error", reject);
+    client.end();
+  });
+}
+
+function requestMethod(method: string, host: string, port: number, path: string): Promise<{ statusCode: number; headers: Record<string, string | string[] | undefined> }> {
+  return new Promise((resolve, reject) => {
+    const client = request({ method, host, port, path }, (response) => {
+      response.resume();
+      response.once("end", () => resolve({ statusCode: response.statusCode ?? 0, headers: response.headers }));
     });
     client.once("error", reject);
     client.end();

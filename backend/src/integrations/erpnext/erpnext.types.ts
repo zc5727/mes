@@ -4,6 +4,8 @@ export interface ErpNextConfig {
   apiKey?: string;
   apiSecret?: string;
   timeoutMs: number;
+  /** Maps each MES tenant to the ERPNext company used for scoped queries. */
+  tenantMapping: Record<string, string>;
 }
 
 export type ErpNextIntegrationStatus = 'disabled' | 'healthy' | 'unhealthy';

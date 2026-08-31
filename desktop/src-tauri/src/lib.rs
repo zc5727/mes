@@ -43,11 +43,15 @@ fn repo_root(app: &App) -> Option<PathBuf> {
 fn show_startup_error(message: &str) {
     #[cfg(target_os = "macos")]
     {
-        let script = format!(
-            "display dialog \"MES 演示启动失败：{}\" buttons {{\"知道了\"}} default button \"知道了\" with icon stop",
-            message
-        );
-        let _ = Command::new("/usr/bin/osascript").args(["-e", &script]).status();
+        // Pass the message as an argv value instead of interpolating it into
+        // AppleScript; paths and service errors may contain quotes/newlines.
+        let script = r#"on run argv
+  set failureMessage to item 1 of argv
+  display dialog ("MES 演示启动失败：" & failureMessage) buttons {"知道了"} default button "知道了" with icon stop
+end run"#;
+        let _ = Command::new("/usr/bin/osascript")
+            .args(["-e", script, "--", message])
+            .status();
     }
     eprintln!("MES desktop startup failed: {message}");
 }

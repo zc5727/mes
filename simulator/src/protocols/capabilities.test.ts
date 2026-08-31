@@ -6,6 +6,7 @@ test("protocol capability registry is explicit and fail-closed", () => {
   assert.equal(getProtocolCapability("MQTT").status, "IMPLEMENTED");
   assert.deepEqual(getProtocolCapability("http"), {
     status: "SYNTHETIC_CONTRACT", read: true, write: false, subscribe: false,
+    security: { tls: "NOT_IMPLEMENTED", authentication: "NONE_OR_BEARER", certificates: "NOT_IMPLEMENTED", permissions: "TELEMETRY_INGEST_ONLY" },
     notes: "Strict local POST /events ingest; no control writes, HTTPS or vendor compatibility.",
   });
   assert.equal(getProtocolCapability("websocket").status, "NOT_IMPLEMENTED");
@@ -19,4 +20,20 @@ test("synthetic protocol contracts are read-only", () => {
     assert.equal(capability.status, "SYNTHETIC_CONTRACT");
     assert.equal(capability.write, false);
   }
+});
+
+test("declares TLS, authentication, certificate and permission boundaries for every transport", () => {
+  const mqtt = getProtocolCapability("mqtt");
+  assert.deepEqual(mqtt.security, {
+    tls: "URL_SCHEME_SUPPORTED", authentication: "URL_CREDENTIALS_SUPPORTED", certificates: "NOT_EXPOSED", permissions: "BROKER_DEFINED",
+  });
+  assert.deepEqual(getProtocolCapability("modbus-tcp").security, {
+    tls: "NOT_APPLICABLE", authentication: "NOT_IMPLEMENTED", certificates: "NOT_APPLICABLE", permissions: "READ_ONLY",
+  });
+  assert.deepEqual(getProtocolCapability("opc-ua").security, {
+    tls: "NOT_IMPLEMENTED", authentication: "ANONYMOUS_ONLY", certificates: "NOT_IMPLEMENTED", permissions: "READ_ONLY",
+  });
+  assert.deepEqual(getProtocolCapability("mtconnect").security, {
+    tls: "NOT_IMPLEMENTED", authentication: "NOT_IMPLEMENTED", certificates: "NOT_IMPLEMENTED", permissions: "READ_ONLY",
+  });
 });

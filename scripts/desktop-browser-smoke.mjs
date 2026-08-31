@@ -36,8 +36,14 @@ if (process.exitCode) process.exit();
 
 const run = (command, args) => spawnSync(command, args, { encoding: 'utf8', stdio: 'pipe' });
 const processCount = () => {
-  const result = run('pgrep', ['-f', binaryPath]);
-  return result.status === 0 ? result.stdout.trim().split('\n').filter(Boolean).length : 0;
+  const result = run('ps', ['-axo', 'pid=,command=']);
+  if (result.status !== 0) return 0;
+  return result.stdout.split('\n').reduce((count, line) => {
+    const match = line.trim().match(/^(\d+)\s+(.*)$/);
+    return match && Number(match[1]) !== process.pid && match[2].includes(binaryPath)
+      ? count + 1
+      : count;
+  }, 0);
 };
 const waitFor = (predicate, timeoutMs = 20_000) => {
   const deadline = Date.now() + timeoutMs;
@@ -60,15 +66,19 @@ if (!waitFor(() => processCount() > 0)) {
 }
 pass('packaged app process started');
 
-const windowCheck = run('osascript', ['-e', `tell application "System Events"
+const readWindowSize = () => run('osascript', ['-e', `tell application "System Events"
   tell process "mes-desktop"
     if (count of windows) = 0 then error "没有可见窗口"
     set windowSize to size of window 1
     return (item 1 of windowSize as text) & "x" & (item 2 of windowSize as text)
   end tell
 end tell`]);
-if (windowCheck.status !== 0) blocked(`窗口不可见或缺少辅助功能权限：${windowCheck.stderr.trim()}`);
-else pass(`window visible (${windowCheck.stdout.trim()})`);
+if (!waitFor(() => readWindowSize().status === 0)) {
+  const windowCheck = readWindowSize();
+  blocked(`窗口不可见或缺少辅助功能权限：${windowCheck.stderr.trim()}`);
+} else {
+  pass(`window visible (${readWindowSize().stdout.trim()})`);
+}
 
 const before = processCount();
 const secondLaunch = run('open', ['-a', appPath]);

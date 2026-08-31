@@ -16,6 +16,8 @@ export interface FoundationAuxRecord { id: string; tenantId: string; domain: str
 @Injectable()
 export class FoundationPersistenceService {
   private readonly logger = new Logger(FoundationPersistenceService.name);
+  private writeChain: Promise<void> = Promise.resolve();
+  private pendingError?: Error;
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -86,6 +88,22 @@ export class FoundationPersistenceService {
     }
   }
 
+  /** Flush queued domain writes before an HTTP response is committed. */
+  async flush(): Promise<void> {
+    const chain = this.writeChain;
+    await chain;
+    if (chain !== this.writeChain) {
+      await this.flush();
+      return;
+    }
+
+    const error = this.pendingError;
+    this.pendingError = undefined;
+    if (!error) return;
+    this.failIfRequired('flush foundation persistence', error);
+    this.logger.error(`foundation persistence failed; memory projection remains active: ${error.message}`);
+  }
+
   async saveAux(item: FoundationAuxRecord): Promise<void> {
     await this.write('foundation auxiliary record', () => this.prisma.foundationAuxRecord.upsert({
       where: { id: item.id },
@@ -126,17 +144,17 @@ export class FoundationPersistenceService {
   }
 
   private async write(label: string, operation: () => Promise<unknown>): Promise<void> {
-    await this.prisma.ensureConnection();
-    if (!this.prisma.isReady()) {
-      this.failIfRequired(`persist ${label}`);
-      return;
-    }
-    try {
+    this.writeChain = this.writeChain.then(async () => {
+      await this.prisma.ensureConnection();
+      if (!this.prisma.isReady()) {
+        this.failIfRequired(`persist ${label}`);
+        return;
+      }
       await operation();
-    } catch (error: unknown) {
-      this.failure(`persist ${label}`, error);
-      this.failIfRequired(`persist ${label}`, error);
-    }
+    }).catch((error: unknown) => {
+      const normalized = error instanceof Error ? error : new Error(String(error));
+      this.pendingError ??= normalized;
+    });
   }
 
   private failIfRequired(operation: string, error?: unknown): void {

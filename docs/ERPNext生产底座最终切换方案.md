@@ -50,9 +50,10 @@ ERPNext                        ThingsBoard / Gateway
 
 1. ERPNext 为订单、工单、工序、报工、质量和批次的唯一写入主责。
 2. NestJS 通过 REST/Webhook 建立 `erpnextId ↔ mesId` 映射，不跨库写入。
-3. Webhook 事件使用 `messageId`、`traceId` 和 `occurredAt` 做幂等与乱序保护。
-4. 同步失败进入可重试队列并记录失败原因，禁止静默丢弃。
-5. 对账任务按订单、工单、数量、状态、批次和质量结果生成差异清单。
+3. 每个 MES 租户必须显式映射到 ERPNext `company`；查询使用公司过滤，报工固定写入映射公司，缺失映射时 fail-closed。
+4. Webhook 事件使用 `messageId`、`traceId` 和 `occurredAt` 做幂等与乱序保护。
+5. 同步失败进入可重试队列并记录失败原因，禁止静默丢弃。
+6. 对账任务按订单、工单、数量、状态、批次和质量结果生成差异清单。
 
 ### 3.2 设备数据
 

@@ -3,6 +3,8 @@ import { BadRequestException } from '@nestjs/common';
 import { AlarmDeduplicator } from '../src/mqtt/alarm-deduplicator';
 import { DeviceTelemetryCache } from '../src/mqtt/device-cache';
 import { MqttIngestionService } from '../src/mqtt/mqtt-ingestion.service';
+import { DeviceConnectionsService } from '../src/device-connections/device-connections.service';
+import { DeviceProfilesService } from '../src/device-profiles/device-profiles.service';
 import { parseSimulatorMessage } from '../src/mqtt/mqtt-parser';
 import { MqttClientLike, MqttConnectOptions, SimulatorAlarm } from '../src/mqtt/mqtt.types';
 
@@ -198,6 +200,34 @@ describe('simulator MQTT ingestion', () => {
       deviceId: 'cnc-01', lineId: 'line-cnc', eventType: 'telemetry',
       eventTime: '2026-08-28T09:05:00.000Z', traceId: 'trace-1', payload: {}, status: 'RUNNING',
     })).toMatchObject({ accepted: false, duplicate: true });
+  });
+
+  it('binds HTTP telemetry to a running tenant-scoped connection and updates its heartbeat', async () => {
+    const client = new FakeMqttClient();
+    const probe = { probe: jest.fn().mockResolvedValue({ ok: true, latencyMs: 1 }) };
+    const connections = new DeviceConnectionsService(probe, new DeviceProfilesService());
+    const connection = await connections.create('demo-tenant', {
+      deviceId: 'cnc-01', name: '边缘 HTTP 网关', type: 'webhook', endpoint: 'http://localhost:3100/events',
+    });
+    await connections.start('demo-tenant', connection.id);
+    const service = new MqttIngestionService(
+      jest.fn(() => client),
+      { url: 'mqtt://broker', enabled: false },
+      new DeviceTelemetryCache(),
+      new AlarmDeduplicator(),
+      undefined,
+      undefined,
+      connections,
+    );
+
+    expect(service.ingestHttpEvent('demo-tenant', {
+      connectionId: connection.id, deviceId: 'cnc-01', lineId: 'line-cnc', eventType: 'telemetry',
+      eventTime: '2026-08-28T09:05:00.000Z', payload: { temp: 45 }, status: 'RUNNING',
+    })).toEqual(expect.objectContaining({ accepted: true, duplicate: false }));
+    expect(connections.findOne('demo-tenant', connection.id)).toEqual(expect.objectContaining({
+      status: 'running', lastHeartbeatAt: expect.any(String), lastEventAt: expect.any(String),
+    }));
+    expect(connections.listEvents('demo-tenant', connection.id)).toHaveLength(1);
   });
 
   it('distinguishes stale HTTP replays from duplicate events and validates service input', () => {

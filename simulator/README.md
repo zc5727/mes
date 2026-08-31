@@ -236,6 +236,8 @@ SIMULATOR_PROTOCOL_PORT=15000 npm run dev -- --protocol mtconnect
 
 `src/protocols/event-adapter.ts` 提供无网络副作用的统一事件适配器，将 MQTT 和 HTTP 事件，以及 Modbus TCP 寄存器帧、OPC UA 节点值帧、MTConnect XML 帧，规范化为同一份 `device.telemetry` 数据契约。它只产生遥测事件，不接受设备控制命令。
 
+HTTP 另提供严格的 synthetic `POST /events` 入口（`src/protocols/http.ts`）：仅接受 `application/json` 的 `device.telemetry`，可选 Bearer 鉴权，拒绝控制事件、错误方法、超大请求体和未实现的 HTTPS/TLS。它不是厂商 HTTP 设备接口。
+
 协议适配契约测试：
 
 ```bash
@@ -251,12 +253,21 @@ npm run build && node --test dist/protocols/event-adapter.test.js
 - Modbus TCP server/client：实现 FC03 holding-register telemetry 读取，非法功能码返回异常帧；MBAP 协议标识、事务、unit、功能码、字节数或寄存器数不匹配时失败关闭，客户端连接失败明确报错，可在 server 重启后重新读取。
 - OPC UA server/client：创建固定节点并读取 status、温度、节拍、产量和质量计数；只读，不实现设备控制。
 - MTConnect server/client：提供 `/probe`、`/current`、`/sample`，使用 `sim-*` 数据项 ID，并输出 canonical telemetry。
+- 安全边界：MQTT 可使用 `mqtts://` 和 URL credentials，但当前 CLI 不暴露自定义证书文件；OPC UA 仅 `None/anonymous`；HTTP、Modbus TCP、MTConnect 不实现 TLS/证书登录。详见 `docs/仿真器协议能力边界与验收.md`。
+- 完整 TLS、认证、权限和证书配置矩阵见 `docs/仿真器协议安全与证书配置.md`。
 - 三者都复用 `event-adapter.ts`，输出 `mes/modbus/.../telemetry`、`mes/opcua/.../telemetry` 或 `mes/mtconnect/.../telemetry` 的 `device.telemetry` canonical MQTT 消息。
 
 运行协议 server/client、坏帧和断线测试：
 
 ```bash
 npm run protocols:smoke
+```
+
+统一协议契约与安全矩阵测试：
+
+```bash
+npm run build
+node --test dist/protocols/protocol-matrix.test.js dist/protocols/capabilities.test.js
 ```
 
 该测试只监听 `127.0.0.1:16002`、`16003`、`16004`、`16005`、`16011`、`16012`、`16013`、`16014` 和 `4842`，不连接真实设备；端口测试按单并发执行，避免协议 endpoint 互相抢占。

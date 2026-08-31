@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { AlarmDeduplicator } from './alarm-deduplicator';
 import { MqttStatePersistenceService } from '../database/mqtt-state-persistence.service';
 import { DeviceTelemetryCache } from './device-cache';
@@ -7,6 +7,7 @@ import { parseSimulatorMessage } from './mqtt-parser';
 import { IngestDeviceEventDto } from './dto/ingest-device-event.dto';
 import { mapGatewayPoints } from './point-mapping';
 import { DevicesService } from '../devices/devices.service';
+import { DeviceConnectionsService } from '../device-connections/device-connections.service';
 import {
   DEFAULT_ALARMS_TOPIC,
   DEFAULT_TELEMETRY_TOPIC,
@@ -42,6 +43,7 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     private readonly alarmDeduplicator: AlarmDeduplicator = new AlarmDeduplicator(),
     @Optional() private readonly persistence?: MqttStatePersistenceService,
     @Optional() private readonly devicesService?: DevicesService,
+    @Optional() private readonly connectionsService?: DeviceConnectionsService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -188,6 +190,7 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     if (telemetry.goodCount + telemetry.defectCount > telemetry.totalCount) {
       throw new BadRequestException('goodCount + defectCount cannot exceed totalCount');
     }
+    this.recordHttpConnectionEvent(tenantId, event.connectionId, eventId, telemetry);
     const result = this.deviceCache.upsert(tenantId, telemetry, 'http://gateway/device-events');
     if (result.accepted) {
       this.projectDeviceTelemetry(tenantId, telemetry);
@@ -395,6 +398,40 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
       status,
       statusReason: telemetry.activeFaults.join(', '),
     });
+  }
+
+  private recordHttpConnectionEvent(
+    tenantId: string,
+    connectionId: string | undefined,
+    eventId: string,
+    telemetry: SimulatorTelemetry,
+  ): void {
+    if (!connectionId) return;
+    if (!this.connectionsService) {
+      throw new ServiceUnavailableException('HTTP connection registry is unavailable');
+    }
+    const connection = this.connectionsService.findOne(tenantId, connectionId);
+    if (connection.type !== 'http' && connection.type !== 'webhook') {
+      throw new BadRequestException('connectionId must reference an HTTP or webhook connection');
+    }
+    if (connection.status !== 'running') {
+      throw new ConflictException('HTTP device connection must be running before receiving events');
+    }
+    if (!this.sameDevice(connection.deviceId, telemetry.deviceId)) {
+      throw new BadRequestException('HTTP event deviceId does not match the managed connection');
+    }
+    this.connectionsService.ingestEvent(tenantId, connectionId, {
+      eventId,
+      type: 'telemetry',
+      occurredAt: telemetry.timestamp,
+      payload: { ...telemetry },
+    });
+  }
+
+  private sameDevice(configuredId: string, sourceId: string): boolean {
+    return configuredId === sourceId
+      || configuredId === `device-${sourceId}`
+      || sourceId === `device-${configuredId}`;
   }
 
   private requiredText(value: string, field: string): string {

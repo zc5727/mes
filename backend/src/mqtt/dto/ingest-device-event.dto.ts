@@ -8,6 +8,12 @@ export class IngestDeviceEventDto {
   @MaxLength(160)
   eventId?: string;
 
+  /** Optional tenant-scoped HTTP/webhook connection managed by MES. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  connectionId?: string;
+
   @IsString()
   @MinLength(2)
   @MaxLength(40)

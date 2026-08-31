@@ -180,4 +180,93 @@ describe('strategy governance boundary (e2e)', () => {
       delete process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT;
     }
   });
+
+  it('connects Agent read-only tools to governed strategy results', async () => {
+    const server = app.getHttpServer();
+    const simulated = await request(server).post('/api/v1/strategies/simulate')
+      .set(identity('supervisor', 'LINE-01,LINE-02')).send(snapshot).expect(200);
+    const simulationId = simulated.body.data.simulationId;
+    const authorization = {
+      userId: 'viewer-agent', role: 'viewer', factoryId: 'factory-demo',
+      scope: 'LINE-01,LINE-02', sessionId: 'session-agent',
+    };
+    const agentHeaders = {
+      ...identity('viewer', 'LINE-01,LINE-02'),
+      'x-user-id': 'viewer-agent',
+      'x-session-id': 'session-agent',
+      'x-trace-id': 'trace-agent-result',
+    };
+
+    const result = await request(server).post('/api/v1/agent-api/tools/execute')
+      .set(agentHeaders).send({
+        tool: 'get_strategy_result', arguments: { simulationId }, tenantId: 'tenant-demo',
+        traceId: 'trace-agent-result', authorization,
+      }).expect(201);
+    expect(result.body.ok).toBe(true);
+    expect(result.body.data.simulationId).toBe(simulationId);
+    expect(result.body.meta).toEqual(expect.objectContaining({
+      source: 'strategy-governance', permissionDecision: 'granted', requiresApproval: true,
+    }));
+    expect(result.body.audit).toEqual(expect.objectContaining({
+      tenantId: 'tenant-demo', sessionId: 'session-agent', traceId: 'trace-agent-result',
+    }));
+
+    const approvals = await request(server).post('/api/v1/agent-api/tools/execute')
+      .set({ ...agentHeaders, 'x-trace-id': 'trace-agent-approval' }).send({
+        tool: 'get_strategy_approval_status', arguments: { simulationId }, tenantId: 'tenant-demo',
+        traceId: 'trace-agent-approval', authorization,
+      }).expect(201);
+    expect(approvals.body.ok).toBe(true);
+    expect(approvals.body.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ status: 'pending' }),
+    ]));
+
+    const history = await request(server).post('/api/v1/agent-api/tools/execute')
+      .set({ ...agentHeaders, 'x-trace-id': 'trace-agent-history' }).send({
+        tool: 'get_strategy_history', arguments: {}, tenantId: 'tenant-demo',
+        traceId: 'trace-agent-history', authorization,
+      }).expect(201);
+    expect(history.body.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ simulationId }),
+    ]));
+
+    const audit = await request(server).post('/api/v1/agent-api/tools/execute')
+      .set({ ...agentHeaders, 'x-trace-id': 'trace-agent-audit' }).send({
+        tool: 'get_audit_logs', arguments: { action: 'STRATEGY_SIMULATE', token: 'do-not-store' }, tenantId: 'tenant-demo',
+        traceId: 'trace-agent-audit', authorization,
+      }).expect(201);
+    expect(audit.body.ok).toBe(true);
+    expect(audit.body.meta).toEqual(expect.objectContaining({ source: 'audit', permissionDecision: 'granted' }));
+    expect(audit.body.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ traceId: expect.any(String), action: 'STRATEGY_SIMULATE' }),
+    ]));
+    expect(audit.body.audit.arguments).toEqual(expect.objectContaining({ token: '[REDACTED]' }));
+
+    const outOfScope = await request(server).post('/api/v1/agent-api/tools/execute')
+      .set({ ...agentHeaders, 'x-trace-id': 'trace-agent-scope' }).send({
+        tool: 'get_line_status', arguments: { lineId: 'LINE-03' }, tenantId: 'tenant-demo',
+        traceId: 'trace-agent-scope', authorization,
+      }).expect(201);
+    expect(outOfScope.body).toEqual(expect.objectContaining({
+      ok: false, error: expect.objectContaining({ code: 'AUTHORIZATION_DENIED' }),
+    }));
+
+    const control = await request(server).post('/api/v1/agent-api/tools/execute')
+      .set(agentHeaders).send({
+        tool: 'stop_line', arguments: { lineId: 'LINE-01' }, tenantId: 'tenant-demo',
+        traceId: 'trace-agent-control', authorization,
+      }).expect(400);
+    expect(control.body.message).toEqual(expect.arrayContaining([
+      expect.stringContaining('tool must be one of the following values'),
+    ]));
+
+    const otherTenant = await request(server).post('/api/v1/agent-api/tools/execute')
+      .set({ ...agentHeaders, 'x-tenant-id': 'tenant-other' }).send({
+        tool: 'get_strategy_result', arguments: { simulationId }, tenantId: 'tenant-other',
+        traceId: 'trace-agent-other-tenant', authorization,
+      }).expect(201);
+    expect(otherTenant.body).toEqual(expect.objectContaining({
+      ok: false, error: expect.objectContaining({ code: 'NOT_FOUND' }),
+    }));
+  });
 });

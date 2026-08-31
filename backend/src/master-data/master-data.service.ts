@@ -3,6 +3,7 @@ import { createId, timestamp } from '../common/mock.types';
 import { InventoryPersistenceService } from '../database/inventory-persistence.service';
 import { FoundationPersistenceService } from '../database/foundation-persistence.service';
 import { BatchInventoryMovementDto, CreateBatchInventoryDto, CreateBomDto, CreateCalendarDto, CreateOperationDto, CreateProcessDto, CreateProductDto, CreateRoutingDto, CreateShiftDto } from './dto/master-data.dto';
+import { AuditService } from '../audit/audit.service';
 
 export interface MasterDataRecord { id: string; tenantId: string; code: string; name: string; type: 'product' | 'process' | 'shift' | 'calendar' | 'operation' | 'bom' | 'routing'; data: Record<string, unknown>; createdAt: string; updatedAt: string; }
 export interface BatchInventory { id: string; tenantId: string; materialCode: string; batchNo: string; quantity: number; unit: string | null; updatedAt: string; }
@@ -12,7 +13,7 @@ export class MasterDataService implements OnModuleInit {
   private readonly records = new Map<string, MasterDataRecord[]>();
   private readonly batches = new Map<string, BatchInventory>();
 
-  constructor(@Optional() private readonly inventoryPersistence?: InventoryPersistenceService, @Optional() private readonly foundationPersistence?: FoundationPersistenceService) {}
+  constructor(@Optional() private readonly inventoryPersistence?: InventoryPersistenceService, @Optional() private readonly foundationPersistence?: FoundationPersistenceService, @Optional() private readonly audit?: AuditService) {}
 
   async onModuleInit(): Promise<void> {
     if (this.inventoryPersistence?.isEnabled?.()) this.batches.clear();
@@ -31,7 +32,7 @@ export class MasterDataService implements OnModuleInit {
 
   list(tenantId: string, type: MasterDataRecord['type']): MasterDataRecord[] { return (this.records.get(tenantId) ?? []).filter((record) => record.type === type); }
   findOne(tenantId: string, type: MasterDataRecord['type'], id: string): MasterDataRecord { const record = this.list(tenantId, type).find((item) => item.id === id); if (!record) throw new NotFoundException(`${type} ${id} not found`); return record; }
-  create(tenantId: string, type: MasterDataRecord['type'], dto: CreateProductDto | CreateProcessDto | CreateShiftDto | CreateCalendarDto | CreateOperationDto | CreateBomDto | CreateRoutingDto): MasterDataRecord {
+  create(tenantId: string, type: MasterDataRecord['type'], dto: CreateProductDto | CreateProcessDto | CreateShiftDto | CreateCalendarDto | CreateOperationDto | CreateBomDto | CreateRoutingDto, actorId = 'system'): MasterDataRecord {
     if (this.list(tenantId, type).some((record) => record.code === dto.code)) throw new ConflictException(`${type} code ${dto.code} already exists`);
     if (type === 'bom' || type === 'routing') {
       const operationCodes = 'operationCodes' in dto ? dto.operationCodes ?? [] : [];
@@ -50,15 +51,17 @@ export class MasterDataService implements OnModuleInit {
     const now = timestamp(); const record: MasterDataRecord = { id: createId(type), tenantId, code: dto.code.trim(), name: dto.name.trim(), type, data: { ...dto }, createdAt: now, updatedAt: now };
     this.records.set(tenantId, [...(this.records.get(tenantId) ?? []), record]);
     void this.foundationPersistence?.saveAux({ id: record.id, tenantId, domain: `master-data:${type}`, payload: record as unknown as Record<string, unknown>, createdAt: record.createdAt, updatedAt: record.updatedAt });
+    this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'master_data.created', resource: type, resourceId: record.id, after: record as unknown as Record<string, unknown>, details: { code: record.code } });
     return record;
   }
 
-  createBatch(tenantId: string, dto: CreateBatchInventoryDto): BatchInventory {
+  createBatch(tenantId: string, dto: CreateBatchInventoryDto, actorId = 'system'): BatchInventory {
     const key = `${tenantId}:${dto.materialCode.trim()}:${dto.batchNo.trim()}`;
     if (this.batches.has(key)) throw new ConflictException(`Batch ${dto.batchNo} already exists`);
     const batch: BatchInventory = { id: createId('batch'), tenantId, materialCode: dto.materialCode.trim(), batchNo: dto.batchNo.trim(), quantity: dto.quantity, unit: dto.unit?.trim() || null, updatedAt: timestamp() };
     this.batches.set(key, batch);
     void this.inventoryPersistence?.save(batch);
+    this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'master_data.batch_created', resource: 'batch_inventory', resourceId: batch.id, after: batch as unknown as Record<string, unknown>, details: { materialCode: batch.materialCode, batchNo: batch.batchNo } });
     return batch;
   }
   listBatches(tenantId: string): BatchInventory[] { return [...this.batches.values()].filter((batch) => batch.tenantId === tenantId); }
@@ -71,7 +74,7 @@ export class MasterDataService implements OnModuleInit {
     void this.inventoryPersistence?.save(updated);
     return updated;
   }
-  consumeBatches(tenantId: string, consumptions: Array<{ materialCode: string; batchNo: string; quantity: number }>, idempotencyKey?: string): void {
+  consumeBatches(tenantId: string, consumptions: Array<{ materialCode: string; batchNo: string; quantity: number }>, idempotencyKey?: string, actorId = 'system'): void {
     const operationKey = idempotencyKey?.trim() ? `${tenantId}:${idempotencyKey.trim()}` : undefined;
     if (operationKey && this.batchConsumptionKeys.has(operationKey)) return;
     const resolved = consumptions.map((item) => {
@@ -89,8 +92,9 @@ export class MasterDataService implements OnModuleInit {
     if (this.inventoryPersistence?.saveMany) void this.inventoryPersistence.saveMany(updatedBatches);
     else updatedBatches.forEach((batch) => void this.inventoryPersistence?.save(batch));
     if (operationKey) this.batchConsumptionKeys.add(operationKey);
+    this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'master_data.batch_consumed', resource: 'batch_inventory', traceId: idempotencyKey, details: { consumptions, idempotencyKey } });
   }
-  returnBatch(tenantId: string, dto: BatchInventoryMovementDto): BatchInventory {
+  returnBatch(tenantId: string, dto: BatchInventoryMovementDto, actorId = 'system'): BatchInventory {
     const operationKey = dto.idempotencyKey?.trim() ? `${tenantId}:${dto.idempotencyKey.trim()}` : undefined;
     if (operationKey && this.batchReturnKeys.has(operationKey)) return this.batches.get(this.batchKey(tenantId, dto.materialCode, dto.batchNo))!;
     const key = this.batchKey(tenantId, dto.materialCode, dto.batchNo);
@@ -99,6 +103,7 @@ export class MasterDataService implements OnModuleInit {
     const updated = { ...batch, quantity: batch.quantity + dto.quantity, updatedAt: timestamp() };
     this.batches.set(key, updated); void this.inventoryPersistence?.save(updated);
     if (operationKey) this.batchReturnKeys.add(operationKey);
+    this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'master_data.batch_returned', resource: 'batch_inventory', resourceId: updated.id, traceId: dto.idempotencyKey, before: batch as unknown as Record<string, unknown>, after: updated as unknown as Record<string, unknown>, details: { materialCode: updated.materialCode, batchNo: updated.batchNo, quantity: dto.quantity } });
     return updated;
   }
   validateOperation(tenantId: string, routingId: string | undefined, operationCode: string): void {

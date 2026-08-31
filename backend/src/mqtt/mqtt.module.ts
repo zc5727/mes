@@ -8,9 +8,10 @@ import { IngestionController } from './ingestion.controller';
 import { MQTT_CLIENT_FACTORY, MQTT_INGESTION_OPTIONS } from './mqtt.types';
 import { AuditModule } from '../audit/audit.module';
 import { DevicesModule } from '../devices/devices.module';
+import { DeviceConnectionsModule } from '../device-connections/device-connections.module';
 
 @Module({
-  imports: [AuditModule, DevicesModule],
+  imports: [AuditModule, DevicesModule, DeviceConnectionsModule],
   providers: [
     DeviceTelemetryCache,
     AlarmDeduplicator,

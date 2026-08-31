@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { createId, timestamp } from '../common/mock.types';
 import { DEVICE_CONNECTION_PROBE } from './device-connection.constants';
 import type { CreateDeviceConnectionDto, CreateUnifiedDeviceEventDto, UpdateDeviceConnectionDto } from './dto/device-connection.dto';
@@ -14,6 +14,7 @@ import { DeviceConnectionPersistenceService } from './device-connection-persiste
 
 @Injectable()
 export class DeviceConnectionsService implements OnModuleInit {
+  private readonly logger = new Logger(DeviceConnectionsService.name);
   private readonly connections = new Map<string, DeviceConnection[]>();
   private readonly events = new Map<string, UnifiedDeviceEvent[]>();
   private readonly statusEvents = new Map<string, DeviceConnectionStatusEvent[]>();
@@ -226,12 +227,31 @@ export class DeviceConnectionsService implements OnModuleInit {
     const existing = this.events.get(key) ?? [];
     const duplicate = existing.find((item) => item.eventId === event.eventId);
     if (duplicate) {
-      this.replace({ ...connection, lastEventAt: duplicate.receivedAt, lastHeartbeatAt: duplicate.receivedAt, updatedAt: duplicate.receivedAt });
+      const heartbeatAt = timestamp();
+      const updated = { ...connection, lastEventAt: heartbeatAt, lastHeartbeatAt: heartbeatAt, updatedAt: heartbeatAt };
+      this.replace(updated);
+      void this.persistEventHeartbeat(updated, heartbeatAt);
       return duplicate;
     }
     this.events.set(key, [...existing, event]);
-    this.replace({ ...connection, lastEventAt: receivedAt, lastHeartbeatAt: receivedAt, updatedAt: receivedAt });
+    const updated = { ...connection, lastEventAt: receivedAt, lastHeartbeatAt: receivedAt, updatedAt: receivedAt };
+    this.replace(updated);
+    void this.persistEventHeartbeat(updated, receivedAt);
     return event;
+  }
+
+  private async persistEventHeartbeat(connection: DeviceConnection, eventTime: string): Promise<void> {
+    if (!this.persistence) return;
+    try {
+      await this.persistence.save({ ...connection, lastEventAt: eventTime, lastHeartbeatAt: eventTime, updatedAt: eventTime });
+    } catch (error: unknown) {
+      // The in-memory event remains available; startup/readiness exposes a
+      // required PostgreSQL outage instead of turning a gateway packet into
+      // an unhandled promise rejection.
+      this.logger.error(
+        `Failed to persist HTTP connection heartbeat for ${connection.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   private replace(connection: DeviceConnection): DeviceConnection {
