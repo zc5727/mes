@@ -94,6 +94,7 @@ describe('strategy governance boundary (e2e)', () => {
       .set(headers).set('idempotency-key', 'governance-e2e-duplicate').send(snapshot).expect(200);
     expect(second.body.data.simulationId).toBe(first.body.data.simulationId);
     expect(second.body.audit.callId).toBe(first.body.audit.callId);
+    expect(first.body.audit.requestFingerprint).toEqual(expect.any(String));
     await request(server).post('/api/v1/strategies/simulate')
       .set(headers).set('idempotency-key', 'governance-e2e-duplicate')
       .send({ ...snapshot, timestamp: '2026-08-31T08:01:00.000Z' }).expect(409);

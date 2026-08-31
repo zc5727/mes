@@ -74,7 +74,7 @@ export class StrategiesController {
 
     const result = this.strategyEngine.simulate(snapshot);
     const requestedBy = context?.userId || userId?.trim() || 'api-user';
-    const audit = this.governance?.recordSimulation(tenantId, requestedBy, snapshot, result, context);
+    const audit = this.governance?.recordSimulation(tenantId, requestedBy, snapshot, result, context, normalizedIdempotencyKey);
     if (audit) {
       const response = { data: result, audit, traceId: audit.traceId };
       if (normalizedIdempotencyKey && this.governance) {

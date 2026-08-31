@@ -30,6 +30,8 @@ export interface StrategyCallRecord {
   role?: string;
   scope?: string[];
   sessionId?: string;
+  idempotencyKey?: string;
+  requestFingerprint?: string;
   lineIds: string[];
   candidateCount: number;
   recommendedAction: StrategyAction | null;
@@ -70,6 +72,12 @@ export class StrategyGovernanceService implements OnModuleInit {
     const runs = await this.persistence?.restore() ?? [];
     runs.forEach((run) => {
       this.simulations.set(this.key(run.tenantId, run.result.simulationId), { result: run.result, audit: run.audit });
+      if (run.audit.idempotencyKey && run.audit.requestFingerprint) {
+        this.idempotency.set(this.idempotencyKey(run.tenantId, run.audit.idempotencyKey), {
+          fingerprint: run.audit.requestFingerprint,
+          response: { data: run.result, audit: run.audit },
+        });
+      }
       this.auditService.restore(this.toAuditEntry(run.audit));
       run.approvals.forEach((approval) => this.auditService.restoreApproval(approval));
     });
@@ -81,8 +89,10 @@ export class StrategyGovernanceService implements OnModuleInit {
     snapshot: StrategySnapshot,
     result: StrategySimulationResult,
     context?: StrategyRequestContext,
+    idempotencyKey?: string,
   ): StrategyCallRecord {
     const lineIds = snapshot.lines.map((line) => line.id);
+    const requestFingerprint = idempotencyKey ? this.fingerprint(snapshot) : undefined;
     const auditEntry = this.auditService.record(tenantId, requestedBy, {
       action: 'STRATEGY_SIMULATE',
       resource: 'strategy-simulation',
@@ -131,6 +141,8 @@ export class StrategyGovernanceService implements OnModuleInit {
       role: context?.role,
       scope: context?.scope,
       sessionId: context?.sessionId,
+      idempotencyKey: idempotencyKey?.trim() || undefined,
+      requestFingerprint,
       lineIds,
       candidateCount: result.candidates.length,
       recommendedAction: result.recommended?.action ?? null,
