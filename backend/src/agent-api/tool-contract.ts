@@ -68,6 +68,8 @@ export interface AgentToolAudit {
   calledAt: string;
   requestedBy?: string;
   tenantId: string;
+  sessionId?: string;
+  traceId?: string;
   arguments: Record<string, unknown>;
 }
 

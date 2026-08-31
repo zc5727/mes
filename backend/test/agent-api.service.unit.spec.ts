@@ -53,10 +53,22 @@ describe('AgentApiService', () => {
     }));
     expect(response.audit).toEqual(expect.objectContaining({
       tenantId: 'tenant-demo',
+      traceId: 'trace-001',
       requestedBy: 'nanobot',
       arguments: {},
     }));
     expect((response.data as { lines: { total: number } }).lines.total).toBe(4);
+  });
+
+  it('redacts sensitive Agent arguments and records session context', () => {
+    const service = createService();
+    const response = service.execute({
+      tool: 'get_production_overview', arguments: { token: 'secret-value', nested: { password: 'hidden' } },
+      tenantId: 'tenant-demo', requestedBy: 'nanobot', traceId: 'trace-redact',
+      authorization: { userId: 'viewer', role: 'viewer', factoryId: 'factory-demo', scope: '*', sessionId: 'session-redact' },
+    });
+    expect(response.audit).toEqual(expect.objectContaining({ traceId: 'trace-redact', sessionId: 'session-redact' }));
+    expect(response.audit?.arguments).toEqual({ token: '[REDACTED]', nested: { password: '[REDACTED]' } });
   });
 
   it('returns structured errors without exposing exceptions', () => {

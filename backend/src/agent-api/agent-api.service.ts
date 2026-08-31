@@ -47,7 +47,7 @@ export class AgentApiService {
     const traceId = this.normalizeTraceId(request.traceId);
     const args = this.normalizeArguments(request.arguments);
     const tenantId = typeof request.tenantId === 'string' && request.tenantId.trim() ? request.tenantId.trim() : 'unknown';
-    const audit = this.audit(tenantId, request.requestedBy, args);
+    const audit = this.audit(tenantId, request.requestedBy, args, traceId, request.authorization?.sessionId);
 
     if (!isReadOnlyAgentTool(request.tool)) {
       this.recordToolAudit(tenantId, request.requestedBy, String(request.tool ?? ''), traceId, 'denied', 'UNKNOWN_TOOL');
@@ -276,8 +276,14 @@ export class AgentApiService {
     };
   }
 
-  private audit(tenantId: string, requestedBy: string | undefined, args: Record<string, unknown>): AgentToolAudit {
-    return { calledAt: new Date().toISOString(), requestedBy, tenantId, arguments: this.maskSensitive(args) };
+  private audit(
+    tenantId: string,
+    requestedBy: string | undefined,
+    args: Record<string, unknown>,
+    traceId: string,
+    sessionId?: string,
+  ): AgentToolAudit {
+    return { calledAt: new Date().toISOString(), requestedBy, tenantId, sessionId, traceId, arguments: this.maskSensitive(args) };
   }
 
   private maskSensitive(value: Record<string, unknown>): Record<string, unknown> {

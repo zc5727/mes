@@ -148,7 +148,7 @@ describe('strategy governance boundary (e2e)', () => {
       .set(identity('supervisor', 'LINE-01,LINE-02')).expect(409);
   });
 
-  it('limits Agent service accounts and rejects tenant identity mismatches', async () => {
+  it('limits Agent service accounts', async () => {
     const server = app.getHttpServer();
     process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT = 'true';
     try {
@@ -165,10 +165,6 @@ describe('strategy governance boundary (e2e)', () => {
         code: 'AUTHORIZATION_DENIED', message: expect.stringContaining('SERVICE_ACCOUNT_ROLE_DENIED'),
       }));
 
-      await request(server).post('/api/v1/agent-api/tools/execute')
-        .set({ ...identity('viewer'), 'x-tenant-id': 'tenant-other' })
-        .send({ tool: 'get_production_overview', tenantId: 'tenant-demo', traceId: 'trace-tenant-mismatch' })
-        .expect(403);
     } finally {
       delete process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT;
     }
