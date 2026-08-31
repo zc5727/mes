@@ -1,5 +1,5 @@
 import { parseCliArgs } from "./config";
-import { loadLineDefinitions } from "./config/line-config";
+import { loadSimulatorConfig } from "./config/line-config";
 import { ConsolePublisher, MqttPublisher, MessagePublisher } from "./mqtt/publisher";
 import { FactorySimulator } from "./simulator/factory-simulator";
 import { parseConsoleControlCommand, parseSimulatorControlCommand, parseTwinCommand } from "./twin/command";
@@ -21,17 +21,19 @@ async function createPublisher(mqttUrl?: string): Promise<MessagePublisher> {
 async function main(): Promise<void> {
   const options = parseCliArgs(process.argv.slice(2));
   if (options.protocol) {
-    await runProtocolSmoke(options.protocol, options.protocolHost ?? "127.0.0.1", options.protocolPort ?? (options.protocol === "opc-ua" ? 4841 : 1502), options.mqttUrl);
+    const defaultPort = options.protocol === "opc-ua" ? 4841 : options.protocol === "mtconnect" ? 5000 : 1502;
+    await runProtocolSmoke(options.protocol, options.protocolHost ?? "127.0.0.1", options.protocolPort ?? defaultPort, options.mqttUrl);
     return;
   }
   const publisher = await createPublisher(options.mqttUrl);
   const random = createSeededRandom(options.seed);
+  const simulatorConfig = loadSimulatorConfig(options.lineConfigPath);
   const simulator = new FactorySimulator(
     options.tenantId,
     options.intervalMs,
     random,
-    loadLineDefinitions(options.lineConfigPath),
-    undefined,
+    simulatorConfig.lines,
+    simulatorConfig.agvs,
     options.emitAgvTelemetry,
     options.network,
   );

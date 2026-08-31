@@ -8,7 +8,7 @@ export interface ProtocolTelemetrySource {
   close(): Promise<void>;
 }
 
-export type ProtocolKind = "modbus-tcp" | "opc-ua";
+export type ProtocolKind = "modbus-tcp" | "opc-ua" | "mtconnect";
 
 export interface ProtocolEndpointConfig {
   protocol: ProtocolKind;
@@ -20,7 +20,7 @@ export interface ProtocolEndpointConfig {
 
 /** Validate an endpoint before a simulator process opens a socket. */
 export function parseProtocolEndpoint(input: Partial<ProtocolEndpointConfig>): ProtocolEndpointConfig {
-  if (input.protocol !== "modbus-tcp" && input.protocol !== "opc-ua") throw new Error("protocol must be modbus-tcp or opc-ua");
+  if (input.protocol !== "modbus-tcp" && input.protocol !== "opc-ua" && input.protocol !== "mtconnect") throw new Error("protocol must be modbus-tcp, opc-ua or mtconnect");
   if (typeof input.host !== "string" || !input.host.trim()) throw new Error("protocol host is required");
   const port = input.port;
   if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error("protocol port must be an integer from 1 to 65535");
@@ -41,6 +41,7 @@ export interface DeterministicTelemetryValues {
   goodCount: number;
   defectCount: number;
   faultCode?: number;
+  profileId?: string;
 }
 
 const REGISTER_COUNT = 10;

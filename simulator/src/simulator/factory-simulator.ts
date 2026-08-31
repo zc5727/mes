@@ -10,6 +10,7 @@ import {
   ReplayDocument,
   ReplayFrame,
   ScenarioEvent,
+  ScenarioDocument,
   SimulationMessage,
   SimulatorControlCommand,
   SimulatorControlState,
@@ -127,6 +128,7 @@ export class FactorySimulator {
       tenantId: this.tenantId,
       intervalMs: this.intervalMs,
       timeScale: this.timeScale,
+      scenario: this.getScenario().events,
       frames: this.getReplayFrames(),
     };
     return JSON.stringify(replay, null, 2);
@@ -139,13 +141,32 @@ export class FactorySimulator {
   }
 
   public loadScenario(events: ScenarioEvent[]): void {
-    const sorted = events.map((event) => ({ ...event })).sort((left, right) => left.atSeconds - right.atSeconds);
+    const sorted = events.map((event) => ({ ...event, command: { ...event.command } })).sort((left, right) => left.atSeconds - right.atSeconds);
     sorted.forEach((event) => {
       if (!Number.isFinite(event.atSeconds) || event.atSeconds < 0) throw new Error("scenario atSeconds must be non-negative");
     });
     this.scenarioEvents = sorted;
     this.scenarioIndex = 0;
     this.scenarioElapsedSeconds = 0;
+  }
+
+  public getScenario(): ScenarioDocument {
+    return {
+      version: 1,
+      events: this.scenarioEvents.map((event) => ({ ...event, command: { ...event.command } })),
+    };
+  }
+
+  public exportScenario(): string {
+    return JSON.stringify(this.getScenario(), null, 2);
+  }
+
+  public loadScenarioDocument(document: ScenarioDocument | string): void {
+    const parsed: unknown = typeof document === "string" ? JSON.parse(document) : document;
+    if (!isRecord(parsed) || parsed.version !== 1 || !Array.isArray(parsed.events)) {
+      throw new Error("Scenario document must contain version 1 and an events array");
+    }
+    this.loadScenario(parsed.events as ScenarioEvent[]);
   }
 
   public clearScenario(): void {
@@ -489,4 +510,8 @@ function createSeededRandom(seed?: number): () => number {
 
 function cloneMessages(messages: SimulationMessage[]): SimulationMessage[] {
   return JSON.parse(JSON.stringify(messages)) as SimulationMessage[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

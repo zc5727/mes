@@ -29,7 +29,8 @@ describe('DashboardService', () => {
         plannedQty: 1200,
         completedQty: 780,
         completionRate: 65,
-        oee: null,
+        todayOutput: 780,
+        oee: 86.8,
         oeeAvailable: false,
       },
     });

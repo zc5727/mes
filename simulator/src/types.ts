@@ -45,6 +45,7 @@ export interface DeviceDefinition {
   name: string;
   kind: DeviceKind;
   cycleTimeSeconds: number;
+  profileId?: string;
 }
 
 export interface LineDefinition {
@@ -89,6 +90,7 @@ export interface DeviceState {
   goodCount: number;
   defectCount: number;
   activeFaults: FaultType[];
+  profileId?: string;
   lastUpdatedAt: string;
 }
 
@@ -126,6 +128,7 @@ export interface DeviceTelemetry {
   goodCount: number;
   defectCount: number;
   activeFaults: FaultType[];
+  profileId?: string;
   timestamp: string;
 }
 
@@ -155,6 +158,11 @@ export interface ScenarioEvent {
   command: SimulatorControlCommand;
 }
 
+export interface ScenarioDocument {
+  version: 1;
+  events: ScenarioEvent[];
+}
+
 export interface NetworkSimulationOptions {
   latencyMs?: number;
   duplicateRate?: number;
@@ -173,6 +181,7 @@ export interface ReplayDocument {
   tenantId: string;
   intervalMs: number;
   timeScale: number;
+  scenario?: ScenarioEvent[];
   frames: ReplayFrame[];
 }
 

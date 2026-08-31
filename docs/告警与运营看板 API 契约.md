@@ -1,0 +1,43 @@
+# 告警与运营看板 API 契约
+
+接口前缀为 `/api/v1`，租户由 `x-tenant-id` 传入。成功响应统一为：
+
+```json
+{ "data": {}, "tenantId": "tenant-demo" }
+```
+
+## 告警
+
+- `GET /alarms`
+- `GET /alarms/:id`
+- `PATCH /alarms/:id/acknowledge`
+- `PATCH /alarms/:id/close`
+
+`GET /alarms` 支持以下查询参数：
+
+- `deviceId`
+- `lineId`
+- `level=info|warning|critical`
+- `status=active|acknowledged|closed`
+
+未传 `status` 时返回当前未清除的告警（`active` 和 `acknowledged`）；清除记录通过 `status=closed` 或详情接口查询。设备状态告警和 MQTT 告警在 API 层按租户、产线、设备、级别、消息去重。确认和清除只更新告警生命周期读模型，不向设备、PLC 或模拟器发送控制命令。
+
+告警字段包含 `id`、`tenantId`、`source`、`sourceId`、`lineId`、`level`、`message`、`occurredAt`、`status`，以及状态变更后可用的 `acknowledgedAt`、`closedAt`。
+
+非法 `level` 或 `status` 返回 HTTP 400，并包含 `code`：`INVALID_ALARM_LEVEL` 或 `INVALID_ALARM_STATUS`。不存在的告警返回 HTTP 404；已清除告警再次确认返回 HTTP 409，错误码为 `ALARM_ALREADY_CLOSED`。
+
+## 运营看板
+
+- `GET /dashboard/overview`
+- `GET /dashboard/lines/:lineId`
+
+`overview` 保留 `lines`、`devices`、`alarms`、`workOrders` 等原有聚合字段，并提供：
+
+- `lineSummaries`：四条产线的实时状态、设备在线率、活动告警数、OEE、产量/进度、风险分数和最近告警时间；
+- `highestRiskLine`：当前风险最高产线；
+- `activeAlarmCount`、`recentAlarmAt`、`deviceOnlineRate`；
+- `productionMetrics.todayOutput`、`plannedQty`、`completedQty`、`remainingQty`、`completionRate` 和 `oee`。
+
+OEE 优先使用实时设备计数计算；没有计数遥测时返回产线目标 OEE，并通过 `oeeAvailable=false`、`oeeSource=target` 明确其来源。没有租户产线时 `oee` 为 `null`，不会借用其他租户数据。
+
+看板数据优先读取现有内存服务和 MQTT 缓存。产线详情不存在时返回 HTTP 404。看板接口为只读接口，不提供设备控制、PLC 控制或智能助手能力。

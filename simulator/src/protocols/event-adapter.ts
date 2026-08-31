@@ -12,6 +12,7 @@ export interface CanonicalDeviceEvent {
   goodCount: number;
   defectCount: number;
   activeFaults: FaultType[];
+  profileId?: string;
 }
 
 export interface ModbusTelemetryFrame {
@@ -43,7 +44,16 @@ export interface OpcUaTelemetryFrame {
     goodCount: number;
     defectCount: number;
     activeFaults?: FaultType[];
+    profileId?: string;
   };
+}
+
+export interface MtConnectTelemetryFrame {
+  tenantId: string;
+  lineId: string;
+  deviceId: string;
+  timestamp: string;
+  values: OpcUaTelemetryFrame["values"];
 }
 
 const MQTT_TELEMETRY_TOPIC = /^mes\/simulator\/([^/]+)\/lines\/([^/]+)\/devices\/([^/]+)\/telemetry$/;
@@ -102,6 +112,11 @@ export function adaptOpcUaTelemetry(frame: OpcUaTelemetryFrame): SimulationMessa
   return { topic: `mes/opcua/${frame.tenantId}/lines/${frame.lineId}/devices/${frame.deviceId}/telemetry`, payload: { event: "device.telemetry", data } };
 }
 
+export function adaptMtConnectTelemetry(frame: MtConnectTelemetryFrame): SimulationMessage {
+  const data = canonicalize({ ...frame.values }, frame);
+  return { topic: `mes/mtconnect/${frame.tenantId}/lines/${frame.lineId}/devices/${frame.deviceId}/telemetry`, payload: { event: "device.telemetry", data } };
+}
+
 function parseEnvelope(payload: string | Record<string, unknown>): { event: unknown; data: Record<string, unknown> } {
   const parsed: unknown = typeof payload === "string" ? JSON.parse(payload) : payload;
   if (!isRecord(parsed) || !isRecord(parsed.data)) throw new Error("event payload must contain an object data field");
@@ -121,7 +136,7 @@ function canonicalize(
   if (!isDeviceStatus(status)) throw new Error(`unsupported device status: ${String(status)}`);
   const activeFaults = value.activeFaults ?? [];
   if (!Array.isArray(activeFaults) || !activeFaults.every(isFaultType)) throw new Error("activeFaults contains an unsupported fault type");
-  return {
+  const telemetry: CanonicalDeviceEvent = {
     tenantId,
     lineId,
     deviceId,
@@ -134,6 +149,10 @@ function canonicalize(
     defectCount: nonNegativeInteger(value.defectCount, "defectCount"),
     activeFaults: [...activeFaults],
   };
+  if (typeof value.profileId === "string" && value.profileId.trim()) {
+    telemetry.profileId = value.profileId;
+  }
+  return telemetry;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }

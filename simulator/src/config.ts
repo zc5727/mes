@@ -57,9 +57,9 @@ export function parseCliArgs(args: string[], env: NodeJS.ProcessEnv = process.en
     ? { latencyMs: networkLatency, duplicateRate: networkDuplicateRate, dropRate: networkDropRate, seed: networkSeed }
     : undefined;
   const protocolValue = getValue("--protocol") ?? env.SIMULATOR_PROTOCOL;
-  const protocol = protocolValue === undefined ? undefined : parseProtocolEndpoint({ protocol: protocolValue as ProtocolKind, host: getValue("--protocol-host") ?? env.SIMULATOR_PROTOCOL_HOST ?? "127.0.0.1", port: Number(getValue("--protocol-port") ?? env.SIMULATOR_PROTOCOL_PORT ?? (protocolValue === "opc-ua" ? 4841 : 1502)) }).protocol;
+  const protocol = protocolValue === undefined ? undefined : parseProtocolEndpoint({ protocol: protocolValue as ProtocolKind, host: getValue("--protocol-host") ?? env.SIMULATOR_PROTOCOL_HOST ?? "127.0.0.1", port: Number(getValue("--protocol-port") ?? env.SIMULATOR_PROTOCOL_PORT ?? defaultProtocolPort(protocolValue)) }).protocol;
   const protocolHost = protocol === undefined ? undefined : getValue("--protocol-host") ?? env.SIMULATOR_PROTOCOL_HOST ?? "127.0.0.1";
-  const protocolPort = protocol === undefined ? undefined : Number(getValue("--protocol-port") ?? env.SIMULATOR_PROTOCOL_PORT ?? (protocol === "opc-ua" ? 4841 : 1502));
+  const protocolPort = protocol === undefined ? undefined : Number(getValue("--protocol-port") ?? env.SIMULATOR_PROTOCOL_PORT ?? defaultProtocolPort(protocol));
 
   return {
     tenantId: getValue("--tenant") ?? env.MES_TENANT_ID ?? DEFAULT_TENANT_ID,
@@ -78,6 +78,10 @@ export function parseCliArgs(args: string[], env: NodeJS.ProcessEnv = process.en
     protocolHost,
     protocolPort,
   };
+}
+
+function defaultProtocolPort(protocol: string): number {
+  return protocol === "opc-ua" ? 4841 : protocol === "mtconnect" ? 5000 : 1502;
 }
 
 function parseOptionalNumber(value: string | undefined, flag: string, minimum: number): number | undefined {

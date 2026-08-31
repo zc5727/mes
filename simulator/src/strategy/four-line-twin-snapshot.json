@@ -35,7 +35,8 @@
           "goodCount": 0,
           "defectCount": 0,
           "activeFaults": [],
-          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z",
+          "profileId": "generic-cnc-opcua"
         },
         {
           "deviceId": "cnc-02",
@@ -48,7 +49,8 @@
           "goodCount": 0,
           "defectCount": 0,
           "activeFaults": [],
-          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z",
+          "profileId": "siemens-sinumerik-opcua"
         },
         {
           "deviceId": "cnc-03",
@@ -61,7 +63,8 @@
           "goodCount": 0,
           "defectCount": 0,
           "activeFaults": [],
-          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z",
+          "profileId": "generic-machine-mqtt"
         }
       ],
       "activeAlarms": [],
@@ -109,7 +112,8 @@
           "goodCount": 0,
           "defectCount": 0,
           "activeFaults": [],
-          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z",
+          "profileId": "generic-machine-mqtt"
         },
         {
           "deviceId": "asm-02",
@@ -122,7 +126,8 @@
           "goodCount": 0,
           "defectCount": 0,
           "activeFaults": [],
-          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z",
+          "profileId": "generic-machine-mqtt"
         },
         {
           "deviceId": "asm-03",
@@ -135,7 +140,8 @@
           "goodCount": 0,
           "defectCount": 0,
           "activeFaults": [],
-          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z",
+          "profileId": "generic-machine-mqtt"
         }
       ],
       "activeAlarms": [],
@@ -185,7 +191,8 @@
           "activeFaults": [
             "OVERHEAT"
           ],
-          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z",
+          "profileId": "generic-machine-mqtt"
         },
         {
           "deviceId": "weld-02",
@@ -198,7 +205,8 @@
           "goodCount": 0,
           "defectCount": 0,
           "activeFaults": [],
-          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z",
+          "profileId": "generic-machine-mqtt"
         },
         {
           "deviceId": "weld-03",
@@ -211,7 +219,8 @@
           "goodCount": 0,
           "defectCount": 0,
           "activeFaults": [],
-          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z",
+          "profileId": "generic-machine-mqtt"
         }
       ],
       "activeAlarms": [
@@ -269,7 +278,8 @@
           "goodCount": 0,
           "defectCount": 0,
           "activeFaults": [],
-          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z",
+          "profileId": "generic-machine-mqtt"
         },
         {
           "deviceId": "vision-02",
@@ -282,7 +292,8 @@
           "goodCount": 0,
           "defectCount": 0,
           "activeFaults": [],
-          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z",
+          "profileId": "generic-machine-mqtt"
         },
         {
           "deviceId": "vision-03",
@@ -295,7 +306,8 @@
           "goodCount": 0,
           "defectCount": 0,
           "activeFaults": [],
-          "lastUpdatedAt": "2026-08-29T08:00:00.000Z"
+          "lastUpdatedAt": "2026-08-29T08:00:00.000Z",
+          "profileId": "generic-machine-mqtt"
         }
       ],
       "activeAlarms": [],

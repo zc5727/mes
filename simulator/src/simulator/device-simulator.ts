@@ -118,6 +118,7 @@ export class DeviceSimulator {
       goodCount: this.goodCount,
       defectCount: this.defectCount,
       activeFaults: [...this.activeFaults],
+      profileId: this.definition.profileId,
       timestamp: timestamp.toISOString(),
     };
   }
@@ -134,6 +135,7 @@ export class DeviceSimulator {
       goodCount: this.goodCount,
       defectCount: this.defectCount,
       activeFaults: [...this.activeFaults],
+      profileId: this.definition.profileId,
       lastUpdatedAt: timestamp.toISOString(),
     };
   }

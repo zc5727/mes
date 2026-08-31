@@ -7,8 +7,20 @@
       "product": "用户自定义产品",
       "idealCycleTimeSeconds": 40,
       "devices": [
-        { "id": "custom-01", "name": "机器人工作站", "kind": "ROBOT", "cycleTimeSeconds": 40 },
-        { "id": "custom-02", "name": "视觉检测站", "kind": "VISION", "cycleTimeSeconds": 30 }
+        {
+          "id": "custom-01",
+          "name": "机器人工作站",
+          "kind": "ROBOT",
+          "cycleTimeSeconds": 40,
+          "profileId": "generic-machine-mqtt"
+        },
+        {
+          "id": "custom-02",
+          "name": "视觉检测站",
+          "kind": "VISION",
+          "cycleTimeSeconds": 30,
+          "profileId": "generic-machine-mqtt"
+        }
       ]
     }
   ]

@@ -7,9 +7,10 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "protocols:smoke": "npm run build && node --test dist/protocols/protocol-bridge.test.js",
+    "protocols:smoke": "npm run build && node --test dist/protocols/*.test.js",
     "protocols:smoke:modbus": "npm run build && node dist/protocols/protocol-runner.js modbus-tcp",
     "protocols:smoke:opcua": "npm run build && node dist/protocols/protocol-runner.js opc-ua",
+    "protocols:smoke:mtconnect": "npm run build && node dist/protocols/protocol-runner.js mtconnect",
     "test": "npm run build && node --test dist/*.test.js dist/metrics/*.test.js dist/protocols/*.test.js dist/simulator/*.test.js dist/strategy/*.test.js dist/twin/*.test.js",
     "check": "npm run build && npm test"
   },

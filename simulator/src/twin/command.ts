@@ -21,6 +21,8 @@ const FAULT_TYPES: FaultType[] = [
   "COMMUNICATION_LOSS",
   "QUALITY_DRIFT",
   "EMERGENCY_STOP",
+  "MATERIAL_SHORTAGE",
+  "QUALITY_ANOMALY",
 ];
 
 const CONTROL_ACTIONS: SimulatorControlAction[] = [

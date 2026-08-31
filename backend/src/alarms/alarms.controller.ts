@@ -1,6 +1,6 @@
-import { Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
-import { AlarmLevel, AlarmsService } from './alarms.service';
+import { AlarmLevel, AlarmStatus, AlarmsService } from './alarms.service';
 
 @Controller('alarms')
 export class AlarmsController {
@@ -12,8 +12,9 @@ export class AlarmsController {
     @Query('level') level?: AlarmLevel,
     @Query('lineId') lineId?: string,
     @Query('deviceId') deviceId?: string,
-    @Query('status') status?: 'active' | 'acknowledged' | 'closed',
+    @Query('status') status?: AlarmStatus,
   ) {
+    this.validateQuery(level, status);
     return { data: this.alarmsService.findAll(tenantId, { level, lineId, deviceId, status }), tenantId };
   }
 
@@ -35,5 +36,14 @@ export class AlarmsController {
   @Post(':id/maintenance-work-order')
   createMaintenance(@TenantId() tenantId: string, @Param('id') id: string) {
     return { data: this.alarmsService.createMaintenanceWorkOrder(tenantId, id), tenantId };
+  }
+
+  private validateQuery(level?: string, status?: string): void {
+    if (level && !['info', 'warning', 'critical'].includes(level)) {
+      throw new BadRequestException({ code: 'INVALID_ALARM_LEVEL', message: 'level must be info, warning, or critical' });
+    }
+    if (status && !['active', 'acknowledged', 'closed'].includes(status)) {
+      throw new BadRequestException({ code: 'INVALID_ALARM_STATUS', message: 'status must be active, acknowledged, or closed' });
+    }
   }
 }

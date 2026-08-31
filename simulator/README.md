@@ -8,6 +8,7 @@
 - 每条产线 3 台设备，共 12 台设备
 - 设备状态：`RUNNING`、`IDLE`、`WARNING`、`STOPPED`、`FAULT`、`OFFLINE`
 - 设备温度、节拍、产量、良品数、不良品数
+- 设备 Profile：机械类型、控制器标签、协议、数据点、控制方法、故障目录和 3D `modelKey`
 - OEE：开动率、性能、质量和综合 OEE
 - 告警：信息、警告、严重三级；支持故障恢复
 - 故障注入：过热、堵料、通信中断、质量漂移、急停
@@ -61,12 +62,22 @@ replay      输出版本化回放文档
 npm run dev -- --config examples/line-config.json
 ```
 
-配置格式为 `{ "lines": [...] }`，每条产线需要 `id`、`code`、`name`、`product`、`idealCycleTimeSeconds` 和至少一台设备；设备需要 `id`、`name`、`kind`、`cycleTimeSeconds`。参考 `/Users/a1/Documents/ChatGPT/mes/simulator/examples/line-config.json`。
+配置格式为 `{ "profiles": [...], "lines": [...], "agvs": [...] }`；`profiles` 和 `agvs` 可省略，省略时使用内置配置。每条产线需要 `id`、`code`、`name`、`product`、`idealCycleTimeSeconds` 和至少一台设备；设备需要 `id`、`name`、`kind`、`cycleTimeSeconds`，可用 `profileId` 绑定 Profile，省略时按设备类型补齐默认 Profile。参考 `/Users/a1/Documents/ChatGPT/mes/simulator/examples/line-config.json`。
+
+内置 Profile 包括 `generic-cnc-opcua`、`siemens-sinumerik-opcua`、`fanuc-cnc-mtconnect`、`generic-cnc-modbus` 和 `generic-machine-mqtt`。其中 Siemens/FANUC 仅是测试场景标签，所有地址和数据点都标记为 `SIMULATED_CONTRACT_ONLY`，不会伪造或宣称真实厂商 NodeID 兼容。
 
 连接本地 MQTT Broker：
 
 ```bash
 npm run dev -- --mqtt mqtt://localhost:1883
+```
+
+运行合同化协议入口（仅启动本地模拟端点、读取一次并沿现有 MQTT publisher 链路发布 canonical `device.telemetry`；不发送设备写命令）：
+
+```bash
+npm run protocols:smoke:modbus
+npm run protocols:smoke:opcua
+SIMULATOR_PROTOCOL_PORT=5000 npm run dev -- --protocol mtconnect
 ```
 
 启用 AGV 独立遥测及可复现网络扰动：
@@ -137,7 +148,7 @@ mes/control/{tenantId}/twin/command
 
 其中 `fault` 必须提供 `lineId`、`deviceId` 和 `faultType`；`speed` 必须是大于 0 的数字。控制结果发布到 `mes/simulator/{tenantId}/control`，快照和导出结果分别使用 `simulator.snapshot` 和 `simulator.export` 事件。`stop` 停止状态推进但不结束进程，`start` 可恢复推进；`pause`/`resume` 只控制暂停状态。`reset` 无范围参数时重置模拟器；传入 `lineId`、`deviceId` 和可选 `faultType` 时只恢复指定故障。
 
-策略或调度服务可以直接读取 `FactorySimulator.strategyInputSnapshot()`，获得同一时间点的产线、设备、AGV、告警和运行控制状态。场景测试通过 `loadScenario([{ "atSeconds": 10, "command": { ... } }])` 注入定时控制命令。
+策略或调度服务可以直接读取 `FactorySimulator.strategyInputSnapshot()`，获得同一时间点的产线、设备、AGV、告警和运行控制状态。场景测试通过 `loadScenario([{ "atSeconds": 10, "command": { ... } }])` 注入定时控制命令；可以用 `exportScenario()` 保存 JSON，用 `loadScenarioDocument()` 加载保存的场景。`exportReplay()` 除了历史帧，也包含场景事件，便于在同一版本和种子下回放。
 
 阶段 7 的网络扰动通过构造参数启用：`latencyMs` 模拟延迟，`duplicateRate` 模拟重复消息，`dropRate` 模拟丢包，`seed` 保证扰动可复现。`exportReplay()` 导出带版本和序号的回放文档，`replayFrames()` 支持按帧筛选回放数据。
 
@@ -163,7 +174,7 @@ mes/control/{tenantId}/twin/command
 
 ## 协议接入模拟
 
-`src/protocols/event-adapter.ts` 提供无网络副作用的统一事件适配器，将 MQTT 和 HTTP 事件，以及 Modbus TCP 寄存器帧、OPC UA 节点值帧，规范化为同一份 `device.telemetry` 数据契约。它只产生遥测事件，不接受设备控制命令。
+`src/protocols/event-adapter.ts` 提供无网络副作用的统一事件适配器，将 MQTT 和 HTTP 事件，以及 Modbus TCP 寄存器帧、OPC UA 节点值帧、MTConnect XML 帧，规范化为同一份 `device.telemetry` 数据契约。它只产生遥测事件，不接受设备控制命令。
 
 协议适配契约测试：
 
@@ -179,7 +190,8 @@ npm run build && node --test dist/protocols/event-adapter.test.js
 
 - Modbus TCP server/client：实现 FC03 holding-register telemetry 读取，非法功能码返回异常帧；客户端连接失败明确报错，可在 server 重启后重新读取。
 - OPC UA server/client：创建固定节点并读取 status、温度、节拍、产量和质量计数；只读，不实现设备控制。
-- 两者都复用 `event-adapter.ts`，输出 `mes/modbus/.../telemetry` 或 `mes/opcua/.../telemetry` 的 `device.telemetry` canonical MQTT 消息。
+- MTConnect server/client：提供 `/probe`、`/current`、`/sample`，使用 `sim-*` 数据项 ID，并输出 canonical telemetry。
+- 三者都复用 `event-adapter.ts`，输出 `mes/modbus/.../telemetry`、`mes/opcua/.../telemetry` 或 `mes/mtconnect/.../telemetry` 的 `device.telemetry` canonical MQTT 消息。
 
 运行协议 server/client、坏帧和断线测试：
 
@@ -194,6 +206,7 @@ npm run protocols:smoke
 ```bash
 npm run protocols:smoke:modbus
 npm run protocols:smoke:opcua
+SIMULATOR_PROTOCOL=mtconnect SIMULATOR_PROTOCOL_PORT=5000 npm run dev
 ```
 
 等价的可配置入口：
@@ -201,9 +214,10 @@ npm run protocols:smoke:opcua
 ```bash
 SIMULATOR_PROTOCOL=modbus-tcp SIMULATOR_PROTOCOL_HOST=127.0.0.1 SIMULATOR_PROTOCOL_PORT=1502 npm run dev
 SIMULATOR_PROTOCOL=opc-ua SIMULATOR_PROTOCOL_PORT=4841 MQTT_URL=mqtt://localhost:1883 npm run dev
+SIMULATOR_PROTOCOL=mtconnect SIMULATOR_PROTOCOL_PORT=5000 MQTT_URL=mqtt://localhost:1883 npm run dev
 ```
 
-设置 `MQTT_URL` 时，读取结果会通过现有 `MessagePublisher` 发布到 canonical MQTT topic；未设置时打印到 stdout。`SIMULATOR_PROTOCOL` 只启动只读协议联调分支，不启动产线控制，也不发送设备写入命令。
+设置 `MQTT_URL` 时，读取结果会通过现有 `MessagePublisher` 发布到 canonical MQTT topic；未设置时打印到 stdout。`SIMULATOR_PROTOCOL` 只启动只读协议联调分支，不启动产线控制，也不发送设备写入命令。OPC UA 和 MTConnect 的地址均为本模拟器生成的合同地址；不会复刻真实厂商 NodeID 或设备地址。
 
 ## 故障注入
 
