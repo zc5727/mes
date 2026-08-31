@@ -53,6 +53,8 @@ describe('HealthController', () => {
     expect(payload).toEqual({
       service: 'mes-saas-backend',
       timestamp: expect.any(String),
+      environment: process.env.NODE_ENV?.trim() || 'unknown',
+      controlMode: 'test-control',
       database: { enabled: true, status: 'ready' },
       mqtt: {
         enabled: true,
