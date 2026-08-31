@@ -2,6 +2,7 @@ import { RequireCapability } from '../common/route-capability.decorator';
 import {
   Body,
   Controller,
+  ConflictException,
   Headers,
   HttpCode,
   HttpStatus,
@@ -39,6 +40,7 @@ export class SimulatorControlController {
     @Headers('x-session-id') sessionId?: string,
     @Headers('x-trace-id') traceId?: string,
   ) {
+    this.assertSimulationControlEnabled();
     const context = this.authorization.fromHeaders({
       userId,
       role,
@@ -80,5 +82,14 @@ export class SimulatorControlController {
       },
       tenantId,
     };
+  }
+
+  /** Simulator control is a test capability and must be explicitly enabled in production. */
+  private assertSimulationControlEnabled(): void {
+    if (process.env.NODE_ENV === 'production' && process.env.MES_SIMULATOR_CONTROL_ENABLED !== 'true') {
+      throw new ConflictException(
+        'SIMULATOR_CONTROL_DISABLED: simulator commands are disabled in production',
+      );
+    }
   }
 }

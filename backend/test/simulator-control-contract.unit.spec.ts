@@ -108,4 +108,25 @@ describe('simulator control API contract', () => {
     )).rejects.toThrow('RESOURCE_SCOPE_DENIED');
     expect(mqtt.publishSimulatorControl).not.toHaveBeenCalled();
   });
+
+  it('fails closed in production unless simulator control is explicitly enabled', async () => {
+    const mqtt = { publishSimulatorControl: jest.fn() } as unknown as MqttIngestionService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const controller = new SimulatorControlController(mqtt, audit, new StrategyAuthorizationService());
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousFlag = process.env.MES_SIMULATOR_CONTROL_ENABLED;
+    process.env.NODE_ENV = 'production';
+    delete process.env.MES_SIMULATOR_CONTROL_ENABLED;
+
+    try {
+      await expect(controller.control('tenant-demo', { action: 'start' }, ...identity))
+        .rejects.toThrow('SIMULATOR_CONTROL_DISABLED');
+      expect(mqtt.publishSimulatorControl).not.toHaveBeenCalled();
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+      if (previousFlag === undefined) delete process.env.MES_SIMULATOR_CONTROL_ENABLED;
+      else process.env.MES_SIMULATOR_CONTROL_ENABLED = previousFlag;
+    }
+  });
 });
