@@ -22,7 +22,7 @@ DATABASE_REQUIRED_VALUE="${DATABASE_REQUIRED:-false}"
 STARTED_PID_FILES=()
 
 cleanup_on_failure() {
-  local exit_code=$?
+  local exit_code="${1:-$?}"
   [[ "$exit_code" -eq 0 ]] && return
   echo "启动失败（退出码 $exit_code），清理本次启动的应用进程" >&2
   for pid_file in "${STARTED_PID_FILES[@]}"; do
@@ -115,7 +115,15 @@ start_service() {
     return
   fi
   if [[ -n "$port" ]] && nc -z localhost "$port" >/dev/null 2>&1; then
-    echo "$name 无法启动：localhost:$port 已被占用，拒绝创建第二实例" >&2
+    local existing_pid existing_command
+    existing_pid="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -n 1 || true)"
+    existing_command="$(ps -p "$existing_pid" -o command= 2>/dev/null || true)"
+    if [[ -n "$existing_pid" && "$existing_command" == *"$ROOT_DIR"* ]]; then
+      printf '%s\n' "$existing_pid" >"$pid_file"
+      echo "$name 已在运行，接管现有 PID=$existing_pid"
+      return
+    fi
+    echo "$name 无法启动：localhost:$port 已被其他进程占用，拒绝创建第二实例" >&2
     return 1
   fi
   # Ignore the parent terminal hangup as well as nohup's own signal handling;
