@@ -11,8 +11,10 @@ import { mapLineId } from './identityMap';
 import { mapDeviceId } from './identityMap';
 import { positionForDevice } from '@/config/devicePositions';
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api/v1').replace(/\/$/, '');
+// 浏览器只访问 NestJS facade；OpenMES 的地址和认证由 facade 管理，前端不直连生产系统。
+const API_BASE_URL = (import.meta.env.VITE_MES_FACADE_URL ?? import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api/v1').replace(/\/$/, '');
 const TENANT_ID = import.meta.env.VITE_TENANT_ID ?? 'tenant-demo';
+const API_KEY = import.meta.env.VITE_API_KEY ?? '';
 const REQUEST_TIMEOUT_MS = 8_000;
 
 interface ApiLine {
@@ -242,12 +244,29 @@ export function createApproval(resource: string, resourceId: string, comment?: s
   return post<Record<string, unknown>>('/audit/approvals', { resource, resourceId, comment });
 }
 
+export function acknowledgeAlarm(id: string) { return request<Record<string, unknown>>(`/alarms/${encodeURIComponent(id)}/acknowledge`, 'PATCH'); }
+export function closeAlarm(id: string) { return request<Record<string, unknown>>(`/alarms/${encodeURIComponent(id)}/close`, 'PATCH'); }
+
+export interface CreateMaintenanceInput {
+  lineId: string;
+  deviceId: string;
+  type: 'inspection' | 'preventive' | 'repair';
+  title: string;
+  description?: string;
+  plannedAt: string;
+}
+
+export function createMaintenance(input: CreateMaintenanceInput) { return post<Record<string, unknown>>('/maintenance/work-orders', input); }
+
 async function get<T>(path: string): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
-      headers: { 'x-tenant-id': TENANT_ID },
+      headers: {
+        'x-tenant-id': TENANT_ID,
+        ...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
+      },
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`MES API ${response.status}: ${path}`);
@@ -267,7 +286,11 @@ async function request<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE', bod
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method,
-      headers: { 'x-tenant-id': TENANT_ID, 'content-type': 'application/json' },
+      headers: {
+        'x-tenant-id': TENANT_ID,
+        'content-type': 'application/json',
+        ...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
+      },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: controller.signal,
     });
@@ -282,7 +305,15 @@ async function requestFormData<T>(path: string, body: FormData): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(`${API_BASE_URL}${path}`, { method: 'POST', headers: { 'x-tenant-id': TENANT_ID }, body, signal: controller.signal });
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'POST',
+      headers: {
+        'x-tenant-id': TENANT_ID,
+        ...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
+      },
+      body,
+      signal: controller.signal,
+    });
     if (!response.ok) throw new Error(`MES API ${response.status}: ${path}`);
     return unwrap<T>(await response.json() as T | { data: T });
   } finally { window.clearTimeout(timeout); }
@@ -291,9 +322,12 @@ async function requestFormData<T>(path: string, body: FormData): Promise<T> {
 async function getOptional<T>(path: string): Promise<T | undefined> {
   try {
     return await get<T>(path);
-  } catch {
-    // 新接口可以在后端逐步启用，旧版服务不可用时继续使用基础台账数据。
-    return undefined;
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message.includes(' 404: ')) {
+      return undefined;
+    }
+    console.warn(`Optional MES API request failed: ${path}`, error);
+    throw error;
   }
 }
 

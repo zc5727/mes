@@ -4,6 +4,7 @@
     <div class="operations__actions">
       <button type="button" @click="active = 'work-order'">新建工单</button>
       <button type="button" @click="active = 'device'">新增设备</button>
+      <button type="button" @click="active = 'maintenance'">新建维修</button>
       <button type="button" @click="active = 'document'">图纸登记</button>
       <button type="button" @click="active = 'quality'">质量记录</button>
       <button type="button" @click="active = 'strategy'">策略评估</button>
@@ -27,6 +28,13 @@
           <label>型号<input v-model.trim="device.model" maxlength="80" /></label>
           <label>协议<select v-model="device.protocol"><option value="simulator">simulator</option><option value="mqtt">MQTT</option><option value="opcua">OPC UA</option><option value="modbus-tcp">Modbus TCP</option></select></label>
           <label>关联产线<input :value="selectedLine.name" disabled /></label>
+        </template>
+        <template v-else-if="active === 'maintenance'">
+          <label>类型<select v-model="maintenance.type"><option value="repair">维修</option><option value="inspection">点检</option><option value="preventive">预防保养</option></select></label>
+          <label>标题<input v-model.trim="maintenance.title" required minlength="2" /></label>
+          <label>计划时间<input v-model="maintenance.plannedAt" type="datetime-local" required /></label>
+          <label>说明<textarea v-model.trim="maintenance.description" maxlength="500" /></label>
+          <label>设备<input :value="selectedDeviceName" disabled /></label>
         </template>
         <template v-else-if="active === 'document'">
           <label>图纸文件<input type="file" accept=".pdf,.png,.jpg,.jpeg,.dwg,.dxf" @change="selectFile" /></label>
@@ -52,11 +60,11 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { confirmDocumentAnalysis, createDevice, createQualityRecord, createWorkOrder, saveDocumentAnalysisDraft, simulateStrategy, uploadDocument } from '@/api/mesApi';
+import { confirmDocumentAnalysis, createDevice, createMaintenance, createQualityRecord, createWorkOrder, saveDocumentAnalysisDraft, simulateStrategy, uploadDocument } from '@/api/mesApi';
 import { toBackendLineId } from '@/api/identityMap';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
 
-type Operation = 'work-order' | 'device' | 'document' | 'quality' | 'strategy';
+type Operation = 'work-order' | 'device' | 'maintenance' | 'document' | 'quality' | 'strategy';
 const props = defineProps<{ selectedLine: ProductionLineTelemetry; selectedDevice: DeviceTelemetry | null; lines: ProductionLineTelemetry[]; devices: DeviceTelemetry[] }>();
 const active = ref<Operation | null>(null);
 const submitting = ref(false);
@@ -67,9 +75,10 @@ const selectedFile = ref<File | null>(null);
 const pendingDocumentId = ref<string | null>(null);
 const workOrder = ref({ orderNo: '', productCode: '', productName: '', plannedQty: 1, dueAt: '' });
 const device = ref({ code: '', name: '', model: '', protocol: 'simulator' as const });
+const maintenance = ref({ type: 'repair' as const, title: '', plannedAt: '', description: '' });
 const quality = ref({ batchNo: '', result: 'pass', remark: '' });
 const strategy = ref({ comment: '' });
-const title = computed(() => ({ 'work-order': '新建生产工单', device: '新增设备', document: '登记图纸', quality: '填报质量记录', strategy: '策略仿真评估' }[active.value ?? 'work-order']));
+const title = computed(() => ({ 'work-order': '新建生产工单', device: '新增设备', maintenance: '新建维修工单', document: '登记图纸', quality: '填报质量记录', strategy: '策略仿真评估' }[active.value ?? 'work-order']));
 const selectedDeviceName = computed(() => props.selectedDevice?.name ?? '未选择设备');
 
 const selectFile = (event: Event) => { selectedFile.value = (event.target as HTMLInputElement).files?.[0] ?? null; };
@@ -81,6 +90,9 @@ const submit = async () => {
       await createWorkOrder({ ...workOrder.value, lineId: toBackendLineId(props.selectedLine.id), dueAt: new Date(workOrder.value.dueAt).toISOString() });
     } else if (active.value === 'device') {
       await createDevice({ ...device.value, lineId: toBackendLineId(props.selectedLine.id) });
+    } else if (active.value === 'maintenance') {
+      if (!props.selectedDevice) throw new Error('请先选择设备');
+      await createMaintenance({ ...maintenance.value, lineId: toBackendLineId(props.selectedLine.id), deviceId: props.selectedDevice.id, plannedAt: new Date(maintenance.value.plannedAt).toISOString() });
     } else if (active.value === 'document') {
       if (!selectedFile.value) throw new Error('请选择图纸文件');
       const document = await uploadDocument(selectedFile.value, { documentKey: `${props.selectedLine.id}-${selectedFile.value.name}`, uploadedBy: 'digital-twin-ui', lineId: toBackendLineId(props.selectedLine.id) });

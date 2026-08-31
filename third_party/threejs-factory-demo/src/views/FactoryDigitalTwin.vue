@@ -7,6 +7,7 @@
       :line-count="lineSummaries.length"
       :connection-state="connectionState"
       :data-source="store.dataSource"
+      :mes-source="mesSource"
       :simulation="simulator"
     />
     <div v-if="loading" class="data-banner">正在接入 MES 数据...</div>
@@ -51,6 +52,8 @@
       @add-line="openLineDialog"
       @edit-line="openEditLine"
       @delete-line="deleteLine"
+      @ack-alarm="ackAlarm"
+      @close-alarm="closeAlarmAction"
     />
     <RightPanel
       :devices="lineDevices"
@@ -102,7 +105,7 @@ import OperationsPanel from '@/components/layout/OperationsPanel.vue';
 import RightPanel from '@/components/layout/RightPanel.vue';
 import TopBar from '@/components/layout/TopBar.vue';
 import ThreeFactoryViewport from '@/components/scene/ThreeFactoryViewport.vue';
-import { controlSimulator, createProductionLine, deleteProductionLine, fetchFactorySnapshot, updateProductionLine } from '@/api/mesApi';
+import { acknowledgeAlarm, closeAlarm, controlSimulator, createProductionLine, deleteProductionLine, fetchFactorySnapshot, updateProductionLine } from '@/api/mesApi';
 import { useFactoryStore } from '@/store/factoryStore';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
 import { toBackendDeviceId, toBackendLineId } from '@/api/identityMap';
@@ -111,6 +114,7 @@ import type { RealtimeMessage } from '@/websocket/protocol';
 
 const store = useFactoryStore();
 const DATA_MODE = import.meta.env.VITE_DATA_MODE === 'local' ? 'local' : 'api';
+const mesSource = (import.meta.env.VITE_MES_SOURCE_NAME as string | undefined)?.trim() || 'NestJS Facade / OpenMES';
 const selectedLineId = ref('LINE-01');
 const loading = ref(true);
 const loadError = ref(false);
@@ -207,6 +211,16 @@ let apiRefreshTimer: number | null = null;
 
 const handleSceneSelect = (device: DeviceTelemetry | null) => store.selectDevice(device?.id ?? null);
 const handleListSelect = (id: string) => store.selectDevice(id);
+
+const ackAlarm = async (id: string) => {
+  try { await acknowledgeAlarm(id); await refreshApiSnapshot(); controlNotice.value = '告警已确认'; }
+  catch { controlNotice.value = '告警确认失败，请检查后端服务'; }
+};
+
+const closeAlarmAction = async (id: string) => {
+  try { await closeAlarm(id); await refreshApiSnapshot(); controlNotice.value = '告警已关闭'; }
+  catch { controlNotice.value = '告警关闭失败，请检查后端服务'; }
+};
 
 const handleLineSelect = (id: string) => {
   selectedLineId.value = id;

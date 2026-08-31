@@ -39,6 +39,7 @@
             <em>{{ alarm.time.slice(-8) }}</em>
           </div>
           <p>{{ alarm.message }}</p>
+          <div class="alarm-actions"><button type="button" @click="$emit('ack-alarm', alarm.id)">确认</button><button type="button" @click="$emit('close-alarm', alarm.id)">关闭</button></div>
         </div>
         <div v-if="!alarms.length" class="empty-state">当前产线暂无未处理告警。</div>
       </div>
@@ -84,6 +85,8 @@ defineEmits<{
   (event: 'add-line'): void;
   (event: 'edit-line', id: string): void;
   (event: 'delete-line', id: string): void;
+  (event: 'ack-alarm', id: string): void;
+  (event: 'close-alarm', id: string): void;
 }>();
 </script>
 
@@ -216,6 +219,9 @@ defineEmits<{
   font-size: 12px;
   line-height: 1.45;
 }
+
+.alarm-actions { display:flex; gap:6px; margin-top:7px; }
+.alarm-actions button { padding:3px 6px; border:1px solid currentColor; background:transparent; color:inherit; cursor:pointer; font-size:10px; }
 
 .device-block {
   overflow: hidden;

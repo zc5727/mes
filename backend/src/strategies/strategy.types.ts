@@ -97,6 +97,15 @@ export interface StrategyImpactAssessment {
   after: Record<string, unknown>;
   summary: string;
   executionAllowed: false;
+  rollbackPlan: StrategyRollbackPlan;
+}
+
+export interface StrategyRollbackPlan {
+  supported: true;
+  action: 'discard_simulation';
+  restores: Array<'workOrders' | 'lines' | 'devices'>;
+  executionAllowed: false;
+  reason: string;
 }
 
 export interface StrategyAggregateImpactAssessment {

@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
-import { CreateCalendarDto, CreateProcessDto, CreateProductDto, CreateShiftDto } from './dto/master-data.dto';
+import { CreateBomDto, CreateCalendarDto, CreateOperationDto, CreateProcessDto, CreateProductDto, CreateRoutingDto, CreateShiftDto } from './dto/master-data.dto';
 import { MasterDataService } from './master-data.service';
 
 @Controller('master-data')
@@ -18,4 +18,13 @@ export class MasterDataController {
   @Get('calendars') calendars(@TenantId() tenantId: string) { return { data: this.service.list(tenantId, 'calendar'), tenantId }; }
   @Post('calendars') createCalendar(@TenantId() tenantId: string, @Body() dto: CreateCalendarDto) { return { data: this.service.create(tenantId, 'calendar', dto), tenantId }; }
   @Get('calendars/:id') calendar(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.findOne(tenantId, 'calendar', id), tenantId }; }
+  @Get('operations') operations(@TenantId() tenantId: string) { return { data: this.service.list(tenantId, 'operation'), tenantId }; }
+  @Post('operations') createOperation(@TenantId() tenantId: string, @Body() dto: CreateOperationDto) { return { data: this.service.create(tenantId, 'operation', dto), tenantId }; }
+  @Get('operations/:id') operation(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.findOne(tenantId, 'operation', id), tenantId }; }
+  @Get('boms') boms(@TenantId() tenantId: string) { return { data: this.service.list(tenantId, 'bom'), tenantId }; }
+  @Post('boms') createBom(@TenantId() tenantId: string, @Body() dto: CreateBomDto) { return { data: this.service.create(tenantId, 'bom', dto), tenantId }; }
+  @Get('boms/:id') bom(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.findOne(tenantId, 'bom', id), tenantId }; }
+  @Get('routings') routings(@TenantId() tenantId: string) { return { data: this.service.list(tenantId, 'routing'), tenantId }; }
+  @Post('routings') createRouting(@TenantId() tenantId: string, @Body() dto: CreateRoutingDto) { return { data: this.service.create(tenantId, 'routing', dto), tenantId }; }
+  @Get('routings/:id') routing(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.findOne(tenantId, 'routing', id), tenantId }; }
 }

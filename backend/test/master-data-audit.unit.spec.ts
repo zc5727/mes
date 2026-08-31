@@ -32,4 +32,14 @@ describe('business foundation APIs', () => {
       code: 'CAL-20260830', name: '重复日历', date: '2026-08-30',
     })).toThrow('already exists');
   });
+
+  it('models operations, BOMs and routings as versioned tenant data', () => {
+    const service = new MasterDataService();
+    const operation = service.create('tenant-a', 'operation', { code: 'OP-10', name: '加工', standardSeconds: 42, workstation: 'WS-CNC-01' });
+    const bom = service.create('tenant-a', 'bom', { code: 'BOM-P01', name: '产品 BOM', productCode: 'P-01', version: '1.0', items: [{ code: 'RAW-01', qty: 2 }], operationCodes: [operation.code] });
+    const routing = service.create('tenant-a', 'routing', { code: 'ROUTE-P01', name: '产品工艺路线', productCode: 'P-01', version: '1.0', operationCodes: [operation.code] });
+    expect(bom.data).toEqual(expect.objectContaining({ productCode: 'P-01', version: '1.0' }));
+    expect(routing.data.operationCodes).toEqual(['OP-10']);
+    expect(service.list('tenant-b', 'routing')).toHaveLength(0);
+  });
 });

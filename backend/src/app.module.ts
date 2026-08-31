@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { DevicesModule } from './devices/devices.module';
 import { FactoriesModule } from './factories/factories.module';
@@ -21,6 +22,8 @@ import { DatabaseModule } from './database/database.module';
 import { DocumentsModule } from './documents/documents.module';
 import { QualityModule } from './quality/quality.module';
 import { DeviceConnectionsModule } from './device-connections/device-connections.module';
+import { ApiKeyGuard } from './common/api-key.guard';
+import { ErpNextModule } from './integrations/erpnext/erpnext.module';
 
 @Module({
   controllers: [HealthController],
@@ -46,6 +49,8 @@ import { DeviceConnectionsModule } from './device-connections/device-connections
     DocumentsModule,
     QualityModule,
     DeviceConnectionsModule,
+    ErpNextModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: ApiKeyGuard }],
 })
 export class AppModule {}

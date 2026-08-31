@@ -1,4 +1,4 @@
-import { IsInt, IsISO8601, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsArray, IsInt, IsISO8601, IsObject, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export class CreateProductDto {
   @IsString() @MinLength(2) @MaxLength(40) code!: string;
@@ -28,4 +28,28 @@ export class CreateCalendarDto {
   @IsISO8601() date!: string;
   @IsOptional() @IsInt() @Min(0) @Max(24) plannedHours?: number;
   @IsOptional() @IsString() @MaxLength(200) description?: string;
+}
+
+export class CreateOperationDto {
+  @IsString() @MinLength(2) @MaxLength(40) code!: string;
+  @IsString() @MinLength(2) @MaxLength(100) name!: string;
+  @IsOptional() @IsInt() @Min(1) @Max(100000) standardSeconds?: number;
+  @IsOptional() @IsString() @MaxLength(80) workstation?: string;
+}
+
+export class CreateBomDto {
+  @IsString() @MinLength(2) @MaxLength(40) code!: string;
+  @IsString() @MinLength(2) @MaxLength(100) name!: string;
+  @IsString() @MinLength(1) @MaxLength(40) productCode!: string;
+  @IsString() @MinLength(1) @MaxLength(20) version!: string;
+  @IsArray() @IsObject({ each: true }) items!: Array<Record<string, unknown>>;
+  @IsOptional() @IsArray() @IsString({ each: true }) operationCodes?: string[];
+}
+
+export class CreateRoutingDto {
+  @IsString() @MinLength(2) @MaxLength(40) code!: string;
+  @IsString() @MinLength(2) @MaxLength(100) name!: string;
+  @IsString() @MinLength(1) @MaxLength(40) productCode!: string;
+  @IsString() @MinLength(1) @MaxLength(20) version!: string;
+  @IsArray() @IsString({ each: true }) operationCodes!: string[];
 }

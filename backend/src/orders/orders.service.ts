@@ -3,6 +3,8 @@ import { createId, MockEntity, timestamp } from '../common/mock.types';
 import { CreateOrderDto } from './dto/create-order.dto';
 
 export interface ProductionOrder extends MockEntity {
+  externalId?: string;
+  externalSystem?: string;
   orderNo: string;
   productCode: string;
   productName: string;
@@ -41,6 +43,7 @@ export class OrdersService {
     const now = timestamp();
     const order: ProductionOrder = {
       id: createId('order'), tenantId, orderNo: dto.orderNo, productCode: dto.productCode,
+      externalId: dto.externalId?.trim(), externalSystem: dto.externalSystem?.trim(),
       productName: dto.productName, plannedQty: dto.plannedQty, completedQty: 0,
       dueAt: dto.dueAt, priority: dto.priority, status: 'planned', createdAt: now, updatedAt: now,
     };

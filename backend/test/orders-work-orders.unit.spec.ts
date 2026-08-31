@@ -10,7 +10,7 @@ describe('production execution flow', () => {
     const workOrders = new WorkOrdersService(orders, new ProductionLinesService());
     const order = orders.create('tenant-demo', {
       orderNo: 'PO-TEST-001', productCode: 'PART-TEST', productName: '测试产品',
-      plannedQty: 5, dueAt: '2026-08-29T18:00:00.000Z', priority: 'normal',
+      plannedQty: 5, dueAt: '2026-08-29T18:00:00.000Z', priority: 'normal', externalId: 'ERP-PO-001', externalSystem: 'ERPNext',
     });
     const workOrder = workOrders.create('tenant-demo', {
       orderId: order.id, orderNo: 'WO-TEST-001', productCode: 'PART-TEST', productName: '测试产品',
@@ -26,6 +26,7 @@ describe('production execution flow', () => {
     expect(result.workOrder.completedQty).toBe(5);
     expect(workOrders.findReports('tenant-demo', workOrder.id)).toHaveLength(2);
     expect(orders.findOne('tenant-demo', order.id).completedQty).toBe(5);
+    expect(order.externalId).toBe('ERP-PO-001');
   });
 
   it('rejects invalid line and over-reporting', () => {

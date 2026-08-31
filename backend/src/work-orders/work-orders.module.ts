@@ -4,10 +4,11 @@ import { WorkOrdersService } from './work-orders.service';
 import { OrdersModule } from '../orders/orders.module';
 import { ProductionLinesModule } from '../production-lines/production-lines.module';
 import { DevicesModule } from '../devices/devices.module';
+import { MasterDataModule } from '../master-data/master-data.module';
 
 @Module({
   controllers: [WorkOrdersController],
-  imports: [OrdersModule, ProductionLinesModule, DevicesModule],
+  imports: [OrdersModule, ProductionLinesModule, DevicesModule, MasterDataModule],
   providers: [WorkOrdersService],
   exports: [WorkOrdersService],
 })

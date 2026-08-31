@@ -44,6 +44,8 @@ describe('StrategyEngineService read-only boundary', () => {
 
     expect(candidates.length).toBeGreaterThan(0);
     expect(candidates.every((candidate) => candidate.requiresApproval === true)).toBe(true);
+    expect(candidates.every((candidate) => Boolean(candidate.impactAssessment.rollbackPlan))).toBe(true);
+    expect(candidates.every((candidate) => candidate.impactAssessment.rollbackPlan.action === 'discard_simulation')).toBe(true);
     expect(candidates.every((candidate) => candidate.expectedImpact.length > 0 && candidate.reason.length > 0)).toBe(true);
     expect(JSON.stringify(snapshot)).toBe(before);
   });

@@ -7,11 +7,16 @@ import { ReportWorkOrderDto } from './dto/report-work-order.dto';
 import { OrdersService } from '../orders/orders.service';
 import { ProductionLinesService } from '../production-lines/production-lines.service';
 import { DevicesService } from '../devices/devices.service';
+import { MasterDataService } from '../master-data/master-data.service';
 
 type WorkOrderStatus = 'draft' | 'released' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
 type WorkOrderPriority = 'low' | 'normal' | 'high' | 'urgent';
 
 export interface WorkOrder extends MockEntity {
+  externalId?: string;
+  externalSystem?: string;
+  bomId?: string;
+  routingId?: string;
   orderId?: string;
   orderNo: string;
   productCode: string;
@@ -54,6 +59,7 @@ export class WorkOrdersService {
     @Optional() private readonly ordersService: OrdersService = new OrdersService(),
     @Optional() private readonly productionLinesService: ProductionLinesService = new ProductionLinesService(),
     @Optional() private readonly devicesService?: DevicesService,
+    @Optional() private readonly masterDataService?: MasterDataService,
   ) {}
 
   private readonly reports: WorkOrderReport[] = [];
@@ -121,6 +127,8 @@ export class WorkOrdersService {
 
     this.productionLinesService.findOne(tenantId, dto.lineId);
     if (dto.orderId) this.ordersService.findOne(tenantId, dto.orderId);
+    if (dto.bomId && this.masterDataService) this.masterDataService.findOne(tenantId, 'bom', dto.bomId);
+    if (dto.routingId && this.masterDataService) this.masterDataService.findOne(tenantId, 'routing', dto.routingId);
     const completedQty = dto.completedQty ?? 0;
     if (completedQty > dto.plannedQty) {
       throw new ConflictException('completedQty cannot be greater than plannedQty');
@@ -129,6 +137,10 @@ export class WorkOrdersService {
     const workOrder: WorkOrder = {
       id: createId('wo'),
       orderId: dto.orderId,
+      externalId: dto.externalId?.trim(),
+      externalSystem: dto.externalSystem?.trim(),
+      bomId: dto.bomId,
+      routingId: dto.routingId,
       tenantId,
       orderNo: dto.orderNo,
       productCode: dto.productCode,

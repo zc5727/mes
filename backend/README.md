@@ -77,6 +77,20 @@ curl -X POST http://localhost:3000/api/v1/ingestion/device-events \
 
 HTTP 接入与 MQTT 使用同一设备状态缓存，支持事件时间乱序过滤、重复回放幂等和常用点位别名映射（`temp`、`total_count` 等）。当前 HTTP 入口只接收 telemetry；告警仍通过 `alarm.created`/`alarm.cleared` MQTT 主题进入。开启 `DATABASE_ENABLED=true` 后，事件日志、当前状态和连接事件分别写入 `device_events`、`current_states`、`connection_events`，并在重启时恢复 MQTT 状态。
 
+### ERPNext 转接层
+
+NestJS 保留为 integration/Agent Gateway；ERPNext 仅通过 REST 适配，不复制 ERPNext 源码。配置 `ERPNEXT_ENABLED=true`、`ERPNEXT_URL`、`ERPNEXT_API_KEY` 和 `ERPNEXT_API_SECRET` 后可使用：
+
+```text
+GET  /api/v1/integrations/erpnext/health
+GET  /api/v1/integrations/erpnext/production-orders
+GET  /api/v1/integrations/erpnext/work-orders
+GET  /api/v1/integrations/erpnext/reports
+POST /api/v1/integrations/erpnext/work-orders/:workOrderId/reports
+```
+
+未配置时接口不会影响 MES 启动；健康检查返回 `disabled`，读写桥接会返回明确的 `503`。ERPNext 的鉴权、超时、未找到和上游错误会转换为稳定的 HTTP 错误，不会伪造本地成功结果。
+
 ## 下一步开发顺序
 
 1. 租户、用户和权限

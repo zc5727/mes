@@ -1,6 +1,16 @@
-import { IsDateString, IsIn, IsInt, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsDateString, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export class CreateOrderDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  externalId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  externalSystem?: string;
+
   @IsString()
   @MinLength(2)
   @MaxLength(40)

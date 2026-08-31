@@ -25,8 +25,8 @@
         <strong :class="connected ? 'status-running' : 'status-error'">{{ connectionLabel }}</strong>
       </div>
       <div class="metric simulation-metric">
-        <span>{{ dataSource === 'api' ? '数据来源' : '降级数据' }}</span>
-        <strong>{{ simulationTime }}</strong>
+        <span>{{ dataSource === 'api' ? '外部 MES 来源' : '降级数据' }}</span>
+        <strong>{{ dataSource === 'api' ? mesSource : simulationTime }}</strong>
       </div>
       <div class="clock">{{ clock }}</div>
     </div>
@@ -45,6 +45,7 @@ const props = defineProps<{
   lineCount: number;
   connectionState: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'fallback' | 'offline' | 'polling';
   dataSource: 'api' | 'simulator';
+  mesSource: string;
   simulation?: SimulatorState;
 }>();
 
