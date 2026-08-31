@@ -5,6 +5,7 @@ export type StrategyAction =
   | 'reschedule_material'
   | 'schedule_recovery'
   | 'expedite_work_order';
+export type StrategyLifecycleStatus = 'pending_approval' | 'approved' | 'rejected' | 'revoked' | 'simulated_execution';
 
 export type StrategyRole =
   | 'system_admin'

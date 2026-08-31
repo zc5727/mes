@@ -67,6 +67,21 @@ DATABASE_ENABLED=true npm run start:dev
 
 ### 设备接入契约
 
+### 本地实时链路
+
+Mosquitto 与 PostgreSQL 可通过 `backend/docker-compose.yml` 启动。MQTT telemetry/alarm 被投影到统一状态后，数字孪生 SSE 接口会推送完整快照：
+
+```bash
+docker compose up -d postgres mqtt
+MQTT_ENABLED=true MQTT_URL=mqtt://localhost:1883 npm run start:dev
+curl -N -H 'Authorization: Bearer dev-key' -H 'x-tenant-id: tenant-demo' \
+  http://localhost:3000/api/v1/digital-twin/stream
+```
+
+浏览器 EventSource 无法自定义 Authorization header；本地演示可显式设置 `MES_REALTIME_ALLOW_QUERY_KEY=true`，并在前端配置 `VITE_REALTIME_PROTOCOL=sse`、`VITE_REALTIME_API_KEY`。生产环境应由同源网关注入认证或改用 WebSocket/token 握手，不能把 API key 放入 URL。
+
+Modbus/OPC UA 当前只保留协议适配边界，尚未连接真实设备；模拟器应通过 MQTT 或 HTTP gateway contract 接入。
+
 除 MQTT 模拟器链路外，不能发布 MQTT 的边缘网关可调用：
 
 ```bash

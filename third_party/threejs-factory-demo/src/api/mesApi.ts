@@ -316,21 +316,32 @@ async function request<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE', bod
 }
 
 async function requestFormData<T>(path: string, body: FormData): Promise<T> {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
-      method: 'POST',
-      headers: {
-        'x-tenant-id': TENANT_ID,
-        ...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
-      },
-      body,
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`MES API ${response.status}: ${path}`);
-    return unwrap<T>(await response.json() as T | { data: T });
-  } finally { window.clearTimeout(timeout); }
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch(`${API_BASE_URL}${path}`, {
+        method: 'POST',
+        headers: {
+          'x-tenant-id': TENANT_ID,
+          ...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
+        },
+        body,
+        signal: controller.signal,
+      });
+      if (response.ok) return unwrap<T>(await response.json() as T | { data: T });
+      if (response.status < 500 || attempt === maxAttempts) {
+        throw new Error(`MES API ${response.status}: ${path}`);
+      }
+    } catch (error: unknown) {
+      if (attempt === maxAttempts || (error instanceof Error && error.message.startsWith('MES API 4'))) throw error;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 250 * attempt));
+  }
+  throw new Error(`MES API upload failed after ${maxAttempts} attempts: ${path}`);
 }
 
 async function getOptional<T>(path: string): Promise<T | undefined> {

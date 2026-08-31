@@ -130,6 +130,7 @@ bash scripts/desktop.sh rebuild
 
 - Git commit、Node/npm/Docker 版本和配置摘要。
 - `verify-all.sh`、`verify-runtime.sh`、前端 build 和桌面 smoke 输出。
+- `verify-desktop-release.sh` 的 app/dmg、签名、公证输出；缺少 Apple 环境时归档 `BLOCKED` 原因。
 - 启停日志、健康检查响应、MQTT 事件、故障闭环前后快照。
 - 数据库迁移、备份恢复、回滚和权限拒绝测试结果。
 - 操作者、时间、环境、产线、设备、工单、`traceId` 和证据文件路径。

@@ -9,6 +9,11 @@ services:
       - "5432:5432"
     volumes:
       - mes_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mes -d mes"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
   mqtt:
     image: eclipse-mosquitto:2
     ports:
@@ -16,6 +21,11 @@ services:
       - "9001:9001"
     volumes:
       - ./infra/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -p 1883 -t '$$SYS/broker/uptime' -C 1 -W 2 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
   minio:
     image: minio/minio:latest
     command: server /data --console-address ":9001"

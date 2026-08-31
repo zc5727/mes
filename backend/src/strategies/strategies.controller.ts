@@ -161,6 +161,66 @@ export class StrategiesController {
     return { data: this.governance.listApprovalsForSimulation(tenantId, simulationId), tenantId };
   }
 
+  @Post('simulations/:simulationId/approvals/:approvalId/approve')
+  @HttpCode(HttpStatus.OK)
+  approve(
+    @TenantId() tenantId: string, @Param('simulationId') simulationId: string, @Param('approvalId') approvalId: string,
+    @Headers('x-user-id') userId?: string, @Headers('x-role') role?: string, @Headers('x-factory-id') factoryId?: string,
+    @Headers('x-scope') scope?: string, @Headers('x-session-id') sessionId?: string, @Headers('x-trace-id') traceId?: string,
+  ) {
+    const context = this.requestContext(userId, role, factoryId, scope, sessionId, traceId);
+    this.authorization.assertCanApprove(context);
+    const tracked = this.governance?.getSimulation(tenantId, simulationId);
+    if (!tracked) return { data: null, tenantId };
+    this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
+    return { data: this.governance?.decideApproval(tenantId, simulationId, approvalId, 'approved', context.userId, context.traceId), tenantId };
+  }
+
+  @Post('simulations/:simulationId/approvals/:approvalId/reject')
+  @HttpCode(HttpStatus.OK)
+  reject(
+    @TenantId() tenantId: string, @Param('simulationId') simulationId: string, @Param('approvalId') approvalId: string,
+    @Headers('x-user-id') userId?: string, @Headers('x-role') role?: string, @Headers('x-factory-id') factoryId?: string,
+    @Headers('x-scope') scope?: string, @Headers('x-session-id') sessionId?: string, @Headers('x-trace-id') traceId?: string,
+  ) {
+    const context = this.requestContext(userId, role, factoryId, scope, sessionId, traceId);
+    this.authorization.assertCanApprove(context);
+    const tracked = this.governance?.getSimulation(tenantId, simulationId);
+    if (!tracked) return { data: null, tenantId };
+    this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
+    return { data: this.governance?.decideApproval(tenantId, simulationId, approvalId, 'rejected', context.userId, context.traceId), tenantId };
+  }
+
+  @Post('simulations/:simulationId/revoke')
+  @HttpCode(HttpStatus.OK)
+  revoke(
+    @TenantId() tenantId: string, @Param('simulationId') simulationId: string,
+    @Headers('x-user-id') userId?: string, @Headers('x-role') role?: string, @Headers('x-factory-id') factoryId?: string,
+    @Headers('x-scope') scope?: string, @Headers('x-session-id') sessionId?: string, @Headers('x-trace-id') traceId?: string,
+  ) {
+    const context = this.requestContext(userId, role, factoryId, scope, sessionId, traceId);
+    this.authorization.assertCanApprove(context);
+    const tracked = this.governance?.getSimulation(tenantId, simulationId);
+    if (!tracked) return { data: null, tenantId };
+    this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
+    return { data: this.governance?.revokeSimulation(tenantId, simulationId, context.userId, context.traceId), tenantId };
+  }
+
+  @Post('simulations/:simulationId/execute')
+  @HttpCode(HttpStatus.OK)
+  executeSimulation(
+    @TenantId() tenantId: string, @Param('simulationId') simulationId: string,
+    @Headers('x-user-id') userId?: string, @Headers('x-role') role?: string, @Headers('x-factory-id') factoryId?: string,
+    @Headers('x-scope') scope?: string, @Headers('x-session-id') sessionId?: string, @Headers('x-trace-id') traceId?: string,
+  ) {
+    const context = this.requestContext(userId, role, factoryId, scope, sessionId, traceId);
+    this.authorization.assertCanExecute(context);
+    const tracked = this.governance?.getSimulation(tenantId, simulationId);
+    if (!tracked) return { data: null, tenantId };
+    this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
+    return { data: this.governance?.executeSimulation(tenantId, simulationId, context.userId, context.traceId), tenantId };
+  }
+
   @Post('preflight')
   preflight(@Body() dto: StrategySimulationDto) {
     return { data: this.strategyEngine.preflight(this.toSnapshot(dto)) };
@@ -178,5 +238,9 @@ export class StrategiesController {
         affectedWorkOrderIds: [...item.affectedWorkOrderIds],
       })),
     };
+  }
+
+  private requestContext(userId?: string, role?: string, factoryId?: string, scope?: string, sessionId?: string, traceId?: string): StrategyRequestContext {
+    return this.authorization.fromHeaders({ userId, role, factoryId, scope, sessionId, traceId });
   }
 }

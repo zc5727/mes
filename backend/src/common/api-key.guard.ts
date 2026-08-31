@@ -31,27 +31,28 @@ export class ApiKeyGuard implements CanActivate {
     if (isPublic) return true;
 
     const request = context.switchToHttp().getRequest<Request>();
-    this.assertApiKey(request.headers.authorization);
-    this.assertTenant(request.headers['x-tenant-id']);
+    const realtimeQuery = request.path === '/api/v1/digital-twin/stream' && process.env.MES_REALTIME_ALLOW_QUERY_KEY === 'true';
+    this.assertApiKey(request.headers.authorization, realtimeQuery ? this.queryValue(request.query.apiKey) : undefined);
+    this.assertTenant(request.headers['x-tenant-id'], realtimeQuery ? this.queryValue(request.query.tenantId) : undefined);
     this.assertSession(request);
     this.assertRateLimit(request);
     return true;
   }
 
-  private assertApiKey(authorization: string | undefined): void {
+  private assertApiKey(authorization: string | undefined, queryKey?: string): void {
     const expected = process.env.MES_API_KEY?.trim();
     if (!expected) {
       throw new UnauthorizedException('API authentication is not configured');
     }
 
-    const supplied = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+    const supplied = authorization?.match(/^Bearer\s+(.+)$/i)?.[1] ?? queryKey;
     if (!supplied || !this.secureEquals(supplied, expected)) {
       throw new UnauthorizedException('Valid Bearer API key is required');
     }
   }
 
-  private assertTenant(value: string | string[] | undefined): void {
-    const tenantId = Array.isArray(value) ? value[0] : value;
+  private assertTenant(value: string | string[] | undefined, queryTenant?: string): void {
+    const tenantId = (Array.isArray(value) ? value[0] : value) ?? queryTenant;
     const allowedTenants = (process.env.MES_ALLOWED_TENANTS ?? '')
       .split(',')
       .map((item) => item.trim())
@@ -59,6 +60,10 @@ export class ApiKeyGuard implements CanActivate {
     if (!tenantId?.trim() || !allowedTenants.includes(tenantId.trim())) {
       throw new UnauthorizedException('Tenant is missing or not allowed');
     }
+  }
+
+  private queryValue(value: unknown): string | undefined {
+    return typeof value === 'string' ? value : Array.isArray(value) && typeof value[0] === 'string' ? value[0] : undefined;
   }
 
   private assertSession(request: Request): void {

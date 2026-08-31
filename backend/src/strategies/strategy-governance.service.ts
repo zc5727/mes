@@ -7,6 +7,7 @@ import {
   StrategySnapshot,
   StrategySimulationResult,
   StrategyRollbackState,
+  StrategyLifecycleStatus,
 } from './strategy.types';
 import { StrategyPersistenceService } from './strategy-persistence.service';
 
@@ -38,6 +39,7 @@ export interface StrategyCallRecord {
   riskLevels: Array<'low' | 'medium' | 'high'>;
   recommendedRisk: 'low' | 'medium' | 'high' | null;
   rollback: StrategyRollbackState;
+  lifecycleStatus: StrategyLifecycleStatus;
 }
 
 export interface TrackedStrategySimulation {
@@ -129,6 +131,7 @@ export class StrategyGovernanceService implements OnModuleInit {
       riskLevels: [...new Set(result.candidates.map((candidate) => candidate.risk))],
       recommendedRisk: result.recommended?.risk ?? null,
       rollback: { supported: true, action: 'discard_simulation', status: 'available', executionAllowed: false },
+      lifecycleStatus: 'pending_approval',
     };
     this.simulations.set(this.key(tenantId, result.simulationId), { result, audit: record });
     void this.persistence?.save(tenantId, result, record, this.auditService.listApprovals(tenantId));
@@ -254,9 +257,31 @@ export class StrategyGovernanceService implements OnModuleInit {
     return this.auditService.listApprovals(tenantId).filter((approval) => approvalIds.has(approval.id));
   }
 
+  decideApproval(tenantId: string, simulationId: string, approvalId: string, status: 'approved' | 'rejected', actor: string, traceId: string): TrackedStrategySimulation {
+    const tracked = this.getSimulation(tenantId, simulationId);
+    if (!tracked.audit.approvalIds.includes(approvalId)) throw new NotFoundException(`Approval ${approvalId} not found for simulation ${simulationId}`);
+    this.auditService.decide(tenantId, approvalId, status);
+    const lifecycleStatus = status === 'rejected' ? 'rejected' : this.lifecycleFor(tenantId, simulationId);
+    return this.updateLifecycle(tenantId, simulationId, lifecycleStatus, actor, traceId, `策略建议审批${status === 'approved' ? '通过' : '拒绝'}`);
+  }
+
+  revokeSimulation(tenantId: string, simulationId: string, actor: string, traceId: string): TrackedStrategySimulation {
+    const tracked = this.getSimulation(tenantId, simulationId);
+    const approvals = this.listApprovalsForSimulation(tenantId, simulationId);
+    approvals.filter((approval) => approval.status === 'pending' || approval.status === 'approved')
+      .forEach((approval) => this.auditService.revoke(tenantId, approval.id));
+    return this.updateLifecycle(tenantId, simulationId, 'revoked', actor, traceId, '撤销策略建议，不执行任何生产写入');
+  }
+
+  executeSimulation(tenantId: string, simulationId: string, actor: string, traceId: string): TrackedStrategySimulation {
+    const tracked = this.getSimulation(tenantId, simulationId);
+    if (this.lifecycleFor(tenantId, simulationId) !== 'approved') throw new ConflictException('STRATEGY_NOT_APPROVED: strategy must be approved before simulated execution');
+    return this.updateLifecycle(tenantId, simulationId, 'simulated_execution', actor, traceId, '仅执行仿真副本，不控制真实设备或修改工单');
+  }
+
   private createHighRiskApprovals(tenantId: string, result: StrategySimulationResult): string[] {
     return result.candidates
-      .filter((candidate) => candidate.risk === 'high')
+      .filter((candidate) => candidate.requiresApproval)
       .map((candidate) => {
         const existing = this.auditService.listApprovals(tenantId)
           .find((approval) => approval.resource === 'strategy-candidate' && approval.resourceId === candidate.id && approval.status === 'pending');
@@ -276,6 +301,28 @@ export class StrategyGovernanceService implements OnModuleInit {
     const normalized = idempotencyKey.trim();
     if (!normalized) throw new ConflictException('IDEMPOTENCY_KEY_INVALID: key must not be empty');
     return `${tenantId}:${normalized}`;
+  }
+
+  private lifecycleFor(tenantId: string, simulationId: string): StrategyLifecycleStatus {
+    const approvals = this.listApprovalsForSimulation(tenantId, simulationId);
+    if (approvals.some((approval) => approval.status === 'rejected')) return 'rejected';
+    if (approvals.length === 0 || approvals.some((approval) => approval.status === 'pending')) return 'pending_approval';
+    return 'approved';
+  }
+
+  private updateLifecycle(tenantId: string, simulationId: string, status: StrategyLifecycleStatus, actor: string, traceId: string, reason: string): TrackedStrategySimulation {
+    const tracked = this.getSimulation(tenantId, simulationId);
+    this.auditService.record(tenantId, actor, {
+      action: `STRATEGY_${status.toUpperCase()}`,
+      resource: 'strategy-simulation', resourceId: simulationId, operator: actor,
+      object: `strategy-simulation:${simulationId}`, before: { lifecycleStatus: tracked.audit.lifecycleStatus },
+      after: { lifecycleStatus: status, executionAllowed: false }, reason, traceId, result: 'success',
+      details: { lifecycleStatus: status, executionAllowed: false },
+    });
+    const updated = { result: tracked.result, audit: { ...tracked.audit, lifecycleStatus: status } };
+    this.simulations.set(this.key(tenantId, simulationId), updated);
+    void this.persistence?.save(tenantId, updated.result, updated.audit, this.auditService.listApprovals(tenantId));
+    return updated;
   }
 
   private toAuditEntry(record: StrategyCallRecord): GovernedAuditEntry {

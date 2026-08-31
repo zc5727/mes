@@ -42,6 +42,7 @@ const devicePositions = [
 const statusPool: DeviceStatus[] = ['running', 'running', 'running', 'warning', 'error', 'offline'];
 const agvStatePool: AGVTelemetry['state'][] = ['moving', 'moving', 'moving', 'loading', 'charging', 'idle'];
 const realtimeUrl = (import.meta.env.VITE_REALTIME_URL as string | undefined)?.trim();
+const realtimeProtocol = ((import.meta.env.VITE_REALTIME_PROTOCOL as string | undefined)?.trim() || 'websocket').toLowerCase();
 
 export class WebSocketService {
   private readonly handlers = new Set<MessageHandler>();
@@ -50,6 +51,7 @@ export class WebSocketService {
   private reconnectTimer: number | null = null;
   private connectTimeout: number | null = null;
   private socket: WebSocket | null = null;
+  private eventSource: EventSource | null = null;
   private devices: DeviceTelemetry[] = [];
   private agvs: AGVTelemetry[] = [];
   private alarms: FactoryAlarm[] = [];
@@ -86,6 +88,10 @@ export class WebSocketService {
     if (this.socket) {
       this.socket.close();
       this.socket = null;
+    }
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
     }
     if (notify) this.setConnectionState('offline');
   }
@@ -158,6 +164,10 @@ export class WebSocketService {
       this.startLocal(options.emitSnapshot !== false);
       return;
     }
+    if (realtimeProtocol === 'sse') {
+      this.connectSse(options);
+      return;
+    }
     this.setConnectionState(this.reconnectAttempt ? 'reconnecting' : 'connecting');
     try {
       const url = new URL(realtimeUrl, window.location.origin);
@@ -183,6 +193,37 @@ export class WebSocketService {
         this.socket = null;
         if (this.shouldReconnect) this.scheduleReconnect();
       });
+    } catch {
+      this.scheduleReconnect();
+    }
+  }
+
+  private connectSse(_options: ConnectOptions): void {
+    if (!realtimeUrl || typeof EventSource === 'undefined') {
+      this.setConnectionState('offline');
+      return;
+    }
+    this.setConnectionState(this.reconnectAttempt ? 'reconnecting' : 'connecting');
+    try {
+      const url = new URL(realtimeUrl, window.location.origin);
+      url.searchParams.set('tenantId', import.meta.env.VITE_TENANT_ID ?? 'tenant-demo');
+      const queryKey = (import.meta.env.VITE_REALTIME_API_KEY as string | undefined)?.trim();
+      if (queryKey) url.searchParams.set('apiKey', queryKey);
+      this.eventSource = new EventSource(url);
+      this.eventSource.onopen = () => {
+        this.reconnectAttempt = 0;
+        this.setConnectionState('connected');
+      };
+      this.eventSource.onmessage = (event) => {
+        const raw = this.parseJson(event.data);
+        parseRealtimeMessages(raw).forEach((message) => this.emit(message));
+      };
+      this.eventSource.onerror = () => {
+        this.eventSource?.close();
+        this.eventSource = null;
+        this.setConnectionState('offline');
+        this.scheduleReconnect();
+      };
     } catch {
       this.scheduleReconnect();
     }

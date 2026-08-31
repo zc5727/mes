@@ -27,6 +27,13 @@ describe('business foundation APIs', () => {
     expect(() => service.decide('tenant-a', approval.id, 'rejected')).toThrow(/already approved/);
   });
 
+  it('verifies the append-only audit hash chain', () => {
+    const service = new AuditService();
+    service.record('tenant-a', 'user-1', { action: 'strategy.simulate', resource: 'strategy-simulation' });
+    service.record('tenant-a', 'user-1', { action: 'strategy.approve', resource: 'strategy-candidate' });
+    expect(service.verify('tenant-a')).toEqual({ valid: true, checked: 2 });
+  });
+
   it('supports tenant-scoped production calendars', () => {
     const service = new MasterDataService();
     const calendar = service.create('tenant-a', 'calendar', {

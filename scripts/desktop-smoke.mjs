@@ -64,6 +64,10 @@ if (configPath?.endsWith('.json')) {
     record('Tauri config JSON', true, 'valid JSON');
     record('frontend target', hasFrontendTarget, 'build.frontendDist or build.devUrl');
     record('window definition', hasWindow, 'app.windows');
+    const windowConfig = config.app?.windows?.[0] ?? {};
+    record('resizable window', windowConfig.resizable === true, 'app.windows[0].resizable=true');
+    record('minimum window size', Number(windowConfig.minWidth) >= 1024 && Number(windowConfig.minHeight) >= 700, 'minWidth>=1024 and minHeight>=700');
+    record('bundle enabled', config.bundle?.active === true, 'bundle.active=true');
     const resources = Array.isArray(config.bundle?.resources) ? config.bundle.resources : [];
     record('runtime resource bundle', resources.some((resource) => String(resource).includes('desktop-runtime.sh')), 'bundle.resources');
   } catch (error) {

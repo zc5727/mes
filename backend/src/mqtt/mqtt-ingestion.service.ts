@@ -25,6 +25,7 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
   private started = false;
   private connected = false;
   private subscriptionInFlight = false;
+  private readonly projectionListeners = new Set<(tenantId: string) => void>();
 
   constructor(
     @Inject(MQTT_CLIENT_FACTORY) private readonly clientFactory: MqttClientFactory = createDefaultMqttClient,
@@ -112,6 +113,11 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     return this.alarmDeduplicator.listActive(tenantId);
   }
 
+  onProjection(listener: (tenantId: string) => void): () => void {
+    this.projectionListeners.add(listener);
+    return () => this.projectionListeners.delete(listener);
+  }
+
   /**
    * Ingests a normalized HTTP gateway event through the same memory projection
    * as MQTT. This is intentionally telemetry/alarm ingestion only; no device
@@ -145,7 +151,10 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('goodCount + defectCount cannot exceed totalCount');
     }
     const result = this.deviceCache.upsert(tenantId, telemetry, 'http://gateway/device-events');
-    if (result.accepted) void this.persistence?.saveTelemetry(result.current);
+    if (result.accepted) {
+      void this.persistence?.saveTelemetry(result.current);
+      this.notifyProjection(tenantId);
+    }
     return { accepted: result.accepted, duplicate: !result.accepted, eventId };
   }
 
@@ -243,12 +252,22 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
 
     if (message.kind === 'telemetry') {
       const result = this.deviceCache.upsert(message.tenantId, message.data, message.topic);
-      if (result.accepted) void this.persistence?.saveTelemetry(result.current);
+      if (result.accepted) {
+        void this.persistence?.saveTelemetry(result.current);
+        this.notifyProjection(message.tenantId);
+      }
       return;
     }
 
     const result = this.alarmDeduplicator.apply(message.tenantId, message.event, message.data);
-    if (result.accepted) void this.persistence?.saveAlarm(result.state);
+    if (result.accepted) {
+      void this.persistence?.saveAlarm(result.state);
+      this.notifyProjection(message.tenantId);
+    }
+  }
+
+  private notifyProjection(tenantId: string): void {
+    this.projectionListeners.forEach((listener) => listener(tenantId));
   }
 
   private resolveOptions(): Required<Pick<MqttIngestionOptions, 'enabled'>> & MqttIngestionOptions {

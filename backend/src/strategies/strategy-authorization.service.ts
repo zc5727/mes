@@ -45,11 +45,11 @@ const READ_ROLES = new Set<StrategyRole>([
   'auditor',
 ]);
 
-export const STRATEGY_ACTION_MATRIX: Readonly<Record<StrategyRole, ReadonlySet<'read' | 'simulate' | 'rollback'>>> = {
-  system_admin: new Set(['read', 'simulate', 'rollback']),
-  plant_manager: new Set(['read', 'simulate', 'rollback']),
-  production_supervisor: new Set(['read', 'simulate', 'rollback']),
-  equipment_supervisor: new Set(['read', 'simulate', 'rollback']),
+export const STRATEGY_ACTION_MATRIX: Readonly<Record<StrategyRole, ReadonlySet<'read' | 'simulate' | 'approve' | 'execute' | 'rollback'>>> = {
+  system_admin: new Set(['read', 'simulate', 'approve', 'execute', 'rollback']),
+  plant_manager: new Set(['read', 'simulate', 'approve', 'execute', 'rollback']),
+  production_supervisor: new Set(['read', 'simulate', 'approve', 'execute', 'rollback']),
+  equipment_supervisor: new Set(['read', 'simulate', 'approve']),
   quality_supervisor: new Set(['read', 'simulate']),
   team_leader: new Set(['read']),
   operator: new Set([]),
@@ -96,7 +96,15 @@ export class StrategyAuthorizationService {
     this.assertAction(context, 'rollback', 'simulation rollback is not permitted');
   }
 
-  private assertAction(context: StrategyRequestContext, action: 'read' | 'simulate' | 'rollback', message: string): void {
+  assertCanApprove(context: StrategyRequestContext): void {
+    this.assertAction(context, 'approve', 'strategy approval is not permitted');
+  }
+
+  assertCanExecute(context: StrategyRequestContext): void {
+    this.assertAction(context, 'execute', 'simulated strategy execution is not permitted');
+  }
+
+  private assertAction(context: StrategyRequestContext, action: 'read' | 'simulate' | 'approve' | 'execute' | 'rollback', message: string): void {
     if (!STRATEGY_ACTION_MATRIX[context.role]?.has(action)) throw new ForbiddenException(`ROLE_FORBIDDEN: ${message}`);
   }
 
