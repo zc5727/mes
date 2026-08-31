@@ -12,6 +12,9 @@ test("same seed and operation sequence reproduce telemetry, faults, network deli
   const secondTrace = runSequence(second);
   assert.deepEqual(firstTrace, secondTrace);
   assert.deepEqual(first.exportReplay(), second.exportReplay());
+  const replay = JSON.parse(first.exportReplay()) as { seed?: number; networkSeed?: number };
+  assert.equal(replay.seed, 20260831);
+  assert.equal(replay.networkSeed, 77);
 });
 
 test("reset rewinds seeded simulation and network randomness", () => {

@@ -182,6 +182,7 @@ export interface ReplayDocument {
   intervalMs: number;
   timeScale: number;
   seed?: number;
+  networkSeed?: number;
   scenario?: ScenarioEvent[];
   frames: ReplayFrame[];
 }

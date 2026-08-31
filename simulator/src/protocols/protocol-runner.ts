@@ -1,5 +1,5 @@
 import { ConsolePublisher, MqttPublisher, type MessagePublisher } from "../mqtt/publisher";
-import { ModbusTcpSimulatorServer, ModbusTcpTelemetryClient, OpcUaTelemetrySimulator, type DeterministicTelemetryValues, type ProtocolKind } from "./protocol-bridge";
+import { ModbusTcpSimulatorServer, ModbusTcpTelemetryClient, OpcUaTelemetrySimulator, parseProtocolEndpoint, type DeterministicTelemetryValues, type ProtocolEndpointConfig, type ProtocolKind } from "./protocol-bridge";
 import { MtConnectTelemetrySimulator } from "./mtconnect";
 import type { SimulationMessage } from "../types";
 import type { DeviceProfile } from "../config/device-profile";
@@ -13,33 +13,39 @@ export interface ProtocolRunnerOptions {
   protocol: ProtocolKind;
   host: string;
   port: number;
+  unitId?: number;
+  timeoutMs?: number;
   values?: DeterministicTelemetryValues;
 }
 
 /** Start one local protocol endpoint, read its contract, and return canonical telemetry. */
 export class ProtocolRunner {
-  public constructor(private readonly options: ProtocolRunnerOptions) {}
+  private readonly endpoint: ProtocolEndpointConfig;
+
+  public constructor(private readonly options: ProtocolRunnerOptions) {
+    this.endpoint = parseProtocolEndpoint(options);
+  }
 
   public async readTelemetry(): Promise<SimulationMessage> {
     const values = this.options.values ?? VALUES;
     if (this.options.protocol === "modbus-tcp") {
-      const server = new ModbusTcpSimulatorServer(values, this.options.host, this.options.port);
+      const server = new ModbusTcpSimulatorServer(values, this.endpoint.host, this.endpoint.port, this.endpoint.unitId);
       try {
         await server.start();
-        return await new ModbusTcpTelemetryClient(identityOf(values), this.options.host, this.options.port).readTelemetry(2);
+        return await new ModbusTcpTelemetryClient(identityOf(values), this.endpoint.host, this.endpoint.port, this.endpoint.unitId, this.endpoint.timeoutMs).readTelemetry(2);
       } finally {
         await server.close().catch(() => undefined);
       }
     }
     if (this.options.protocol === "opc-ua") {
-      const server = new OpcUaTelemetrySimulator(values, this.options.port);
+      const server = new OpcUaTelemetrySimulator(values, this.endpoint.port, this.endpoint.host);
       try {
         await server.start();
         return await server.readTelemetry(2);
       }
       finally { await server.close().catch(() => undefined); }
     }
-    const server = new MtConnectTelemetrySimulator(identityOf(values), values, this.options.host, this.options.port);
+    const server = new MtConnectTelemetrySimulator(identityOf(values), values, this.endpoint.host, this.endpoint.port);
     try {
       await server.start();
       return await server.readTelemetry(2);

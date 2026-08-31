@@ -174,7 +174,7 @@ mes/control/{tenantId}/twin/command
 
 策略或调度服务可以直接读取 `FactorySimulator.strategyInputSnapshot()`，获得同一时间点的产线、设备、AGV、告警和运行控制状态。场景测试通过 `loadScenario([{ "atSeconds": 10, "command": { ... } }])` 注入定时控制命令；可以用 `exportScenario()` 保存 JSON，用 `loadScenarioDocument()` 加载保存的场景。`exportReplay()` 除了历史帧，也包含场景事件，便于在同一版本和种子下回放。
 
-阶段 7 的网络扰动通过构造参数启用：`latencyMs` 模拟延迟，`duplicateRate` 模拟重复消息，`dropRate` 模拟丢包，`seed` 保证扰动可复现。`exportReplay()` 导出带版本和序号的回放文档，`replayFrames()` 支持按帧筛选回放数据。
+阶段 7 的网络扰动通过构造参数启用：`latencyMs` 模拟延迟，`duplicateRate` 模拟重复消息，`dropRate` 模拟丢包，`seed` 保证扰动可复现。`exportReplay()` 导出带版本、设备 `seed`、网络 `networkSeed` 和序号的回放文档，`replayFrames()` 支持按帧筛选回放数据。未提供 seed 时不会伪造确定性保证。
 
 消息统一为 JSON，`event` 表示事件类型，`data` 为业务数据。例如：
 
@@ -221,7 +221,7 @@ replay
 | Modbus TCP | 1502 | 合同化 FC03 入口 |
 | MTConnect | 5000 | `/probe`、`/current`、`/sample` |
 
-协议 smoke 在退出时自动关闭本地 server；正常运行的产线模拟器用 `Ctrl+C` 触发 publisher 和 timer 清理。发现端口占用时先检查监听者，不要盲目杀进程：
+协议 smoke 在退出时自动关闭本地 server；各协议 endpoint 的 `start()`/`close()` 可重复调用，绑定失败不会接管或遗留被占用端口。正常运行的产线模拟器用 `Ctrl+C` 触发 publisher 和 timer 清理。发现端口占用时先检查监听者，不要盲目杀进程：
 
 ```bash
 lsof -nP -iTCP:5000 -sTCP:LISTEN
@@ -246,7 +246,7 @@ npm run build && node --test dist/protocols/event-adapter.test.js
 
 `src/protocols/protocol-bridge.ts` 提供确定性本地联调实现：
 
-- Modbus TCP server/client：实现 FC03 holding-register telemetry 读取，非法功能码返回异常帧；客户端连接失败明确报错，可在 server 重启后重新读取。
+- Modbus TCP server/client：实现 FC03 holding-register telemetry 读取，非法功能码返回异常帧；MBAP 协议标识、事务、unit、功能码、字节数或寄存器数不匹配时失败关闭，客户端连接失败明确报错，可在 server 重启后重新读取。
 - OPC UA server/client：创建固定节点并读取 status、温度、节拍、产量和质量计数；只读，不实现设备控制。
 - MTConnect server/client：提供 `/probe`、`/current`、`/sample`，使用 `sim-*` 数据项 ID，并输出 canonical telemetry。
 - 三者都复用 `event-adapter.ts`，输出 `mes/modbus/.../telemetry`、`mes/opcua/.../telemetry` 或 `mes/mtconnect/.../telemetry` 的 `device.telemetry` canonical MQTT 消息。
@@ -257,7 +257,7 @@ npm run build && node --test dist/protocols/event-adapter.test.js
 npm run protocols:smoke
 ```
 
-该测试只监听 `127.0.0.1:16002`、`16003` 和 `4842`，不连接真实设备。
+该测试只监听 `127.0.0.1:16002`、`16003`、`16004`、`16005`、`16011`、`16012`、`16013`、`16014` 和 `4842`，不连接真实设备；端口测试按单并发执行，避免协议 endpoint 互相抢占。
 
 也可以从模拟器启动入口运行单协议本地 smoke，并将 canonical telemetry 输出到 stdout：
 

@@ -11,6 +11,7 @@ const values: MtConnectTelemetryValues = { status: "FAULT", temperatureCelsius: 
 test("MTConnect synthetic probe and current/sample contract expose no vendor NodeIDs", async () => {
   const server = new MtConnectTelemetrySimulator(identity, values, "127.0.0.1", 16006);
   await server.start();
+  await server.start();
   try {
     const probe = await read("127.0.0.1", 16006, "/probe");
     assert.match(probe, new RegExp(MTCONNECT_SYNTHETIC_DATA_ITEMS.status));
@@ -23,6 +24,17 @@ test("MTConnect synthetic probe and current/sample contract expose no vendor Nod
     assert.match(message.topic, /mes\/mtconnect\/tenant-mt/);
     const sample = await read("127.0.0.1", 16006, "/sample");
     assert.match(sample, /MTConnectStreams/);
+  } finally {
+    await server.close();
+    await server.close();
+  }
+});
+
+test("MTConnect rejects a synthetic document with inconsistent production counts", async () => {
+  const server = new MtConnectTelemetrySimulator(identity, { ...values, goodCount: 7 }, "127.0.0.1", 16013);
+  await server.start();
+  try {
+    await assert.rejects(() => server.readTelemetry(), /goodCount plus defectCount/);
   } finally {
     await server.close();
   }

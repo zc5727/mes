@@ -27,6 +27,7 @@ export const MTCONNECT_SYNTHETIC_DATA_ITEMS = {
 
 export class MtConnectTelemetrySimulator implements ProtocolTelemetrySource {
   private readonly server: Server;
+  private startPromise?: Promise<void>;
   constructor(
     private readonly identity: MtConnectIdentity,
     private values: MtConnectTelemetryValues,
@@ -37,10 +38,10 @@ export class MtConnectTelemetrySimulator implements ProtocolTelemetrySource {
   }
 
   public async start(): Promise<void> {
-    await new Promise<void>((resolve, reject) => {
-      this.server.once("error", reject);
-      this.server.listen(this.port, this.host, () => resolve());
-    });
+    if (this.server.listening) return;
+    if (this.startPromise) return this.startPromise;
+    this.startPromise = listen(this.server, this.port, this.host);
+    try { await this.startPromise; } finally { this.startPromise = undefined; }
   }
 
   public setValues(values: MtConnectTelemetryValues): void { this.values = values; }
@@ -141,5 +142,15 @@ function readHttp(host: string, port: number, path: string): Promise<string> {
     });
     client.once("error", reject);
     client.end();
+  });
+}
+
+function listen(server: Server, port: number, host: string): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const onError = (error: Error): void => { server.removeListener("listening", onListening); reject(error); };
+    const onListening = (): void => { server.removeListener("error", onError); resolve(); };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(port, host);
   });
 }
