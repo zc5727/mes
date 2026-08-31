@@ -114,19 +114,19 @@ export class FoundationPersistenceService {
   }
 
   async saveAux(item: FoundationAuxRecord): Promise<void> {
-    await this.write('foundation auxiliary record', () => this.prisma.foundationAuxRecord.upsert({
-      where: { id: item.id },
-      create: { id: item.id, tenantId: item.tenantId, domain: item.domain, payload: item.payload as Prisma.InputJsonValue, createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) },
-      update: { tenantId: item.tenantId, domain: item.domain, payload: item.payload as Prisma.InputJsonValue, updatedAt: new Date(item.updatedAt) },
-    }));
+    await this.write('foundation auxiliary record', () => this.prisma.foundationAuxRecord.upsert(this.auxiliaryUpsert(item)));
   }
 
   /** Persists auxiliary foundation data synchronously for an HTTP command boundary. */
   async saveAuxReliable(item: FoundationAuxRecord): Promise<void> {
-    await this.persistNow('foundation auxiliary record', () => this.prisma.foundationAuxRecord.upsert({
-      where: { id: item.id },
-      create: { id: item.id, tenantId: item.tenantId, domain: item.domain, payload: item.payload as Prisma.InputJsonValue, createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) },
-      update: { tenantId: item.tenantId, domain: item.domain, payload: item.payload as Prisma.InputJsonValue, updatedAt: new Date(item.updatedAt) },
+    await this.persistNow('foundation auxiliary record', () => this.prisma.foundationAuxRecord.upsert(this.auxiliaryUpsert(item)));
+  }
+
+  /** Persists related auxiliary records atomically for a command boundary. */
+  async saveAuxBatchReliable(items: FoundationAuxRecord[]): Promise<void> {
+    if (!items.length) return;
+    await this.persistNow('foundation auxiliary record batch', () => this.prisma.$transaction(async (transaction) => {
+      for (const item of items) await transaction.foundationAuxRecord.upsert(this.auxiliaryUpsert(item));
     }));
   }
 
@@ -187,6 +187,14 @@ export class FoundationPersistenceService {
       this.failure(`persist ${label}`, error);
       this.failIfRequired(`persist ${label}`, error);
     }
+  }
+
+  private auxiliaryUpsert(item: FoundationAuxRecord) {
+    return {
+      where: { id: item.id },
+      create: { id: item.id, tenantId: item.tenantId, domain: item.domain, payload: item.payload as Prisma.InputJsonValue, createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) },
+      update: { tenantId: item.tenantId, domain: item.domain, payload: item.payload as Prisma.InputJsonValue, updatedAt: new Date(item.updatedAt) },
+    };
   }
 
   private failIfRequired(operation: string, error?: unknown): void {

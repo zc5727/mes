@@ -141,13 +141,23 @@ export class MaintenanceService implements OnModuleInit {
     return updated;
   }
 
-  createPreventivePlan(tenantId: string, dto: CreatePreventivePlanDto, actorId = 'system'): PreventivePlan {
+  createPreventivePlan(tenantId: string, dto: CreatePreventivePlanDto, actorId = 'system', persist = true): PreventivePlan {
     this.devices.findOne(tenantId, dto.deviceId);
     const plan: PreventivePlan = { id: createId('pm'), tenantId, deviceId: dto.deviceId, title: dto.title.trim(), intervalHours: dto.intervalHours ?? 720, nextDueAt: dto.nextDueAt, active: true, createdAt: timestamp() };
     this.plans.set(plan.id, plan);
-    void this.persistence?.saveAux({ id: plan.id, tenantId, domain: 'preventive-plan', payload: plan as unknown as Record<string, unknown>, createdAt: plan.createdAt, updatedAt: plan.createdAt });
+    if (persist) void this.persistence?.saveAux({ id: plan.id, tenantId, domain: 'preventive-plan', payload: plan as unknown as Record<string, unknown>, createdAt: plan.createdAt, updatedAt: plan.createdAt });
     this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'maintenance.preventive_plan_created', resource: 'preventive_plan', resourceId: plan.id, after: plan as unknown as Record<string, unknown>, details: { deviceId: plan.deviceId } });
     return plan;
+  }
+  async createPreventivePlanReliable(tenantId: string, dto: CreatePreventivePlanDto, actorId = 'system'): Promise<PreventivePlan> {
+    const plan = this.createPreventivePlan(tenantId, dto, actorId, false);
+    try {
+      await this.persistence?.saveAuxReliable(this.auxiliary(plan, 'preventive-plan'));
+      return plan;
+    } catch (error: unknown) {
+      this.plans.delete(plan.id);
+      throw error;
+    }
   }
   listPreventivePlans(tenantId: string): PreventivePlan[] { return [...this.plans.values()].filter((plan) => plan.tenantId === tenantId); }
   duePreventivePlans(tenantId: string, at = new Date()): PreventivePlan[] {
@@ -162,18 +172,28 @@ export class MaintenanceService implements OnModuleInit {
       return [this.create(tenantId, { lineId: device.lineId, deviceId: plan.deviceId, type: 'preventive', title: plan.title, description: marker, plannedAt: plan.nextDueAt }, actorId)];
     });
   }
-  createSparePart(tenantId: string, dto: CreateSparePartDto, actorId = 'system'): SparePart {
+  createSparePart(tenantId: string, dto: CreateSparePartDto, actorId = 'system', persist = true): SparePart {
     const key = `${tenantId}:${dto.code.trim()}`;
     if (this.parts.has(key)) throw new ConflictException(`Spare part ${dto.code} already exists`);
     const part: SparePart = { id: createId('part'), tenantId, code: dto.code.trim(), name: dto.name.trim(), stock: dto.stock ?? 0, minimumStock: dto.minimumStock ?? 0, updatedAt: timestamp() };
     if (part.stock < 0 || part.minimumStock < 0) throw new BadRequestException('Spare part stock cannot be negative');
     this.parts.set(key, part);
-    void this.persistence?.saveAux({ id: part.id, tenantId, domain: 'spare-part', payload: part as unknown as Record<string, unknown>, createdAt: part.updatedAt, updatedAt: part.updatedAt });
+    if (persist) void this.persistence?.saveAux({ id: part.id, tenantId, domain: 'spare-part', payload: part as unknown as Record<string, unknown>, createdAt: part.updatedAt, updatedAt: part.updatedAt });
     this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'maintenance.spare_part_created', resource: 'spare_part', resourceId: part.id, after: part as unknown as Record<string, unknown>, details: { code: part.code } });
     return part;
   }
+  async createSparePartReliable(tenantId: string, dto: CreateSparePartDto, actorId = 'system'): Promise<SparePart> {
+    const part = this.createSparePart(tenantId, dto, actorId, false);
+    try {
+      await this.persistence?.saveAuxReliable(this.auxiliary(part, 'spare-part'));
+      return part;
+    } catch (error: unknown) {
+      this.parts.delete(`${tenantId}:${part.code}`);
+      throw error;
+    }
+  }
   listSpareParts(tenantId: string): SparePart[] { return [...this.parts.values()].filter((part) => part.tenantId === tenantId); }
-  consumeSparePart(tenantId: string, dto: ConsumeSparePartDto, actorId = 'system'): SparePart {
+  consumeSparePart(tenantId: string, dto: ConsumeSparePartDto, actorId = 'system', persist = true): SparePart {
     if (!Number.isInteger(dto.quantity) || dto.quantity <= 0) throw new BadRequestException('Spare part quantity must be a positive integer');
     const key = `${tenantId}:${dto.code.trim()}`;
     if (dto.operationId && this.partMovements.has(`${tenantId}:${dto.operationId}`)) return this.partMovements.get(`${tenantId}:${dto.operationId}`)!;
@@ -182,15 +202,30 @@ export class MaintenanceService implements OnModuleInit {
     if (part.stock < dto.quantity) throw new ConflictException('Insufficient spare part stock');
     const updated = { ...part, stock: part.stock - dto.quantity, updatedAt: timestamp() };
     this.parts.set(key, updated);
-    void this.persistence?.saveAux({ id: updated.id, tenantId, domain: 'spare-part', payload: updated as unknown as Record<string, unknown>, createdAt: updated.updatedAt, updatedAt: updated.updatedAt });
+    if (persist) void this.persistence?.saveAux({ id: updated.id, tenantId, domain: 'spare-part', payload: updated as unknown as Record<string, unknown>, createdAt: updated.updatedAt, updatedAt: updated.updatedAt });
     if (dto.operationId) {
       this.partMovements.set(`${tenantId}:${dto.operationId}`, updated);
-      this.saveMovement(tenantId, 'consume', dto.operationId, updated);
+      this.saveMovement(tenantId, 'consume', dto.operationId, updated, persist);
     }
     this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'maintenance.spare_part_consumed', resource: 'spare_part', resourceId: updated.id, before: part as unknown as Record<string, unknown>, after: updated as unknown as Record<string, unknown>, details: { code: updated.code, quantity: dto.quantity, operationId: dto.operationId } });
     return updated;
   }
-  returnSparePart(tenantId: string, dto: ConsumeSparePartDto, actorId = 'system'): SparePart {
+  async consumeSparePartReliable(tenantId: string, dto: ConsumeSparePartDto, actorId = 'system'): Promise<SparePart> {
+    const key = `${tenantId}:${dto.code.trim()}`;
+    const current = this.parts.get(key);
+    const updated = this.consumeSparePart(tenantId, dto, actorId, false);
+    try {
+      const movement = dto.operationId ? this.movement(tenantId, 'consume', dto.operationId, updated) : undefined;
+      await this.persistence?.saveAuxBatchReliable([this.auxiliary(updated, 'spare-part'), ...(movement ? [movement] : [])]);
+      return updated;
+    } catch (error: unknown) {
+      if (current) this.parts.set(key, current);
+      if (dto.operationId) this.partMovements.delete(`${tenantId}:${dto.operationId}`);
+      throw error;
+    }
+  }
+
+  returnSparePart(tenantId: string, dto: ConsumeSparePartDto, actorId = 'system', persist = true): SparePart {
     if (!Number.isInteger(dto.quantity) || dto.quantity <= 0) throw new BadRequestException('Spare part quantity must be a positive integer');
     const key = `${tenantId}:${dto.code.trim()}`;
     if (dto.operationId && this.partReturnMovements.has(`${tenantId}:${dto.operationId}`)) return this.partReturnMovements.get(`${tenantId}:${dto.operationId}`)!;
@@ -198,13 +233,27 @@ export class MaintenanceService implements OnModuleInit {
     if (!part) throw new NotFoundException(`Spare part ${dto.code} not found`);
     const updated = { ...part, stock: part.stock + dto.quantity, updatedAt: timestamp() };
     this.parts.set(key, updated);
-    void this.persistence?.saveAux({ id: updated.id, tenantId, domain: 'spare-part', payload: updated as unknown as Record<string, unknown>, createdAt: updated.updatedAt, updatedAt: updated.updatedAt });
+    if (persist) void this.persistence?.saveAux({ id: updated.id, tenantId, domain: 'spare-part', payload: updated as unknown as Record<string, unknown>, createdAt: updated.updatedAt, updatedAt: updated.updatedAt });
     if (dto.operationId) {
       this.partReturnMovements.set(`${tenantId}:${dto.operationId}`, updated);
-      this.saveMovement(tenantId, 'return', dto.operationId, updated);
+      this.saveMovement(tenantId, 'return', dto.operationId, updated, persist);
     }
     this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'maintenance.spare_part_returned', resource: 'spare_part', resourceId: updated.id, before: part as unknown as Record<string, unknown>, after: updated as unknown as Record<string, unknown>, details: { code: updated.code, quantity: dto.quantity, operationId: dto.operationId } });
     return updated;
+  }
+  async returnSparePartReliable(tenantId: string, dto: ConsumeSparePartDto, actorId = 'system'): Promise<SparePart> {
+    const key = `${tenantId}:${dto.code.trim()}`;
+    const current = this.parts.get(key);
+    const updated = this.returnSparePart(tenantId, dto, actorId, false);
+    try {
+      const movement = dto.operationId ? this.movement(tenantId, 'return', dto.operationId, updated) : undefined;
+      await this.persistence?.saveAuxBatchReliable([this.auxiliary(updated, 'spare-part'), ...(movement ? [movement] : [])]);
+      return updated;
+    } catch (error: unknown) {
+      if (current) this.parts.set(key, current);
+      if (dto.operationId) this.partReturnMovements.delete(`${tenantId}:${dto.operationId}`);
+      throw error;
+    }
   }
   metrics(tenantId: string, deviceId?: string) {
     const completed = this.list(tenantId).filter((item) => item.status === 'completed' && (!deviceId || item.deviceId === deviceId) && item.completedAt);
@@ -215,15 +264,26 @@ export class MaintenanceService implements OnModuleInit {
     return { tenantId, deviceId: deviceId ?? null, repairCount: repairOrders.length, mttrMinutes, mtbfHours };
   }
 
-  private saveMovement(tenantId: string, kind: 'consume' | 'return', operationId: string, part: SparePart): void {
+  private saveMovement(tenantId: string, kind: 'consume' | 'return', operationId: string, part: SparePart, persist = true): void {
+    if (!persist) return;
+    void this.persistence?.saveAux(this.movement(tenantId, kind, operationId, part));
+  }
+
+  private movement(tenantId: string, kind: 'consume' | 'return', operationId: string, part: SparePart) {
     const now = timestamp();
-    void this.persistence?.saveAux({
+    return {
       id: `maintenance-part-movement:${tenantId}:${kind}:${operationId}`,
       tenantId,
       domain: 'maintenance-part-movement',
       payload: { kind, operationId, part } as unknown as Record<string, unknown>,
       createdAt: now,
       updatedAt: now,
-    });
+    };
+  }
+
+  private auxiliary(item: PreventivePlan | SparePart, domain: string) {
+    const createdAt = 'createdAt' in item ? item.createdAt : item.updatedAt;
+    const updatedAt = 'updatedAt' in item ? item.updatedAt : item.createdAt;
+    return { id: item.id, tenantId: item.tenantId, domain, payload: item as unknown as Record<string, unknown>, createdAt, updatedAt };
   }
 }

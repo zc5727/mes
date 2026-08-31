@@ -34,4 +34,18 @@ describe('maintenance spare-part idempotency persistence', () => {
     }, 'engineer')).rejects.toThrow('database unavailable');
     expect(service.list('tenant-demo')).toEqual([]);
   });
+
+  it('rolls back spare-part stock and idempotency markers when the atomic batch fails', async () => {
+    const persistence = {
+      saveAuxBatchReliable: jest.fn().mockRejectedValue(new Error('database unavailable')),
+    };
+    const service = new MaintenanceService(new DevicesService(), new ProductionLinesService(), persistence as never);
+    service.createSparePart('tenant-demo', { code: 'SP-ROLLBACK', name: '测试备件', stock: 2 }, 'system', false);
+
+    await expect(service.consumeSparePartReliable('tenant-demo', {
+      code: 'SP-ROLLBACK', quantity: 1, operationId: 'op-rollback',
+    })).rejects.toThrow('database unavailable');
+    expect(service.listSpareParts('tenant-demo')[0].stock).toBe(2);
+    expect(persistence.saveAuxBatchReliable).toHaveBeenCalledTimes(1);
+  });
 });
