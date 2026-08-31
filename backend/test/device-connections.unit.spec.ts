@@ -45,7 +45,7 @@ describe('device connections', () => {
     const event = service.ingestEvent('tenant-a', connection.id, { type: 'telemetry', eventId: 'event-1', occurredAt: '2026-08-30T00:00:00.000Z', payload: { temperature: 42 } });
     expect(event).toEqual(expect.objectContaining({ tenantId: 'tenant-a', connectionId: connection.id, deviceId: 'device-01' }));
     expect(service.listEvents('tenant-a', connection.id)).toHaveLength(1);
-    expect(() => service.ingestEvent('tenant-a', connection.id, { type: 'telemetry', eventId: 'event-1', payload: {} })).toThrow(ConflictException);
+    expect(service.ingestEvent('tenant-a', connection.id, { type: 'telemetry', eventId: 'event-1', payload: {} })).toEqual(event);
   });
 
   it('records the last error and validates protocol endpoints', async () => {

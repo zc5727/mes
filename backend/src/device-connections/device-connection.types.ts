@@ -1,4 +1,4 @@
-export type DeviceConnectionType = 'mqtt' | 'http' | 'webhook';
+export type DeviceConnectionType = 'mqtt' | 'http' | 'webhook' | 'modbus-tcp' | 'opc-ua';
 export type DeviceConnectionStatus = 'stopped' | 'starting' | 'running' | 'error';
 export type DeviceConnectionHealthStatus = 'unknown' | 'healthy' | 'unhealthy';
 export type UnifiedDeviceEventType = 'telemetry' | 'alarm' | 'status' | 'capabilities';
@@ -22,7 +22,9 @@ export interface DeviceConnection {
   status: DeviceConnectionStatus;
   health: ConnectionHealth;
   lastError: string | null;
+  lastErrorCode: string | null;
   lastEventAt: string | null;
+  lastHeartbeatAt: string | null;
   startedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -43,6 +45,7 @@ export interface ConnectionProbeResult {
   ok: boolean;
   latencyMs: number;
   error?: string;
+  errorCode?: string;
 }
 
 export interface DeviceConnectionProbe {

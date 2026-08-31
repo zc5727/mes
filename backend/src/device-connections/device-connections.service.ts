@@ -35,7 +35,7 @@ export class DeviceConnectionsService {
       id: createId('device-connection'), tenantId, deviceId: dto.deviceId.trim(), name: dto.name.trim(),
       type: dto.type, endpoint: dto.endpoint.trim(), config: dto.config ?? {}, capabilities: this.normalizeCapabilities(dto.capabilities),
       enabled: dto.enabled ?? true, status: 'stopped', health: this.unknownHealth(), lastError: null,
-      lastEventAt: null, startedAt: null, createdAt: now, updatedAt: now,
+      lastErrorCode: null, lastEventAt: null, lastHeartbeatAt: null, startedAt: null, createdAt: now, updatedAt: now,
     };
     this.connections.set(tenantId, [...(this.connections.get(tenantId) ?? []), connection]);
     return connection;
@@ -62,7 +62,7 @@ export class DeviceConnectionsService {
     const result = await this.probe.probe(current);
     const checkedAt = timestamp();
     const health: ConnectionHealth = { status: result.ok ? 'healthy' : 'unhealthy', checkedAt, latencyMs: result.latencyMs };
-    const updated = this.replace({ ...current, health, lastError: result.ok ? null : result.error ?? 'Connection probe failed', updatedAt: checkedAt });
+    const updated = this.replace({ ...current, health, lastError: result.ok ? null : result.error ?? 'Connection probe failed', lastErrorCode: result.ok ? null : result.errorCode ?? 'CONNECTION_PROBE_FAILED', lastHeartbeatAt: result.ok ? checkedAt : current.lastHeartbeatAt, updatedAt: checkedAt });
     return { connection: updated, test: { ok: result.ok, latencyMs: result.latencyMs, error: result.ok ? null : result.error ?? 'Connection probe failed' } };
   }
 
@@ -75,7 +75,7 @@ export class DeviceConnectionsService {
     const health: ConnectionHealth = { status: result.ok ? 'healthy' : 'unhealthy', checkedAt: now, latencyMs: result.latencyMs };
     return this.replace({
       ...starting,
-      status: result.ok ? 'running' : 'error', health, lastError: result.ok ? null : result.error ?? 'Connection start failed',
+      status: result.ok ? 'running' : 'error', health, lastError: result.ok ? null : result.error ?? 'Connection start failed', lastErrorCode: result.ok ? null : result.errorCode ?? 'CONNECTION_START_FAILED', lastHeartbeatAt: result.ok ? now : current.lastHeartbeatAt,
       startedAt: result.ok ? now : null, updatedAt: now,
     });
   }
@@ -106,9 +106,13 @@ export class DeviceConnectionsService {
     };
     const key = this.eventKey(tenantId, connectionId);
     const existing = this.events.get(key) ?? [];
-    if (existing.some((item) => item.eventId === event.eventId)) throw new ConflictException(`Device event ${event.eventId} already exists`);
+    const duplicate = existing.find((item) => item.eventId === event.eventId);
+    if (duplicate) {
+      this.replace({ ...connection, lastEventAt: duplicate.receivedAt, lastHeartbeatAt: duplicate.receivedAt, updatedAt: duplicate.receivedAt });
+      return duplicate;
+    }
     this.events.set(key, [...existing, event]);
-    this.replace({ ...connection, lastEventAt: receivedAt, updatedAt: receivedAt });
+    this.replace({ ...connection, lastEventAt: receivedAt, lastHeartbeatAt: receivedAt, updatedAt: receivedAt });
     return event;
   }
 
@@ -134,7 +138,7 @@ export class DeviceConnectionsService {
   private validateEndpoint(type: DeviceConnection['type'], endpoint: string): void {
     let url: URL;
     try { url = new URL(endpoint); } catch { throw new BadRequestException('Connection endpoint must be a valid URL'); }
-    const allowed = type === 'mqtt' ? ['mqtt:', 'mqtts:', 'ws:', 'wss:'] : ['http:', 'https:'];
+    const allowed = type === 'mqtt' ? ['mqtt:', 'mqtts:', 'ws:', 'wss:'] : type === 'modbus-tcp' ? ['modbus-tcp:'] : type === 'opc-ua' ? ['opc.tcp:'] : ['http:', 'https:'];
     if (!allowed.includes(url.protocol)) throw new BadRequestException(`${type} connection does not support ${url.protocol}`);
   }
 }

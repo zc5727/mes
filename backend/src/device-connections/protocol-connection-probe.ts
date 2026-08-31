@@ -1,14 +1,28 @@
 import { Injectable } from '@nestjs/common';
 import { connect } from 'mqtt';
+import { createConnection } from 'node:net';
 import type { DeviceConnectionProbe, ConnectionProbeResult } from './device-connection.types';
 
 /** Performs bounded protocol probes; it never sends a device-control command. */
 @Injectable()
 export class ProtocolConnectionProbe implements DeviceConnectionProbe {
-  async probe(connection: { type: 'mqtt' | 'http' | 'webhook'; endpoint: string; config: Record<string, unknown> }): Promise<ConnectionProbeResult> {
+  async probe(connection: { type: 'mqtt' | 'http' | 'webhook' | 'modbus-tcp' | 'opc-ua'; endpoint: string; config: Record<string, unknown> }): Promise<ConnectionProbeResult> {
     const startedAt = Date.now();
     if (connection.type === 'mqtt') return this.probeMqtt(connection.endpoint, startedAt);
+    if (connection.type === 'modbus-tcp' || connection.type === 'opc-ua') return this.probeTcp(connection.endpoint, connection.type, startedAt, connection.config);
     return this.probeHttp(connection.endpoint, startedAt, connection.config);
+  }
+
+  private probeTcp(endpoint: string, type: 'modbus-tcp' | 'opc-ua', startedAt: number, config: Record<string, unknown>): Promise<ConnectionProbeResult> {
+    return new Promise((resolve) => {
+      let url: URL;
+      try { url = new URL(endpoint); } catch { resolve({ ok: false, latencyMs: Date.now() - startedAt, error: 'Invalid protocol endpoint', errorCode: 'INVALID_ENDPOINT' }); return; }
+      const socket = createConnection({ host: url.hostname, port: Number(url.port), timeout: this.timeout(config) });
+      const finish = (result: ConnectionProbeResult): void => { socket.destroy(); resolve(result); };
+      socket.once('connect', () => finish({ ok: true, latencyMs: Date.now() - startedAt }));
+      socket.once('timeout', () => finish({ ok: false, latencyMs: Date.now() - startedAt, error: `${type} endpoint timed out`, errorCode: 'PROTOCOL_TIMEOUT' }));
+      socket.once('error', (error: Error & { code?: string }) => finish({ ok: false, latencyMs: Date.now() - startedAt, error: error.message, errorCode: error.code ?? 'PROTOCOL_CONNECTION_FAILED' }));
+    });
   }
 
   private async probeHttp(endpoint: string, startedAt: number, config: Record<string, unknown>): Promise<ConnectionProbeResult> {

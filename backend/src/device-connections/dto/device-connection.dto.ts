@@ -12,7 +12,7 @@ export class CreateDeviceConnectionDto {
   @MaxLength(120)
   name!: string;
 
-  @IsIn(['mqtt', 'http', 'webhook'])
+  @IsIn(['mqtt', 'http', 'webhook', 'modbus-tcp', 'opc-ua'])
   type!: DeviceConnectionType;
 
   @IsUrl({ require_tld: false })
