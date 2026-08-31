@@ -258,6 +258,7 @@ export class StrategyEngineService {
       rollbackPlan: {
         supported: true,
         action: 'discard_simulation',
+        status: 'available',
         restores: ['workOrders', 'lines', 'devices'],
         executionAllowed: false,
         reason: '方案仅作用于仿真副本；不采纳方案即可丢弃模拟结果，无需回写生产状态',

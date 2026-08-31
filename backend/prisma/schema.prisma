@@ -143,6 +143,8 @@ model ProductionOrder {
   dueAt        DateTime               @map("due_at")
   priority     WorkOrderPriority
   status       ProductionOrderStatus  @default(planned)
+  externalId   String?                @map("external_id") @db.VarChar(80)
+  externalSystem String?              @map("external_system") @db.VarChar(40)
   createdAt    DateTime               @default(now()) @map("created_at")
   updatedAt    DateTime               @updatedAt @map("updated_at")
 
@@ -168,6 +170,10 @@ model WorkOrder {
   priority     WorkOrderPriority @default(normal)
   status       WorkOrderStatus  @default(draft)
   statusReason String          @default("") @map("status_reason") @db.VarChar(200)
+  externalId   String?         @map("external_id") @db.VarChar(80)
+  externalSystem String?       @map("external_system") @db.VarChar(40)
+  bomId        String?         @map("bom_id") @db.VarChar(40)
+  routingId    String?         @map("routing_id") @db.VarChar(40)
   version      Int             @default(1)
   createdAt    DateTime        @default(now()) @map("created_at")
   updatedAt    DateTime        @updatedAt @map("updated_at")
@@ -193,6 +199,12 @@ model WorkOrderReport {
   goodQty       Int      @map("good_qty")
   defectQty     Int      @map("defect_qty")
   sourceTraceId String   @map("source_trace_id") @db.VarChar(100)
+  batchNo       String?  @map("batch_no") @db.VarChar(80)
+  serialNumbers Json?    @map("serial_numbers")
+  operationCode String?  @map("operation_code") @db.VarChar(40)
+  operatorId    String?  @map("operator_id") @db.VarChar(40)
+  qualityRecordId String? @map("quality_record_id") @db.VarChar(40)
+  materialConsumptions Json? @map("material_consumptions")
   reportedAt   DateTime @map("reported_at")
   createdAt     DateTime @default(now()) @map("created_at")
 
@@ -352,4 +364,65 @@ model StrategyCandidate {
 
   @@index([strategyRunId, score])
   @@map("strategy_candidates")
+}
+
+model Product {
+  id           String   @id @db.VarChar(40)
+  tenantId     String   @map("tenant_id") @db.VarChar(40)
+  code         String   @db.VarChar(40)
+  name         String   @db.VarChar(120)
+  unit         String?  @db.VarChar(20)
+  description  String?  @db.VarChar(500)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, code])
+  @@map("products")
+}
+
+model Operation {
+  id              String   @id @db.VarChar(40)
+  tenantId        String   @map("tenant_id") @db.VarChar(40)
+  code            String   @db.VarChar(40)
+  name            String   @db.VarChar(100)
+  standardSeconds Int?     @map("standard_seconds")
+  workstation     String?  @db.VarChar(80)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, code])
+  @@map("operations")
+}
+
+model Bom {
+  id           String   @id @db.VarChar(40)
+  tenantId     String   @map("tenant_id") @db.VarChar(40)
+  code         String   @db.VarChar(40)
+  name         String   @db.VarChar(100)
+  productCode  String   @map("product_code") @db.VarChar(40)
+  version      String   @db.VarChar(20)
+  items        Json
+  operationCodes Json   @map("operation_codes")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, code, version])
+  @@index([tenantId, productCode])
+  @@map("boms")
+}
+
+model Routing {
+  id             String   @id @db.VarChar(40)
+  tenantId       String   @map("tenant_id") @db.VarChar(40)
+  code           String   @db.VarChar(40)
+  name           String   @db.VarChar(100)
+  productCode    String   @map("product_code") @db.VarChar(40)
+  version        String   @db.VarChar(20)
+  operationCodes Json     @map("operation_codes")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, code, version])
+  @@index([tenantId, productCode])
+  @@map("routings")
 }

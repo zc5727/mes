@@ -15,14 +15,17 @@
 
 ## 治理与结果追踪
 
-每次正式 API 调用都会记录租户、调用人、仿真 ID、快照时间、候选数量、推荐动作和审批边界。结果保存在内存追踪表中，按租户隔离：
+每次正式 API 调用都会记录租户、调用人、仿真 ID、快照时间、候选数量、推荐动作和审批边界。当前结果追踪表为进程内持久化实现，按租户隔离；后续可在不改变 API 契约的前提下替换为数据库仓储：
 
 ```text
 GET /api/v1/strategies/simulations/:simulationId
 GET /api/v1/strategies/audit-records
+POST /api/v1/strategies/simulations/:simulationId/rollback
 ```
 
 记录明确标记 `requiresApproval=true` 和 `executionAllowed=false`。这些接口只能读取仿真结果与调用记录，不提供设备控制或工单修改能力。
+
+正式仿真请求建议携带 `Idempotency-Key`。同一租户、同一 key 和同一快照会重放原结果，不重复创建审计和审批；同一 key 复用但快照不同会返回冲突。回滚接口只丢弃仿真建议并保留结果与审计轨迹，不回写设备、工单或产线。
 
 ## OpenMES 映射边界
 

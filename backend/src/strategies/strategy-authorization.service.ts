@@ -83,6 +83,13 @@ export class StrategyAuthorizationService {
     }
   }
 
+  /** Discard a simulation result only; this never authorizes production execution. */
+  assertCanRollback(context: StrategyRequestContext): void {
+    if (!SIMULATION_ROLES.has(context.role)) {
+      throw new ForbiddenException('ROLE_FORBIDDEN: simulation rollback is not permitted');
+    }
+  }
+
   /** Check factory and line/resource scope without trusting a client-selected role or scope. */
   assertSnapshotAccess(context: StrategyRequestContext, snapshot: StrategySnapshot): void {
     if (snapshot.factoryId && snapshot.factoryId !== context.factoryId) {

@@ -258,6 +258,12 @@ export interface CreateMaintenanceInput {
 
 export function createMaintenance(input: CreateMaintenanceInput) { return post<Record<string, unknown>>('/maintenance/work-orders', input); }
 
+export interface FoundationRecord { id: string; status?: string; createdAt?: string; updatedAt?: string; [key: string]: unknown }
+export function listDocuments() { return get<FoundationRecord[]>('/foundation/documents'); }
+export function listQualityRecords() { return get<FoundationRecord[]>('/foundation/quality-records'); }
+export function listMaintenanceWorkOrders() { return get<FoundationRecord[]>('/maintenance/work-orders'); }
+export function documentContentUrl(id: string) { return `${API_BASE_URL}/foundation/documents/${encodeURIComponent(id)}/content`; }
+
 async function get<T>(path: string): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);

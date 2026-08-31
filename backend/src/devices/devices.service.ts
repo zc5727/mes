@@ -1,4 +1,5 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { CorePersistenceService } from '../database/core-persistence.service';
 import { createId, MockEntity, timestamp } from '../common/mock.types';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { IngestTelemetryDto } from './dto/ingest-telemetry.dto';
@@ -19,7 +20,21 @@ export interface Device extends MockEntity {
 }
 
 @Injectable()
-export class DevicesService {
+export class DevicesService implements OnModuleInit {
+  constructor(@Optional() private readonly persistence?: CorePersistenceService) {}
+
+  async onModuleInit(): Promise<void> {
+    const snapshot = await this.persistence?.restore();
+    if (snapshot?.devices.length) {
+      this.devices.clear();
+      snapshot.devices.forEach((item) => this.devices.set(item.id, {
+        ...item,
+        model: item.model ?? '', protocol: (item.protocol as Device['protocol']) ?? 'simulator',
+        status: item.status as Device['status'], statusReason: item.statusReason ?? '',
+        metrics: (item.metrics as Device['metrics']) ?? {}, metadata: (item.metadata as Device['metadata']) ?? {},
+      }));
+    }
+  }
   private readonly devices = new Map<string, Device>([
     ['device-cnc-01', this.createSeed('device-cnc-01', 'line-cnc', 'CNC-001', '立式加工中心 01', 'VMC-850', 'online')],
     ['device-cnc-02', this.createSeed('device-cnc-02', 'line-cnc', 'CNC-002', '立式加工中心 02', 'VMC-850', 'online')],
@@ -83,6 +98,7 @@ export class DevicesService {
       updatedAt: now,
     };
     this.devices.set(device.id, device);
+    void this.persistence?.saveDevice(device);
     return device;
   }
 
@@ -97,6 +113,7 @@ export class DevicesService {
 
     const updated: Device = { ...current, ...dto, updatedAt: timestamp() };
     this.devices.set(id, updated);
+    void this.persistence?.saveDevice(updated);
     return updated;
   }
 
@@ -109,6 +126,7 @@ export class DevicesService {
       updatedAt: timestamp(),
     };
     this.devices.set(id, updated);
+    void this.persistence?.saveDevice(updated);
     return updated;
   }
 
@@ -124,12 +142,14 @@ export class DevicesService {
       updatedAt: timestamp(),
     };
     this.devices.set(id, updated);
+    void this.persistence?.saveDevice(updated);
     return updated;
   }
 
   remove(tenantId: string, id: string): { id: string; deleted: true } {
     this.findOne(tenantId, id);
     this.devices.delete(id);
+    void this.persistence?.deleteDevice(id);
     return { id, deleted: true };
   }
 

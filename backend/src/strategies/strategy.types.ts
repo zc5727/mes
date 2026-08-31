@@ -103,9 +103,19 @@ export interface StrategyImpactAssessment {
 export interface StrategyRollbackPlan {
   supported: true;
   action: 'discard_simulation';
+  status: 'available';
   restores: Array<'workOrders' | 'lines' | 'devices'>;
   executionAllowed: false;
   reason: string;
+}
+
+export interface StrategyRollbackState {
+  supported: true;
+  action: 'discard_simulation';
+  status: 'available' | 'discarded';
+  executionAllowed: false;
+  discardedAt?: string;
+  discardedBy?: string;
 }
 
 export interface StrategyAggregateImpactAssessment {

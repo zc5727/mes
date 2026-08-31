@@ -1,4 +1,4 @@
-import { IsArray, IsInt, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
+import { IsArray, IsInt, IsObject, IsOptional, IsString, Max, Min, MinLength } from 'class-validator';
 
 export class ReportWorkOrderDto {
   @IsInt()
@@ -34,4 +34,23 @@ export class ReportWorkOrderDto {
   @IsArray()
   @IsString({ each: true })
   serialNumbers?: string[];
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  operationCode?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  operatorId?: string;
+
+  @IsOptional()
+  @IsString()
+  qualityRecordId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsObject({ each: true })
+  materialConsumptions?: Array<{ materialCode: string; quantity: number; unit?: string }>;
 }

@@ -25,6 +25,7 @@ export class StrategiesController {
     @Headers('x-session-id') sessionId?: string,
     @Headers('x-trace-id') traceId?: string,
     @Body() dto?: StrategySimulationDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ): { data: StrategySimulationResult; audit?: ReturnType<StrategyGovernanceService['recordSimulation']> } {
     // The single-argument form remains available for existing in-process callers;
     // HTTP requests use tenant/user headers and the validated body parameter.
@@ -61,10 +62,50 @@ export class StrategiesController {
       }
     }
 
+    const normalizedIdempotencyKey = idempotencyKey?.trim();
+    if (!legacyCall && normalizedIdempotencyKey && this.governance) {
+      const replay = this.governance.getIdempotent(
+        tenantId,
+        normalizedIdempotencyKey,
+        this.governance.fingerprint(snapshot),
+      );
+      if (replay) return replay;
+    }
+
     const result = this.strategyEngine.simulate(snapshot);
     const requestedBy = context?.userId || userId?.trim() || 'api-user';
     const audit = this.governance?.recordSimulation(tenantId, requestedBy, snapshot, result, context);
-    return audit ? { data: result, audit } : { data: result };
+    if (audit) {
+      const response = { data: result, audit };
+      if (normalizedIdempotencyKey && this.governance) {
+        this.governance.rememberIdempotent(tenantId, normalizedIdempotencyKey, snapshot, response);
+      }
+      return response;
+    }
+    return { data: result };
+  }
+
+  @Post('simulations/:simulationId/rollback')
+  @HttpCode(HttpStatus.OK)
+  rollbackSimulation(
+    @TenantId() tenantId: string,
+    @Param('simulationId') simulationId: string,
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-role') role?: string,
+    @Headers('x-factory-id') factoryId?: string,
+    @Headers('x-scope') scope?: string,
+    @Headers('x-session-id') sessionId?: string,
+    @Headers('x-trace-id') traceId?: string,
+  ) {
+    if (!this.governance) return { data: null, tenantId };
+    const context = this.authorization.fromHeaders({ userId, role, factoryId, scope, sessionId, traceId });
+    this.authorization.assertCanRollback(context);
+    const tracked = this.governance.getSimulation(tenantId, simulationId);
+    this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
+    return {
+      data: this.governance.rollbackSimulation(tenantId, simulationId, context.userId, context.traceId),
+      tenantId,
+    };
   }
 
   @Get('simulations/:simulationId')

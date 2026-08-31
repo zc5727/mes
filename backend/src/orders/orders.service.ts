@@ -1,4 +1,5 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { CorePersistenceService } from '../database/core-persistence.service';
 import { createId, MockEntity, timestamp } from '../common/mock.types';
 import { CreateOrderDto } from './dto/create-order.dto';
 
@@ -16,7 +17,18 @@ export interface ProductionOrder extends MockEntity {
 }
 
 @Injectable()
-export class OrdersService {
+export class OrdersService implements OnModuleInit {
+  constructor(@Optional() private readonly persistence?: CorePersistenceService) {}
+
+  async onModuleInit(): Promise<void> {
+    const snapshot = await this.persistence?.restore();
+    if (snapshot?.orders.length) {
+      this.orders.clear();
+      snapshot.orders.forEach((item) => this.orders.set(item.id, {
+        ...item, priority: item.priority as ProductionOrder['priority'], status: item.status as ProductionOrder['status'],
+      }));
+    }
+  }
   private readonly orders = new Map<string, ProductionOrder>([
     ['order-demo-001', {
       id: 'order-demo-001', tenantId: 'tenant-demo', orderNo: 'PO20260828001',
@@ -48,6 +60,7 @@ export class OrdersService {
       dueAt: dto.dueAt, priority: dto.priority, status: 'planned', createdAt: now, updatedAt: now,
     };
     this.orders.set(order.id, order);
+    void this.persistence?.saveOrder(order);
     return order;
   }
 
@@ -59,6 +72,7 @@ export class OrdersService {
     const status: ProductionOrder['status'] = nextQty === order.plannedQty ? 'completed' : 'in_progress';
     const updated: ProductionOrder = { ...order, completedQty: nextQty, status, updatedAt: timestamp() };
     this.orders.set(id, updated);
+    void this.persistence?.saveOrder(updated);
     return updated;
   }
 }

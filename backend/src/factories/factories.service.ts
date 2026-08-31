@@ -1,4 +1,5 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { CorePersistenceService } from '../database/core-persistence.service';
 import { createId, MockEntity, timestamp } from '../common/mock.types';
 import { CreateFactoryDto } from './dto/create-factory.dto';
 import { UpdateFactoryDto } from './dto/update-factory.dto';
@@ -13,7 +14,16 @@ export interface Factory extends MockEntity {
 }
 
 @Injectable()
-export class FactoriesService {
+export class FactoriesService implements OnModuleInit {
+  constructor(@Optional() private readonly persistence?: CorePersistenceService) {}
+
+  async onModuleInit(): Promise<void> {
+    const snapshot = await this.persistence?.restore();
+    if (snapshot?.factories.length) {
+      this.factories.clear();
+      snapshot.factories.forEach((item) => this.factories.set(item.id, { ...item, address: '', manager: '', timezone: 'Asia/Shanghai', status: 'active' }));
+    }
+  }
   private readonly factories = new Map<string, Factory>([
     [
       'factory-demo',
@@ -65,6 +75,7 @@ export class FactoriesService {
       updatedAt: now,
     };
     this.factories.set(factory.id, factory);
+    void this.persistence?.saveFactory(factory);
     return factory;
   }
 
@@ -79,12 +90,14 @@ export class FactoriesService {
 
     const updated: Factory = { ...current, ...dto, updatedAt: timestamp() };
     this.factories.set(id, updated);
+    void this.persistence?.saveFactory(updated);
     return updated;
   }
 
   remove(tenantId: string, id: string): { id: string; deleted: true } {
     this.findOne(tenantId, id);
     this.factories.delete(id);
+    void this.persistence?.deleteFactory(id);
     return { id, deleted: true };
   }
 }

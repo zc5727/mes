@@ -12,6 +12,10 @@
     </div>
     <small v-if="notice" :class="{ error: error }">{{ notice }}</small>
     <pre v-if="resultPreview" class="result-preview">{{ resultPreview }}</pre>
+    <div v-if="recordsLoading" class="record-status">正在读取工作台数据…</div>
+    <div v-else-if="recordsError" class="record-status error">工作台列表暂不可用，创建入口仍可提交</div>
+    <div v-else class="record-status">文档 {{ documents.length }} · 质量 {{ qualityRecords.length }} · 维修 {{ maintenanceOrders.length }}</div>
+    <div v-if="documents.length" class="document-list"><button v-for="document in documents.slice(0, 2)" :key="document.id" type="button" @click="previewDocument(document.id)">预览 {{ String(document.fileName ?? document.id) }}</button></div>
     <div v-if="active" class="operations__modal" @click.self="active = null">
       <form class="operations__form" @submit.prevent="submit">
         <div class="form-head"><strong>{{ title }}</strong><button type="button" aria-label="关闭" @click="active = null">×</button></div>
@@ -59,8 +63,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { confirmDocumentAnalysis, createDevice, createMaintenance, createQualityRecord, createWorkOrder, saveDocumentAnalysisDraft, simulateStrategy, uploadDocument } from '@/api/mesApi';
+import { computed, onMounted, ref } from 'vue';
+import { confirmDocumentAnalysis, createDevice, createMaintenance, createQualityRecord, createWorkOrder, documentContentUrl, listDocuments, listMaintenanceWorkOrders, listQualityRecords, saveDocumentAnalysisDraft, simulateStrategy, uploadDocument } from '@/api/mesApi';
 import { toBackendLineId } from '@/api/identityMap';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
 
@@ -73,6 +77,11 @@ const error = ref('');
 const resultPreview = ref('');
 const selectedFile = ref<File | null>(null);
 const pendingDocumentId = ref<string | null>(null);
+const recordsLoading = ref(true);
+const recordsError = ref(false);
+const documents = ref<Array<Record<string, unknown> & { id: string }>>([]);
+const qualityRecords = ref<Array<Record<string, unknown> & { id: string }>>([]);
+const maintenanceOrders = ref<Array<Record<string, unknown> & { id: string }>>([]);
 const workOrder = ref({ orderNo: '', productCode: '', productName: '', plannedQty: 1, dueAt: '' });
 const device = ref({ code: '', name: '', model: '', protocol: 'simulator' as const });
 const maintenance = ref({ type: 'repair' as const, title: '', plannedAt: '', description: '' });
@@ -80,6 +89,21 @@ const quality = ref({ batchNo: '', result: 'pass', remark: '' });
 const strategy = ref({ comment: '' });
 const title = computed(() => ({ 'work-order': '新建生产工单', device: '新增设备', maintenance: '新建维修工单', document: '登记图纸', quality: '填报质量记录', strategy: '策略仿真评估' }[active.value ?? 'work-order']));
 const selectedDeviceName = computed(() => props.selectedDevice?.name ?? '未选择设备');
+
+onMounted(async () => {
+  try {
+    const [documentItems, qualityItems, maintenanceItems] = await Promise.all([listDocuments(), listQualityRecords(), listMaintenanceWorkOrders()]);
+    documents.value = documentItems as typeof documents.value;
+    qualityRecords.value = qualityItems as typeof qualityRecords.value;
+    maintenanceOrders.value = maintenanceItems as typeof maintenanceOrders.value;
+  } catch {
+    recordsError.value = true;
+  } finally {
+    recordsLoading.value = false;
+  }
+});
+
+const previewDocument = (id: string) => { window.open(documentContentUrl(id), '_blank', 'noopener,noreferrer'); };
 
 const selectFile = (event: Event) => { selectedFile.value = (event.target as HTMLInputElement).files?.[0] ?? null; };
 const submit = async () => {
@@ -135,6 +159,7 @@ const confirmDocument = async () => {
 .operations { position:absolute; right:382px; top:92px; z-index:8; width:310px; padding:10px; }
 .operations__head,.form-head,.form-actions { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .operations__head strong { color:#eef8ff; font-size:12px; }.operations__head span,.operations small,.hint { color:#7898b6; font-size:10px; }
+.record-status { margin-top:7px; color:#7898b6; font-size:10px; }.document-list { display:flex; gap:5px; margin-top:5px; }.document-list button { font-size:9px; }
 .operations__actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }.operations button { padding:5px 8px; border:1px solid rgba(104,200,255,.3); background:rgba(29,143,255,.1); color:#cbe6ff; cursor:pointer; font-size:10px; }.operations button:hover { border-color:#68c8ff; }.operations small { display:block; margin-top:7px; }.operations small.error,.error { color:#ff8094; }.result-preview { max-height:110px; margin:8px 0 0; overflow:auto; color:#9ed2ff; font-size:9px; white-space:pre-wrap; }
 .operations__modal { position:fixed; inset:0; z-index:30; display:grid; place-items:center; background:rgba(2,8,16,.72); }.operations__form { display:grid; width:min(380px,calc(100vw - 32px)); gap:10px; padding:16px; border:1px solid rgba(104,200,255,.3); background:#0b1b2d; }.form-head strong { color:#eef8ff; }.form-head button { border:0; background:transparent; font-size:20px; }.operations label { display:grid; gap:4px; color:#9ec5e5; font-size:11px; }.operations input,.operations select,.operations textarea { padding:7px; border:1px solid rgba(111,183,255,.25); background:#07111f; color:#dcecff; }.operations textarea { min-height:60px; resize:vertical; }.form-actions { justify-content:flex-end; margin-top:4px; }.form-actions button:last-child { background:#1d8fff; color:#fff; }.operations button:disabled { cursor:wait; opacity:.5; }
 </style>

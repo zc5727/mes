@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { createId, MockEntity, timestamp } from '../common/mock.types';
 import { CreateWorkOrderDto } from './dto/create-work-order.dto';
 import { UpdateWorkOrderStatusDto } from './dto/update-work-order-status.dto';
@@ -8,6 +8,8 @@ import { OrdersService } from '../orders/orders.service';
 import { ProductionLinesService } from '../production-lines/production-lines.service';
 import { DevicesService } from '../devices/devices.service';
 import { MasterDataService } from '../master-data/master-data.service';
+import { AuditService } from '../audit/audit.service';
+import { CorePersistenceService } from '../database/core-persistence.service';
 
 type WorkOrderStatus = 'draft' | 'released' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
 type WorkOrderPriority = 'low' | 'normal' | 'high' | 'urgent';
@@ -41,6 +43,10 @@ export interface WorkOrderReport {
   sourceTraceId: string;
   batchNo: string | null;
   serialNumbers: string[];
+  operationCode: string | null;
+  operatorId: string | null;
+  qualityRecordId: string | null;
+  materialConsumptions: Array<{ materialCode: string; quantity: number; unit?: string }>;
   reportedAt: string;
 }
 
@@ -54,13 +60,31 @@ const allowedTransitions: Record<WorkOrderStatus, WorkOrderStatus[]> = {
 };
 
 @Injectable()
-export class WorkOrdersService {
+export class WorkOrdersService implements OnModuleInit {
   constructor(
     @Optional() private readonly ordersService: OrdersService = new OrdersService(),
     @Optional() private readonly productionLinesService: ProductionLinesService = new ProductionLinesService(),
     @Optional() private readonly devicesService?: DevicesService,
     @Optional() private readonly masterDataService?: MasterDataService,
+    @Optional() private readonly auditService?: AuditService,
+    @Optional() private readonly persistence?: CorePersistenceService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    const snapshot = await this.persistence?.restore();
+    if (snapshot?.workOrders.length) {
+      this.workOrders.clear();
+      snapshot.workOrders.forEach((item) => this.workOrders.set(item.id, {
+        ...item, orderId: item.orderId ?? undefined, priority: item.priority as WorkOrderPriority, status: item.status as WorkOrderStatus,
+      }));
+    }
+    if (snapshot?.reports.length) {
+      this.reports.push(...snapshot.reports.map((item) => ({
+        ...item, batchNo: null, serialNumbers: [], operationCode: null,
+        operatorId: null, qualityRecordId: null, materialConsumptions: [],
+      })));
+    }
+  }
 
   private readonly reports: WorkOrderReport[] = [];
   private readonly workOrders = new Map<string, WorkOrder>([
@@ -156,6 +180,7 @@ export class WorkOrdersService {
       updatedAt: now,
     };
     this.workOrders.set(workOrder.id, workOrder);
+    void this.persistence?.saveWorkOrder(workOrder);
     this.productionLinesService.registerWorkOrder(tenantId, workOrder.lineId);
     return workOrder;
   }
@@ -187,6 +212,7 @@ export class WorkOrdersService {
       this.productionLinesService.registerWorkOrder(tenantId, dto.lineId);
     }
     this.workOrders.set(id, updated);
+    void this.persistence?.saveWorkOrder(updated);
     return updated;
   }
 
@@ -210,17 +236,46 @@ export class WorkOrdersService {
     const serialNumbers = dto.serialNumbers ?? [];
     if (serialNumbers.length && serialNumbers.length !== dto.quantity) throw new ConflictException('serialNumbers count must equal quantity');
     if (new Set(serialNumbers).size !== serialNumbers.length) throw new ConflictException('serialNumbers must be unique');
+    const materialConsumptions = dto.materialConsumptions ?? [];
+    if (materialConsumptions.some((item) => !item.materialCode?.trim() || typeof item.quantity !== 'number' || !Number.isFinite(item.quantity) || item.quantity <= 0)) {
+      throw new ConflictException('material consumptions must have positive quantities and material codes');
+    }
     const report: WorkOrderReport = {
       id: createId('report'), workOrderId: id, tenantId, quantity: dto.quantity,
       goodQty, defectQty, deviceId: dto.deviceId ?? null,
       sourceTraceId: dto.sourceTraceId ?? createId('trace'), reportedAt: timestamp(),
       batchNo: dto.batchNo?.trim() || null, serialNumbers,
+      operationCode: dto.operationCode?.trim() || null,
+      operatorId: dto.operatorId?.trim() || null,
+      qualityRecordId: dto.qualityRecordId?.trim() || null,
+      materialConsumptions,
     };
     this.reports.push(report);
+    void this.persistence?.saveReport(report);
     const completedQty = current.completedQty + dto.quantity;
     const workOrder = this.updateProgress(current, completedQty);
     if (workOrder.orderId) this.ordersService.recordProgress(tenantId, workOrder.orderId, completedQty);
+    this.auditService?.record(tenantId, dto.operatorId ?? 'system', {
+      action: 'work_order.report', resource: 'work_order', resourceId: id,
+      details: { reportId: report.id, quantity: report.quantity, sourceTraceId: report.sourceTraceId, operationCode: report.operationCode, batchNo: report.batchNo },
+      traceId: report.sourceTraceId,
+    });
     return { workOrder, report };
+  }
+
+  executionSummary(tenantId: string, id: string) {
+    const workOrder = this.findOne(tenantId, id);
+    const reports = this.findReports(tenantId, id);
+    const materialTotals = new Map<string, number>();
+    reports.flatMap((report) => report.materialConsumptions).forEach((item) => materialTotals.set(item.materialCode, (materialTotals.get(item.materialCode) ?? 0) + item.quantity));
+    return {
+      workOrderId: workOrder.id,
+      operations: [...new Set(reports.map((report) => report.operationCode).filter((value): value is string => Boolean(value)))],
+      batches: [...new Set(reports.map((report) => report.batchNo).filter((value): value is string => Boolean(value)))],
+      serialNumbers: [...new Set(reports.flatMap((report) => report.serialNumbers))],
+      materialConsumptions: [...materialTotals.entries()].map(([materialCode, quantity]) => ({ materialCode, quantity })),
+      reports: reports.length,
+    };
   }
 
   findReports(tenantId: string, workOrderId: string): WorkOrderReport[] {
@@ -231,6 +286,7 @@ export class WorkOrdersService {
   private updateProgress(current: WorkOrder, completedQty: number): WorkOrder {
     const updated = { ...current, completedQty, status: completedQty === current.plannedQty ? 'completed' : current.status, updatedAt: timestamp() };
     this.workOrders.set(current.id, updated);
+    void this.persistence?.saveWorkOrder(updated);
     return updated;
   }
 
@@ -253,6 +309,7 @@ export class WorkOrdersService {
       updatedAt: timestamp(),
     };
     this.workOrders.set(id, updated);
+    void this.persistence?.saveWorkOrder(updated);
     return updated;
   }
 
@@ -263,6 +320,7 @@ export class WorkOrdersService {
     }
 
     this.workOrders.delete(id);
+    void this.persistence?.deleteWorkOrder(id);
     this.productionLinesService.unregisterWorkOrder(tenantId, workOrder.lineId);
     return { id, deleted: true };
   }

@@ -102,8 +102,9 @@ describe('production execution flow', () => {
     });
     workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' });
     workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'in_progress' });
-    const result = workOrders.report('tenant-demo', workOrder.id, { quantity: 2, batchNo: 'B-001', serialNumbers: ['S-001', 'S-002'] });
+    const result = workOrders.report('tenant-demo', workOrder.id, { quantity: 2, batchNo: 'B-001', serialNumbers: ['S-001', 'S-002'], operationCode: 'OP-10', materialConsumptions: [{ materialCode: 'RAW-01', quantity: 2, unit: '件' }] });
     expect(result.report).toEqual(expect.objectContaining({ batchNo: 'B-001', serialNumbers: ['S-001', 'S-002'] }));
+    expect(workOrders.executionSummary('tenant-demo', workOrder.id)).toEqual(expect.objectContaining({ operations: ['OP-10'], batches: ['B-001'], materialConsumptions: [{ materialCode: 'RAW-01', quantity: 2 }] }));
     expect(() => workOrders.update('tenant-demo', workOrder.id, { productName: '不应修改' })).toThrow(ConflictException);
   });
 });

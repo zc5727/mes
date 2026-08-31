@@ -1,10 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { AuditService } from '../audit/audit.service';
 import {
   StrategyRequestContext,
   StrategyAction,
   StrategySnapshot,
   StrategySimulationResult,
+  StrategyRollbackState,
 } from './strategy.types';
 
 export interface StrategyCallRecord {
@@ -32,6 +34,7 @@ export interface StrategyCallRecord {
   requiresApproval: true;
   executionAllowed: false;
   approvalIds: string[];
+  rollback: StrategyRollbackState;
 }
 
 export interface TrackedStrategySimulation {
@@ -42,6 +45,7 @@ export interface TrackedStrategySimulation {
 @Injectable()
 export class StrategyGovernanceService {
   private readonly simulations = new Map<string, TrackedStrategySimulation>();
+  private readonly idempotency = new Map<string, { fingerprint: string; response: { data: StrategySimulationResult; audit: StrategyCallRecord } }>();
 
   constructor(private readonly auditService: AuditService) {}
 
@@ -107,9 +111,81 @@ export class StrategyGovernanceService {
       requiresApproval: true,
       executionAllowed: false,
       approvalIds,
+      rollback: { supported: true, action: 'discard_simulation', status: 'available', executionAllowed: false },
     };
     this.simulations.set(this.key(tenantId, result.simulationId), { result, audit: record });
     return record;
+  }
+
+  fingerprint(snapshot: StrategySnapshot): string {
+    return createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
+  }
+
+  getIdempotent(
+    tenantId: string,
+    idempotencyKey: string,
+    fingerprint: string,
+  ): { data: StrategySimulationResult; audit: StrategyCallRecord } | undefined {
+    const key = this.idempotencyKey(tenantId, idempotencyKey);
+    const stored = this.idempotency.get(key);
+    if (!stored) return undefined;
+    if (stored.fingerprint !== fingerprint) {
+      throw new ConflictException('IDEMPOTENCY_KEY_REUSED: request payload differs from the original request');
+    }
+    return stored.response;
+  }
+
+  rememberIdempotent(
+    tenantId: string,
+    idempotencyKey: string,
+    snapshot: StrategySnapshot,
+    response: { data: StrategySimulationResult; audit: StrategyCallRecord },
+  ): void {
+    const key = this.idempotencyKey(tenantId, idempotencyKey);
+    const existing = this.idempotency.get(key);
+    const fingerprint = this.fingerprint(snapshot);
+    if (existing && existing.fingerprint !== fingerprint) {
+      throw new ConflictException('IDEMPOTENCY_KEY_REUSED: request payload differs from the original request');
+    }
+    this.idempotency.set(key, { fingerprint, response });
+  }
+
+  rollbackSimulation(
+    tenantId: string,
+    simulationId: string,
+    requestedBy: string,
+    traceId: string,
+  ): TrackedStrategySimulation {
+    const key = this.key(tenantId, simulationId);
+    const tracked = this.simulations.get(key);
+    if (!tracked) throw new NotFoundException(`Simulation ${simulationId} not found`);
+    if (tracked.audit.rollback.status === 'discarded') return tracked;
+
+    const discardedAt = new Date().toISOString();
+    const auditEntry = this.auditService.record(tenantId, requestedBy, {
+      action: 'STRATEGY_SIMULATION_ROLLBACK',
+      resource: 'strategy-simulation',
+      resourceId: simulationId,
+      operator: requestedBy,
+      object: `strategy-simulation:${simulationId}`,
+      before: { simulationStatus: 'completed' },
+      after: { simulationStatus: 'discarded', executionAllowed: false },
+      reason: '丢弃仿真建议，不回写工单、产线或设备状态',
+      traceId,
+      result: 'success',
+      details: { executionAllowed: false, rollbackOnly: true },
+    });
+    const updated: TrackedStrategySimulation = {
+      result: tracked.result,
+      audit: {
+        ...tracked.audit,
+        rollback: { ...tracked.audit.rollback, status: 'discarded', discardedAt, discardedBy: requestedBy },
+      },
+    };
+    this.simulations.set(key, updated);
+    // Keep the original result and audit record addressable for traceability.
+    void auditEntry;
+    return updated;
   }
 
   recordDeniedSimulation(
@@ -160,5 +236,11 @@ export class StrategyGovernanceService {
 
   private key(tenantId: string, simulationId: string): string {
     return `${tenantId}:${simulationId}`;
+  }
+
+  private idempotencyKey(tenantId: string, idempotencyKey: string): string {
+    const normalized = idempotencyKey.trim();
+    if (!normalized) throw new ConflictException('IDEMPOTENCY_KEY_INVALID: key must not be empty');
+    return `${tenantId}:${normalized}`;
   }
 }

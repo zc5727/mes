@@ -46,4 +46,42 @@ describe('StrategyGovernanceService', () => {
       details: expect.objectContaining({ executionAllowed: false, requiresApproval: true }),
     }));
   });
+
+  it('replays an idempotent request without creating a second audit record', () => {
+    const audit = new AuditService();
+    const governance = new StrategyGovernanceService(audit);
+    const result = new StrategyEngineService().simulate(snapshot);
+    const call = governance.recordSimulation('tenant-a', 'user-1', snapshot, result);
+    const response = { data: result, audit: call };
+
+    governance.rememberIdempotent('tenant-a', 'request-1', snapshot, response);
+
+    expect(governance.getIdempotent('tenant-a', 'request-1', governance.fingerprint(snapshot))).toBe(response);
+    expect(audit.list('tenant-a')).toHaveLength(1);
+    expect(() => governance.rememberIdempotent('tenant-a', 'request-1', {
+      ...snapshot,
+      timestamp: '2026-08-30T08:01:00.000Z',
+    }, response)).toThrow('IDEMPOTENCY_KEY_REUSED');
+  });
+
+  it('discards a simulation result without changing the simulated production snapshot', () => {
+    const audit = new AuditService();
+    const governance = new StrategyGovernanceService(audit);
+    const result = new StrategyEngineService().simulate(snapshot);
+    governance.recordSimulation('tenant-a', 'user-1', snapshot, result);
+
+    const discarded = governance.rollbackSimulation('tenant-a', result.simulationId, 'user-1', 'trace-rollback');
+
+    expect(discarded.result).toEqual(result);
+    expect(discarded.result.executionAllowed).toBe(false);
+    expect(discarded.audit.rollback).toEqual(expect.objectContaining({
+      action: 'discard_simulation',
+      status: 'discarded',
+      executionAllowed: false,
+    }));
+    expect(audit.list('tenant-a')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: 'STRATEGY_SIMULATION_ROLLBACK', result: 'success' }),
+    ]));
+    expect(governance.rollbackSimulation('tenant-a', result.simulationId, 'user-1', 'trace-rollback')).toEqual(discarded);
+  });
 });

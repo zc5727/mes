@@ -1,4 +1,5 @@
-import { ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { CorePersistenceService } from '../database/core-persistence.service';
 import { createId, MockEntity, timestamp } from '../common/mock.types';
 import { CreateProductionLineDto } from './dto/create-production-line.dto';
 import { UpdateLineStatusDto } from './dto/update-line-status.dto';
@@ -16,10 +17,30 @@ export interface ProductionLine extends MockEntity {
 }
 
 @Injectable()
-export class ProductionLinesService {
+export class ProductionLinesService implements OnModuleInit {
   private readonly workOrderReferences = new Map<string, number>();
 
-  constructor(@Optional() private readonly factoriesService: FactoriesService = new FactoriesService()) {}
+  constructor(
+    @Optional() private readonly factoriesService: FactoriesService = new FactoriesService(),
+    @Optional() private readonly persistence?: CorePersistenceService,
+  ) {}
+
+  async onModuleInit(): Promise<void> {
+    const snapshot = await this.persistence?.restore();
+    if (snapshot?.lines.length) {
+      this.lines.clear();
+      snapshot.lines.forEach((item) => this.lines.set(item.id, {
+        ...item,
+        targetOee: item.targetOee,
+        status: item.active ? 'active' : 'inactive',
+        statusReason: '',
+      }));
+    }
+    snapshot?.workOrders.forEach((order) => {
+      const key = this.referenceKey(order.tenantId, order.lineId);
+      this.workOrderReferences.set(key, (this.workOrderReferences.get(key) ?? 0) + 1);
+    });
+  }
 
   private readonly lines = new Map<string, ProductionLine>([
     ['line-cnc', this.createSeed('line-cnc', 'tenant-demo', 'L001', 'CNC加工线', '机加工', 85, 'active')],
@@ -78,6 +99,7 @@ export class ProductionLinesService {
       updatedAt: now,
     };
     this.lines.set(line.id, line);
+    void this.persistence?.saveLine(lineToPersistence(line));
     return line;
   }
 
@@ -102,6 +124,7 @@ export class ProductionLinesService {
       updatedAt: timestamp(),
     };
     this.lines.set(id, updated);
+    void this.persistence?.saveLine(lineToPersistence(updated));
     return updated;
   }
 
@@ -117,6 +140,7 @@ export class ProductionLinesService {
       updatedAt: timestamp(),
     };
     this.lines.set(id, updated);
+    void this.persistence?.saveLine(lineToPersistence(updated));
     return updated;
   }
 
@@ -129,6 +153,7 @@ export class ProductionLinesService {
       throw new ConflictException('Production lines with work orders cannot be deleted');
     }
     this.lines.delete(id);
+    void this.persistence?.deleteLine(id);
     return { id, deleted: true };
   }
 
@@ -172,4 +197,11 @@ export class ProductionLinesService {
       updatedAt: '2026-01-01T00:00:00.000Z',
     };
   }
+}
+
+function lineToPersistence(line: ProductionLine) {
+  return {
+    ...line,
+    active: line.status === 'active',
+  };
 }
