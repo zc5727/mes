@@ -343,7 +343,7 @@ SaaS 多租户商业化、Nanobot 原生集成、真实 PLC 自动控制、自�
 
 ### 10.1 当前状态
 
-工单报工已具备 `batchNo`、`serialNumbers` 等字段和重复追溯校验基础，但原料批次→工序→设备→质量→成品的完整事件链尚未完成，状态为“部分完成”。
+工单报工已具备 `batchNo`、`serialNumbers`、`materialConsumptions`、`deviceId`、`operationCode` 和 `qualityRecordId`，并提供工单级追溯详情及按批次/序列号/原料批次检索；当前已达到“报工事件级追溯”，但库存扣料、质量确认和成品放行尚未在同一事务中强制闭合，状态为“部分完成”。
 
 ### 10.2 统一追溯链
 
