@@ -296,6 +296,10 @@ export class StrategyGovernanceService implements OnModuleInit {
 
   revokeSimulation(tenantId: string, simulationId: string, actor: string, traceId: string): TrackedStrategySimulation {
     const tracked = this.getSimulation(tenantId, simulationId);
+    const lifecycle = this.lifecycleFor(tenantId, simulationId);
+    if (lifecycle === 'revoked' || lifecycle === 'rejected' || lifecycle === 'simulated_execution') {
+      throw new ConflictException(`STRATEGY_NOT_REVOCABLE: strategy is already ${lifecycle}`);
+    }
     const approvals = this.listApprovalsForSimulation(tenantId, simulationId);
     approvals.filter((approval) => approval.status === 'pending' || approval.status === 'approved')
       .forEach((approval) => this.auditService.revoke(tenantId, approval.id));

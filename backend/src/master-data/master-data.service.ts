@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { createId, timestamp } from '../common/mock.types';
 import { InventoryPersistenceService } from '../database/inventory-persistence.service';
-import { CreateBatchInventoryDto, CreateBomDto, CreateCalendarDto, CreateOperationDto, CreateProcessDto, CreateProductDto, CreateRoutingDto, CreateShiftDto } from './dto/master-data.dto';
+import { BatchInventoryMovementDto, CreateBatchInventoryDto, CreateBomDto, CreateCalendarDto, CreateOperationDto, CreateProcessDto, CreateProductDto, CreateRoutingDto, CreateShiftDto } from './dto/master-data.dto';
 
 export interface MasterDataRecord { id: string; tenantId: string; code: string; name: string; type: 'product' | 'process' | 'shift' | 'calendar' | 'operation' | 'bom' | 'routing'; data: Record<string, unknown>; createdAt: string; updatedAt: string; }
 export interface BatchInventory { id: string; tenantId: string; materialCode: string; batchNo: string; quantity: number; unit: string | null; updatedAt: string; }
@@ -18,6 +18,7 @@ export class MasterDataService implements OnModuleInit {
     batches?.forEach((batch) => this.batches.set(this.batchKey(batch.tenantId, batch.materialCode, batch.batchNo), batch));
   }
   private readonly batchConsumptionKeys = new Set<string>();
+  private readonly batchReturnKeys = new Set<string>();
 
   list(tenantId: string, type: MasterDataRecord['type']): MasterDataRecord[] { return (this.records.get(tenantId) ?? []).filter((record) => record.type === type); }
   findOne(tenantId: string, type: MasterDataRecord['type'], id: string): MasterDataRecord { const record = this.list(tenantId, type).find((item) => item.id === id); if (!record) throw new NotFoundException(`${type} ${id} not found`); return record; }
@@ -75,6 +76,17 @@ export class MasterDataService implements OnModuleInit {
       void this.inventoryPersistence?.save(updated);
     });
     if (operationKey) this.batchConsumptionKeys.add(operationKey);
+  }
+  returnBatch(tenantId: string, dto: BatchInventoryMovementDto): BatchInventory {
+    const operationKey = dto.idempotencyKey?.trim() ? `${tenantId}:${dto.idempotencyKey.trim()}` : undefined;
+    if (operationKey && this.batchReturnKeys.has(operationKey)) return this.batches.get(this.batchKey(tenantId, dto.materialCode, dto.batchNo))!;
+    const key = this.batchKey(tenantId, dto.materialCode, dto.batchNo);
+    const batch = this.batches.get(key);
+    if (!batch) throw new ConflictException(`Material batch ${dto.batchNo} not found`);
+    const updated = { ...batch, quantity: batch.quantity + dto.quantity, updatedAt: timestamp() };
+    this.batches.set(key, updated); void this.inventoryPersistence?.save(updated);
+    if (operationKey) this.batchReturnKeys.add(operationKey);
+    return updated;
   }
   validateOperation(tenantId: string, routingId: string | undefined, operationCode: string): void {
     const operation = this.list(tenantId, 'operation').find((item) => item.code === operationCode);

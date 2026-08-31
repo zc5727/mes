@@ -139,7 +139,7 @@ export class StrategiesController {
   ) {
     const context = this.authorization.fromHeaders({ userId, role, factoryId, scope, sessionId, traceId });
     this.authorization.assertCanRead(context);
-    return { data: this.governance?.listCalls(tenantId) ?? [], tenantId };
+    return { data: this.governance?.listCallsForContext(tenantId, context) ?? [], tenantId };
   }
 
   @Get('history')

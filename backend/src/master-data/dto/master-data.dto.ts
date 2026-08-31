@@ -61,3 +61,10 @@ export class CreateBatchInventoryDto {
   @IsNumber() @Min(0) quantity!: number;
   @IsOptional() @IsString() @MaxLength(20) unit?: string;
 }
+
+export class BatchInventoryMovementDto {
+  @IsString() @MinLength(2) @MaxLength(40) materialCode!: string;
+  @IsString() @MinLength(2) @MaxLength(80) batchNo!: string;
+  @IsNumber() @Min(0.000001) quantity!: number;
+  @IsOptional() @IsString() @MaxLength(120) idempotencyKey?: string;
+}

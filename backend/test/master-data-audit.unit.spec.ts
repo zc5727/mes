@@ -72,5 +72,8 @@ describe('business foundation APIs', () => {
     service.consumeBatches('tenant-a', [{ materialCode: 'RAW-01', batchNo: 'B-01', quantity: 1 }], 'report-1');
     service.consumeBatches('tenant-a', [{ materialCode: 'RAW-01', batchNo: 'B-01', quantity: 1 }], 'report-1');
     expect(service.listBatches('tenant-a')[0].quantity).toBe(2);
+    service.returnBatch('tenant-a', { materialCode: 'RAW-01', batchNo: 'B-01', quantity: 1, idempotencyKey: 'return-1' });
+    service.returnBatch('tenant-a', { materialCode: 'RAW-01', batchNo: 'B-01', quantity: 1, idempotencyKey: 'return-1' });
+    expect(service.listBatches('tenant-a')[0].quantity).toBe(3);
   });
 });

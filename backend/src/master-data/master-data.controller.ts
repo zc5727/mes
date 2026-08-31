@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
-import { CreateBatchInventoryDto, CreateBomDto, CreateCalendarDto, CreateOperationDto, CreateProcessDto, CreateProductDto, CreateRoutingDto, CreateShiftDto } from './dto/master-data.dto';
+import { BatchInventoryMovementDto, CreateBatchInventoryDto, CreateBomDto, CreateCalendarDto, CreateOperationDto, CreateProcessDto, CreateProductDto, CreateRoutingDto, CreateShiftDto } from './dto/master-data.dto';
 import { MasterDataService } from './master-data.service';
 
 @Controller('master-data')
@@ -29,4 +29,5 @@ export class MasterDataController {
   @Get('routings/:id') routing(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.findOne(tenantId, 'routing', id), tenantId }; }
   @Get('batches') batches(@TenantId() tenantId: string) { return { data: this.service.listBatches(tenantId), tenantId }; }
   @Post('batches') createBatch(@TenantId() tenantId: string, @Body() dto: CreateBatchInventoryDto) { return { data: this.service.createBatch(tenantId, dto), tenantId }; }
+  @Post('batches/return') returnBatch(@TenantId() tenantId: string, @Body() dto: BatchInventoryMovementDto) { return { data: this.service.returnBatch(tenantId, dto), tenantId }; }
 }

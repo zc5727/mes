@@ -196,13 +196,13 @@ bash scripts/desktop.sh rebuild
 
 当前处于 **M2 主阶段，M3/M4/M5 并行收敛**。M1 的代码、接口和自动化闭环已有证据，人工浏览器/桌面实机仍需按矩阵验收。M2-M5 不以“页面看起来完成”为准，必须同时拿到代码、测试、运行和验收证据。
 
-### 10.1 2026-08-30 验证记录
+### 10.1 历史验证记录（2026-08-30，非当前基线）
 
 | 验收项 | 证据 | 结论 |
 |---|---|---|
-| 后端构建与单元测试 | `npm --prefix backend run build`；25 套件、62 项测试 | 通过 |
-| 后端接口 E2E | `npm --prefix backend run test:e2e -- --runInBand`；5 套件、11 项测试 | 通过 |
-| 模拟器回归 | `npm --prefix simulator run check`；39 项测试 | 通过 |
+| 后端构建与单元测试 | `npm --prefix backend run build`（历史输出，数量以执行时日志为准） | 通过 |
+| 后端接口 E2E | `npm --prefix backend run test:e2e -- --runInBand`（历史输出，数量以执行时日志为准） | 通过 |
+| 模拟器回归 | `npm --prefix simulator run check`（历史输出，数量以执行时日志为准） | 通过 |
 | 前端构建 | `npm --prefix third_party/threejs-factory-demo run build` | 通过 |
 | 数据库基线 | `npm --prefix backend run db:validate`、`npm --prefix backend run db:init` | 通过；当前为基础 Schema/seed |
 | 统一质量门禁 | `./scripts/verify-all.sh` | 通过 |
@@ -221,9 +221,9 @@ bash scripts/desktop.sh rebuild
 
 下一次开发从 **M2-P0：业务实体持久化与重启恢复** 开始；完成后立即重跑 M1 MQTT 故障闭环，再进入 M3-P0 设备连接管理。不得绕过 M2 直接宣称 M3-M5 生产可用。
 
-### 10.4 提交 d7ab21e1 状态核对
+### 10.4 提交 e7e9c92b 状态核对
 
-提交 `d7ab21e1` 在前序能力基础上增加了库存持久化边界、数据库运行时检查、质量/维修流程约束、策略治理 E2E 和统一本地运行入口。该提交只能证明“代码与自动化能力增加”，不能证明生产底座已经切换或现场安全条件已经满足。
+提交 `e7e9c92b` 在前序能力基础上增加了库存持久化边界、数据库运行时检查、质量/维修流程约束、策略治理 E2E 和统一本地运行入口。该提交只能证明“代码与自动化能力增加”，不能证明生产底座已经切换或现场安全条件已经满足。
 
 | 阶段 | 本提交可确认的增量 | 仍未满足的退出条件 |
 |---|---|---|

@@ -65,6 +65,20 @@ describe('strategy governance boundary (e2e)', () => {
     expect(history.body.data).toEqual(expect.arrayContaining([
       expect.objectContaining({ simulationId, lifecycleStatus: 'simulated_execution' }),
     ]));
+    const auditRecords = await request(server).get('/api/v1/strategies/audit-records')
+      .set(identity('supervisor', 'LINE-01')).expect(200);
+    expect(auditRecords.body.data).toEqual([]);
+    const fullScopeAuditRecords = await request(server).get('/api/v1/strategies/audit-records')
+      .set(identity('supervisor', 'LINE-01,LINE-02')).expect(200);
+    expect(fullScopeAuditRecords.body.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ simulationId, lineIds: ['LINE-01', 'LINE-02'] }),
+    ]));
+    const auditIntegrity = await request(server).get('/api/v1/audit/logs/verify')
+      .set(identity('supervisor', 'LINE-01,LINE-02')).expect(200);
+    expect(auditIntegrity.body.data).toEqual(expect.objectContaining({ valid: true }));
+    const outOfScopeHistory = await request(server).get('/api/v1/strategies/history')
+      .set(identity('supervisor', 'LINE-OTHER')).expect(200);
+    expect(outOfScopeHistory.body.data).toEqual([]);
   });
 
   it('deduplicates repeated simulation requests and blocks revoked recommendations', async () => {
@@ -86,6 +100,8 @@ describe('strategy governance boundary (e2e)', () => {
       expect.objectContaining({ id: approvalId, status: 'revoked' }),
     ]));
     await request(server).post(`/api/v1/strategies/simulations/${first.body.data.simulationId}/execute`)
+      .set(headers).expect(409);
+    await request(server).post(`/api/v1/strategies/simulations/${first.body.data.simulationId}/revoke`)
       .set(headers).expect(409);
   });
 });
