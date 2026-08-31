@@ -16,6 +16,8 @@ const assertions = [
   ['停止全部控件', source.includes('id="stopAll"')],
   ['设备故障注入控件', source.includes('data-fault="SPINDLE_OVERLOAD"')],
   ['单设备启停控件', source.includes('data-action="start"') && source.includes('data-action="stop"')],
+  ['API 密钥注入', source.includes('VITE_API_KEY') && source.includes('authorization')],
+  ['身份上下文注入', source.includes('x-user-role') && source.includes('x-factory-id')],
   ['API 失败可重试', source.includes('id="retry"') && source.includes('addEventListener(\'click\', load)')],
 ];
 

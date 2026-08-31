@@ -31,6 +31,7 @@ export MES_MINIO_CONSOLE_HOST_PORT="$MINIO_CONSOLE_HOST_PORT"
 TENANT_ID="${MES_TENANT_ID:-tenant-demo}"
 DATABASE_ENABLED_VALUE="${DATABASE_ENABLED:-false}"
 DATABASE_REQUIRED_VALUE="${DATABASE_REQUIRED:-false}"
+CORS_ALLOWED_ORIGINS_VALUE="${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174}"
 STARTED_PID_FILES=()
 printf 'MES_POSTGRES_HOST_PORT=%q\nMES_MQTT_HOST_PORT=%q\nMES_MQTT_WS_HOST_PORT=%q\nMES_MINIO_HOST_PORT=%q\nMES_MINIO_CONSOLE_HOST_PORT=%q\n' \
   "$POSTGRES_HOST_PORT" "$MQTT_HOST_PORT" "$MQTT_WS_HOST_PORT" "$MINIO_HOST_PORT" "$MINIO_CONSOLE_HOST_PORT" \
@@ -153,10 +154,10 @@ start_service() {
   STARTED_PID_FILES+=("$pid_file")
   echo "$name 已启动，PID=$(cat "$pid_file")，日志：$LOG_DIR/${name}.log"
 }
-backend_command="DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' DATABASE_REQUIRED='$DATABASE_REQUIRED_VALUE' npm run build && DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' DATABASE_REQUIRED='$DATABASE_REQUIRED_VALUE' npm run start:prod"
+backend_command="DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' DATABASE_REQUIRED='$DATABASE_REQUIRED_VALUE' CORS_ALLOWED_ORIGINS='$CORS_ALLOWED_ORIGINS_VALUE' npm run build && DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' DATABASE_REQUIRED='$DATABASE_REQUIRED_VALUE' CORS_ALLOWED_ORIGINS='$CORS_ALLOWED_ORIGINS_VALUE' npm run start:prod"
 simulator_command="npm run dev"
 if [[ "$MQTT" == true ]]; then
-  backend_command="DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' DATABASE_REQUIRED='$DATABASE_REQUIRED_VALUE' MQTT_ENABLED=true MQTT_URL='$MQTT_URL' npm run build && DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' DATABASE_REQUIRED='$DATABASE_REQUIRED_VALUE' MQTT_ENABLED=true MQTT_URL='$MQTT_URL' npm run start:prod"
+  backend_command="DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' DATABASE_REQUIRED='$DATABASE_REQUIRED_VALUE' CORS_ALLOWED_ORIGINS='$CORS_ALLOWED_ORIGINS_VALUE' MQTT_ENABLED=true MQTT_URL='$MQTT_URL' npm run build && DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' DATABASE_REQUIRED='$DATABASE_REQUIRED_VALUE' CORS_ALLOWED_ORIGINS='$CORS_ALLOWED_ORIGINS_VALUE' MQTT_ENABLED=true MQTT_URL='$MQTT_URL' npm run start:prod"
   simulator_command="npm run dev -- --mqtt '$MQTT_URL' --tenant '$TENANT_ID'"
 fi
 start_service backend backend "$backend_command" 3000
@@ -166,6 +167,12 @@ if [[ "$FRONTEND" == true ]]; then
   wait_for_http http://localhost:5173 Frontend "$RUNTIME_DIR/frontend.pid" frontend
 fi
 if [[ "$SIMULATOR_UI" == true ]]; then
+  # Reuse the local demo identity/key when the simulator console has no own env file.
+  # The file is ignored by git; a clone without the demo frontend env must copy
+  # simulator-ui/.env.example and provide its own API key.
+  if [[ ! -f "$ROOT_DIR/simulator-ui/.env" && -f "$ROOT_DIR/third_party/threejs-factory-demo/.env" ]]; then
+    cp "$ROOT_DIR/third_party/threejs-factory-demo/.env" "$ROOT_DIR/simulator-ui/.env"
+  fi
   start_service simulator-ui simulator-ui "npm run dev -- --port 5174" 5174
   wait_for_http http://localhost:5174 "仿真控制台" "$RUNTIME_DIR/simulator-ui.pid" simulator-ui
 fi

@@ -5,6 +5,15 @@ type Line = { id: string; code: string; name: string; type?: string };
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3000/api/v1').replace(/\/$/, '');
 const tenantId = import.meta.env.VITE_TENANT_ID ?? 'tenant-demo';
+const apiKey = import.meta.env.VITE_API_KEY?.trim();
+const identityHeaders: Record<string, string> = {
+  'x-user-id': import.meta.env.VITE_USER_ID ?? 'simulator-console',
+  'x-user-role': import.meta.env.VITE_USER_ROLE ?? 'engineer',
+  'x-role': import.meta.env.VITE_USER_ROLE ?? 'engineer',
+  'x-factory-id': import.meta.env.VITE_FACTORY_ID ?? 'factory-demo',
+  'x-scope': import.meta.env.VITE_SCOPE ?? '*',
+  'x-session-id': import.meta.env.VITE_SESSION_ID ?? 'simulator-console-local',
+};
 const app = document.querySelector<HTMLDivElement>('#app')!;
 let devices: Device[] = [];
 let lines: Line[] = [];
@@ -12,10 +21,25 @@ let selectedDevice = '';
 let notice = '';
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBase}${path}`, { ...init, headers: { 'content-type': 'application/json', 'x-tenant-id': tenantId, ...(init?.headers ?? {}) } });
-  if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
-  const body = await response.json() as { data: T };
-  return body.data;
+  const headers = new Headers(init?.headers);
+  headers.set('content-type', 'application/json');
+  headers.set('x-tenant-id', tenantId);
+  Object.entries(identityHeaders).forEach(([key, value]) => headers.set(key, value));
+  if (apiKey) headers.set('authorization', `Bearer ${apiKey}`);
+  try {
+    const response = await fetch(`${apiBase}${path}`, { ...init, headers });
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`MES API ${response.status}${detail ? `: ${detail}` : ''}`);
+    }
+    const body = await response.json() as { data: T };
+    return body.data;
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error(`无法访问 MES API（${apiBase}）。请确认后端运行且已允许仿真控制台跨域访问`);
+    }
+    throw error;
+  }
 }
 
 function render(): void {
