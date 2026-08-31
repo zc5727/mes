@@ -26,7 +26,7 @@ export class AgentApiController {
 
   @Post('tools/execute')
   @RequireCapability('read')
-  execute(
+  async execute(
     @Body() request: AgentToolRequestDto,
     @Headers('x-tenant-id') tenantId?: string,
     @Headers('x-user-id') userId?: string,

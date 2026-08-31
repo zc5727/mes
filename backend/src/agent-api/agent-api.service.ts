@@ -49,7 +49,7 @@ export class AgentApiService {
     @Optional() private readonly masterDataService?: MasterDataService,
   ) {}
 
-  execute(request: RawAgentRequest): AgentToolResponse {
+  async execute(request: RawAgentRequest): Promise<AgentToolResponse> {
     const traceId = this.normalizeTraceId(request.traceId);
     const args = this.normalizeArguments(request.arguments);
     const tenantId = typeof request.tenantId === 'string' && request.tenantId.trim() ? request.tenantId.trim() : 'unknown';
@@ -73,7 +73,7 @@ export class AgentApiService {
     let context: StrategyRequestContext | undefined;
     try {
       context = this.authorize(request.authorization, tenantId, traceId);
-      const data = this.dispatch(request.tool, tenantId, args, context);
+      const data = await this.dispatch(request.tool, tenantId, args, context);
       this.recordToolAudit(tenantId, context?.userId ?? request.requestedBy, request.tool, traceId, 'success', undefined, context);
       return {
         ok: true,
@@ -93,7 +93,7 @@ export class AgentApiService {
     return AGENT_READ_ONLY_TOOLS.map((name) => ({ name, readOnly: true }));
   }
 
-  private dispatch(tool: AgentReadOnlyTool, tenantId: string, args: Record<string, unknown>, context?: StrategyRequestContext): unknown {
+  private async dispatch(tool: AgentReadOnlyTool, tenantId: string, args: Record<string, unknown>, context?: StrategyRequestContext): Promise<unknown> {
     switch (tool) {
       case 'get_production_overview':
         this.assertFactoryOverviewAccess(tenantId, context);
@@ -398,7 +398,7 @@ export class AgentApiService {
     }
   }
 
-  private simulationSnapshot(tenantId: string, args: Record<string, unknown>, context?: StrategyRequestContext) {
+  private async simulationSnapshot(tenantId: string, args: Record<string, unknown>, context?: StrategyRequestContext) {
     const requestedId = typeof args.simulationId === 'string' ? args.simulationId : undefined;
     if (requestedId) {
       const governed = this.governance?.getSimulation(tenantId, requestedId);
@@ -413,7 +413,9 @@ export class AgentApiService {
     const snapshot = this.buildSnapshot(tenantId, context);
     if (context && this.authorization) this.authorization.assertSnapshotAccess(context, snapshot);
     const result = this.strategyEngine.simulate(snapshot);
-    this.governance?.recordSimulation(tenantId, context?.userId ?? 'nanobot', snapshot, result, context);
+    if (this.governance) {
+      await this.governance.recordSimulationReliable(tenantId, context?.userId ?? 'nanobot', snapshot, result, context);
+    }
     this.snapshots.set(result.simulationId, snapshot);
     this.simulations.set(result.simulationId, result);
     this.simulationTenants.set(result.simulationId, tenantId);

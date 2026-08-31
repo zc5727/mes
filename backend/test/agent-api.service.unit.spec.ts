@@ -35,9 +35,9 @@ function createGovernedService(): AgentApiService {
 }
 
 describe('AgentApiService', () => {
-  it('executes read-only production queries and includes audit metadata', () => {
+  it('executes read-only production queries and includes audit metadata', async () => {
     const service = createService();
-    const response = service.execute({
+    const response = await service.execute({
       tool: 'get_production_overview',
       arguments: {},
       tenantId: 'tenant-demo',
@@ -60,9 +60,9 @@ describe('AgentApiService', () => {
     expect((response.data as { lines: { total: number } }).lines.total).toBe(4);
   });
 
-  it('redacts sensitive Agent arguments and records session context', () => {
+  it('redacts sensitive Agent arguments and records session context', async () => {
     const service = createService();
-    const response = service.execute({
+    const response = await service.execute({
       tool: 'get_production_overview', arguments: { token: 'secret-value', nested: { password: 'hidden' } },
       tenantId: 'tenant-demo', requestedBy: 'nanobot', traceId: 'trace-redact',
       authorization: { userId: 'viewer', role: 'viewer', factoryId: 'factory-demo', scope: '*', sessionId: 'session-redact' },
@@ -71,8 +71,8 @@ describe('AgentApiService', () => {
     expect(response.audit?.arguments).toEqual({ token: '[REDACTED]', nested: { password: '[REDACTED]' } });
   });
 
-  it('returns structured errors without exposing exceptions', () => {
-    const response = createService().execute({
+  it('returns structured errors without exposing exceptions', async () => {
+    const response = await createService().execute({
       tool: 'stop_line',
       arguments: { lineId: 'line-cnc' },
       tenantId: 'tenant-demo',
@@ -89,16 +89,16 @@ describe('AgentApiService', () => {
     expect(JSON.stringify(response)).not.toContain('stack');
   });
 
-  it('keeps simulation snapshots and strategy results read-only and tenant-scoped', () => {
+  it('keeps simulation snapshots and strategy results read-only and tenant-scoped', async () => {
     const service = createService();
-    const snapshotResponse = service.execute({
+    const snapshotResponse = await service.execute({
       tool: 'get_simulation_snapshot',
       arguments: {},
       tenantId: 'tenant-demo',
       traceId: 'trace-003',
     });
     const simulationId = (snapshotResponse.data as { simulationId: string }).simulationId;
-    const resultResponse = service.execute({
+    const resultResponse = await service.execute({
       tool: 'get_strategy_result',
       arguments: { simulationId },
       tenantId: 'tenant-demo',
@@ -108,17 +108,17 @@ describe('AgentApiService', () => {
     expect(snapshotResponse.ok).toBe(true);
     expect(resultResponse.ok).toBe(true);
     expect((resultResponse.data as { simulationId: string }).simulationId).toBe(simulationId);
-    expect(service.execute({
+    expect((await service.execute({
       tool: 'get_strategy_result',
       arguments: { simulationId },
       tenantId: 'other-tenant',
       traceId: 'trace-005',
-    }).ok).toBe(false);
+    })).ok).toBe(false);
   });
 
-  it('requires unified authorization and exposes governed history through read-only tools', () => {
+  it('requires unified authorization and exposes governed history through read-only tools', async () => {
     const service = createGovernedService();
-    const denied = service.execute({
+    const denied = await service.execute({
       tool: 'get_production_overview', arguments: {}, tenantId: 'tenant-demo', traceId: 'trace-auth-1',
     });
     expect(denied).toEqual(expect.objectContaining({ ok: false, error: expect.objectContaining({ code: 'AUTH_REQUIRED' }) }));
@@ -126,17 +126,17 @@ describe('AgentApiService', () => {
     const authorization = {
       userId: 'manager-1', role: 'plant_manager', factoryId: 'factory-demo', scope: '*', sessionId: 'session-1',
     };
-    const snapshot = service.execute({
+    const snapshot = await service.execute({
       tool: 'get_simulation_snapshot', arguments: {}, tenantId: 'tenant-demo', traceId: 'trace-auth-2', authorization,
     });
     expect(snapshot.ok).toBe(true);
-    const history = service.execute({
+    const history = await service.execute({
       tool: 'get_strategy_history', arguments: {}, tenantId: 'tenant-demo', traceId: 'trace-auth-3', authorization,
     });
     expect(history.ok).toBe(true);
     expect((history.data as unknown[]).length).toBe(1);
 
-    const outOfScope = service.execute({
+    const outOfScope = await service.execute({
       tool: 'get_line_status', arguments: { lineId: 'line-cnc' }, tenantId: 'tenant-demo',
       traceId: 'trace-auth-4', authorization: { ...authorization, role: 'production_supervisor', scope: 'line-not-allowed' },
     });
@@ -146,11 +146,11 @@ describe('AgentApiService', () => {
     }));
   });
 
-  it('fails closed when a governed Agent call omits the required service account', () => {
+  it('fails closed when a governed Agent call omits the required service account', async () => {
     const previous = process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT;
     process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT = 'true';
     try {
-      const response = createGovernedService().execute({
+      const response = await createGovernedService().execute({
         tool: 'get_production_overview',
         arguments: {},
         tenantId: 'tenant-demo',

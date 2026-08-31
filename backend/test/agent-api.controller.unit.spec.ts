@@ -3,11 +3,11 @@ import { AgentApiController } from '../src/agent-api/agent-api.controller';
 import { AgentApiService } from '../src/agent-api/agent-api.service';
 
 describe('AgentApiController identity boundary', () => {
-  it('rejects a request that has only body-supplied identity', () => {
+  it('rejects a request that has only body-supplied identity', async () => {
     const service = { execute: jest.fn() } as unknown as AgentApiService;
     const controller = new AgentApiController(service);
 
-    expect(() => controller.execute(
+    await expect(controller.execute(
       {
         tool: 'get_production_overview',
         arguments: {},
@@ -15,17 +15,17 @@ describe('AgentApiController identity boundary', () => {
         traceId: 'trace-1',
       },
       'tenant-demo',
-    )).toThrow(UnauthorizedException);
+    )).rejects.toThrow(UnauthorizedException);
     expect(service.execute).not.toHaveBeenCalled();
   });
 
-  it('uses gateway headers instead of allowing body identity to escalate access', () => {
+  it('uses gateway headers instead of allowing body identity to escalate access', async () => {
     const service = {
       execute: jest.fn((request) => request),
     } as unknown as AgentApiService;
     const controller = new AgentApiController(service);
 
-    controller.execute(
+    await controller.execute(
       {
         tool: 'get_production_overview',
         arguments: {},
@@ -59,11 +59,11 @@ describe('AgentApiController identity boundary', () => {
     }));
   });
 
-  it('rejects mismatched body identity before dispatch', () => {
+  it('rejects mismatched body identity before dispatch', async () => {
     const service = { execute: jest.fn() } as unknown as AgentApiService;
     const controller = new AgentApiController(service);
 
-    expect(() => controller.execute(
+    await expect(controller.execute(
       {
         tool: 'get_production_overview',
         arguments: {},
@@ -84,18 +84,18 @@ describe('AgentApiController identity boundary', () => {
       'line-1',
       'session-1',
       'trace-1',
-    )).toThrow('IDENTITY_MISMATCH');
+    )).rejects.toThrow('IDENTITY_MISMATCH');
     expect(service.execute).not.toHaveBeenCalled();
   });
 
-  it('requires a service account when the deployment enables that boundary', () => {
+  it('requires a service account when the deployment enables that boundary', async () => {
     const previous = process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT;
     process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT = 'true';
     try {
       const service = { execute: jest.fn() } as unknown as AgentApiService;
       const controller = new AgentApiController(service);
 
-      expect(() => controller.execute(
+      await expect(controller.execute(
         {
           tool: 'get_production_overview',
           arguments: {},
@@ -109,7 +109,7 @@ describe('AgentApiController identity boundary', () => {
         '*',
         'session-1',
         'trace-service-account',
-      )).toThrow(UnauthorizedException);
+      )).rejects.toThrow(UnauthorizedException);
       expect(service.execute).not.toHaveBeenCalled();
     } finally {
       if (previous === undefined) delete process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT;
