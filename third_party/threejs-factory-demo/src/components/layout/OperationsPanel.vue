@@ -89,7 +89,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { confirmDocumentAnalysis, confirmQualityRecord, controlSimulator, createDevice, deleteDevice, createMaintenance, createQualityRecord, createWorkOrder, documentContentUrl, queueDocumentAnalysis, reportWorkOrder, retryDocumentAnalysis, updateDevice, updateDeviceStatus, listDocuments, listMaintenanceWorkOrders, listQualityRecords, listWorkOrders, rejectQualityRecord, submitQualityRecord, simulateStrategy, updateDocumentStatus, updateMaintenanceStatus, uploadDocument } from '@/api/mesApi';
 import { toBackendDeviceId, toBackendLineId } from '@/api/identityMap';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
@@ -125,6 +125,7 @@ const workOrders = ref<Array<import('@/api/mesApi').WorkOrderRecord>>([]);
 const qualityRecords = ref<Array<Record<string, unknown> & { id: string }>>([]);
 const maintenanceOrders = ref<Array<Record<string, unknown> & { id: string }>>([]);
 const pendingDocumentReady = computed(() => pendingDocumentId.value !== null && documents.value.some((document) => document.id === pendingDocumentId.value && documentAnalysisStatus(document) === 'draft'));
+let analysisPollTimer: number | null = null;
 const workOrder = ref({ orderNo: '', productCode: '', productName: '', plannedQty: 1, dueAt: '' });
 const device = ref({ code: '', name: '', model: '', protocol: 'simulator' as const });
 const editingDeviceId = ref<string | null>(null);
@@ -186,9 +187,24 @@ const runDocumentAnalysis = async (id: string, retry: boolean) => {
     else await queueDocumentAnalysis(id, 'digital-twin-ui');
     pendingDocumentId.value = id;
     await loadRecords();
+    startAnalysisPolling(id);
     notice.value = retry ? '图纸分析已重新排队' : '图纸分析已排队，完成后请人工复核';
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '图纸分析任务提交失败'; }
   finally { submitting.value = false; }
+};
+
+const startAnalysisPolling = (id: string) => {
+  if (analysisPollTimer !== null) window.clearInterval(analysisPollTimer);
+  analysisPollTimer = window.setInterval(() => {
+    void loadRecords().then(() => {
+      const document = documents.value.find((item) => item.id === id);
+      const status = document ? documentAnalysisStatus(document) : 'not_found';
+      if (status === 'draft' || status === 'failed' || status === 'not_found') {
+        if (analysisPollTimer !== null) window.clearInterval(analysisPollTimer);
+        analysisPollTimer = null;
+      }
+    });
+  }, 750);
 };
 const confirmDocumentRecord = async (id: string) => { if (!props.apiEnabled || !props.canWrite || submitting.value) return; try { submitting.value = true; await updateDocumentStatus(id, 'reviewing'); await loadRecords(); notice.value = '图纸已送审'; } catch { error.value = '图纸送审失败，请检查当前状态和权限'; } finally { submitting.value = false; } };
 const transitionQuality = async (id: string, action: 'submit' | 'confirm' | 'reject') => { if (!props.apiEnabled || !props.canWrite || submitting.value) return; try { submitting.value = true; if (action === 'submit') await submitQualityRecord(id); if (action === 'confirm') await confirmQualityRecord(id); if (action === 'reject') await rejectQualityRecord(id); await loadRecords(); notice.value = `质量记录${action === 'reject' ? '已驳回' : action === 'confirm' ? '已确认' : '已提交'}`; } catch { error.value = '质量记录状态更新失败，请检查当前状态和权限'; } finally { submitting.value = false; } };
@@ -291,6 +307,10 @@ const confirmDocument = async () => {
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '图纸确认失败'; }
   finally { submitting.value = false; }
 };
+
+onBeforeUnmount(() => {
+  if (analysisPollTimer !== null) window.clearInterval(analysisPollTimer);
+});
 </script>
 
 <style scoped>
