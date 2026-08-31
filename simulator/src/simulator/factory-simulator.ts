@@ -33,6 +33,7 @@ export class FactorySimulator {
   private stopped = false;
   private timeScale = 1;
   private readonly network?: NetworkSimulator;
+  private readonly networkSeed?: number;
   private scenarioEvents: ScenarioEvent[] = [];
   private scenarioIndex = 0;
   private scenarioElapsedSeconds = 0;
@@ -56,6 +57,7 @@ export class FactorySimulator {
     this.agvs = this.agvDefinitions.map((definition) => new AgvSimulator(definition));
     if (networkOptions) {
       const networkSeed = networkOptions.seed ?? seed;
+      this.networkSeed = networkSeed;
       this.network = new NetworkSimulator({ ...networkOptions, seed: networkSeed }, createSeededRandom(networkSeed));
     }
   }
@@ -132,6 +134,7 @@ export class FactorySimulator {
       intervalMs: this.intervalMs,
       timeScale: this.timeScale,
       seed: this.seed,
+      networkSeed: this.networkSeed,
       scenario: this.getScenario().events,
       frames: this.getReplayFrames(),
     };
