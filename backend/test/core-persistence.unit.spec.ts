@@ -181,4 +181,38 @@ describe('core PostgreSQL persistence repository', () => {
     expect(workOrderUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ completedQty: 0, status: 'in_progress' }) }));
     expect(orderUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ completedQty: 0 }) }));
   });
+
+  it('rejects an insufficient material batch before creating a report or advancing production', async () => {
+    const workOrderFindUnique = jest.fn().mockResolvedValue({
+      tenantId: 'tenant-demo', status: 'in_progress', plannedQty: 1, completedQty: 0, orderId: null,
+    });
+    const qualityFindUnique = jest.fn().mockResolvedValue({
+      tenantId: 'tenant-demo', workOrderId: 'wo-shortage', status: 'confirmed',
+    });
+    const batchUpdateMany = jest.fn().mockResolvedValue({ count: 0 });
+    const reportCreate = jest.fn();
+    const workOrderUpdateMany = jest.fn();
+    const transaction = jest.fn(async (callback: (client: unknown) => Promise<void>) => callback({
+      workOrder: { findUnique: workOrderFindUnique, updateMany: workOrderUpdateMany },
+      qualityRecord: { findUnique: qualityFindUnique },
+      batchInventory: { updateMany: batchUpdateMany },
+      workOrderReport: { create: reportCreate },
+      productionOrder: { findUnique: jest.fn(), updateMany: jest.fn() },
+    }));
+    const prisma = {
+      ensureConnection: jest.fn().mockResolvedValue(undefined), isReady: () => true, $transaction: transaction,
+    } as unknown as PrismaService;
+    const service = new CorePersistenceService(prisma);
+
+    await expect(service.saveCompleteReport(
+      { id: 'report-shortage', tenantId: 'tenant-demo', workOrderId: 'wo-shortage', deviceId: null, quantity: 1, goodQty: 1, defectQty: 0, sourceTraceId: 'trace-shortage', qualityRecordId: 'quality-shortage', reportedAt: '2026-08-31T00:00:00.000Z' },
+      { id: 'wo-shortage', tenantId: 'tenant-demo', orderId: null, orderNo: 'WO-SHORTAGE', productCode: 'P-1', productName: '产品', lineId: 'line-1', plannedQty: 1, completedQty: 1, dueAt: '2026-09-01T00:00:00.000Z', priority: 'normal', status: 'completed', statusReason: '', createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z' },
+      [{ materialCode: 'RAW-1', batchNo: 'B-SHORT', quantity: 1 }],
+      'quality-shortage',
+    )).rejects.toThrow('Insufficient material batch B-SHORT');
+
+    expect(batchUpdateMany).toHaveBeenCalledTimes(1);
+    expect(reportCreate).not.toHaveBeenCalled();
+    expect(workOrderUpdateMany).not.toHaveBeenCalled();
+  });
 });
