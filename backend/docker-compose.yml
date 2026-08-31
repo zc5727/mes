@@ -41,7 +41,7 @@ services:
     volumes:
       - mes_minio:/data
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:9000/minio/health/live"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null"]
       interval: 5s
       timeout: 3s
       retries: 10

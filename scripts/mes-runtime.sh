@@ -66,16 +66,37 @@ wait_tcp() {
   return 2
 }
 
+wait_postgres() {
+  for _ in $(seq 1 30); do
+    if compose exec -T postgres pg_isready -U mes -d mes >/dev/null 2>&1; then
+      echo "PostgreSQL healthcheck 已通过"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "BLOCKED: PostgreSQL 容器未通过 healthcheck，请执行 compose logs postgres 诊断。" >&2
+  return 2
+}
+
+wait_minio() {
+  for _ in $(seq 1 30); do
+    if curl --fail --silent http://localhost:9000/minio/health/live >/dev/null 2>&1; then
+      echo "MinIO readiness 已通过"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "BLOCKED: MinIO 未通过 readiness，请执行 compose logs minio 诊断。" >&2
+  return 2
+}
+
 ready() {
   preflight
   for port in 5432 1883; do wait_tcp "$port"; done
-  if ! compose exec -T postgres pg_isready -U mes -d mes >/dev/null; then
-    echo "BLOCKED: PostgreSQL 容器 healthcheck 未通过。" >&2
-    return 2
-  fi
+  wait_postgres
   if [[ "$OBJECT_STORAGE" == true ]]; then
     wait_tcp 9000
-    curl --fail --silent --show-error http://localhost:9000/minio/health/live >/dev/null || { echo "BLOCKED: MinIO healthcheck failed." >&2; return 2; }
+    wait_minio
   fi
   local readiness
   readiness="$(curl -fsS http://localhost:3000/api/v1/health/readiness)"
@@ -92,10 +113,12 @@ start() {
     return 2
   fi
   wait_tcp 5432
+  wait_postgres
   if [[ "$OBJECT_STORAGE" == true ]] && ! compose --profile object-storage up -d minio; then
     echo "BLOCKED: MinIO 启动失败，请执行 compose logs minio 诊断。" >&2
     return 2
   fi
+  [[ "$OBJECT_STORAGE" != true ]] || wait_minio
   npm --prefix "$ROOT_DIR/backend" run db:init
   DATABASE_URL="${DATABASE_URL:-postgresql://mes:mes_dev@localhost:5432/mes}" npm --prefix "$ROOT_DIR/backend" run db:verify-runtime
   DATABASE_ENABLED=true DATABASE_REQUIRED=true MQTT_ENABLED=true MES_OBJECT_STORAGE="$OBJECT_STORAGE" "$ROOT_DIR/scripts/dev-up.sh" --mqtt
@@ -144,6 +167,8 @@ restart() {
     echo "BLOCKED: MinIO 重启失败，请执行 compose logs minio 诊断。" >&2
     return 2
   fi
+  wait_postgres
+  [[ "$OBJECT_STORAGE" != true ]] || wait_minio
   "$ROOT_DIR/scripts/dev-down.sh"
   npm --prefix "$ROOT_DIR/backend" run db:init
   DATABASE_URL="${DATABASE_URL:-postgresql://mes:mes_dev@localhost:5432/mes}" npm --prefix "$ROOT_DIR/backend" run db:verify-runtime

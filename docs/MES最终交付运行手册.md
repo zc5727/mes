@@ -1,7 +1,7 @@
 # MES 最终交付运行手册
 
 **负责人：** 赵丞  
-**适用版本：** 核心 MES 试点版 v1.5 / 提交 `cfc5ce91`
+**适用版本：** 核心 MES 试点版 v1.5 / 提交 `563edf1e`
 **适用范围：** 单工厂、单车间、四条模拟产线；不包含 SaaS、Nanobot 原生集成和真实 PLC 控制。
 
 ## 1. 交付边界
@@ -146,11 +146,11 @@ scripts/verify-desktop-release.sh \
 - 数据库迁移、备份恢复、回滚和权限拒绝测试结果。
 - 操作者、时间、环境、产线、设备、工单、`traceId` 和证据文件路径。
 
-### 7.1 提交 cfc5ce91 已具备的代码/测试证据
+### 7.1 提交 563edf1e 已具备的代码/测试证据
 
-下表只记录仓库中确实存在的实现或测试文件，不等同于现场生产通过。本基线新增维修/质量/工单状态约束、策略治理 E2E、数据库运行时检查和统一运行入口；它们仍需按第 8 节完成真实依赖与现场验收。
+下表只记录仓库中确实存在的实现或测试文件，不等同于现场生产通过。本基线新增审计持久化边界、维修/质量/工单状态约束、策略治理 E2E、数据库运行时检查和迁移回滚检查入口；它们仍需按第 8 节完成真实依赖与现场验收。
 
-本轮 `./scripts/verify-all.sh` exit 0：Backend unit 39 套件/119 项、E2E 8 套件/23 项、Simulator 43 项；后端构建、数据库 schema 校验、前端构建、前端契约 smoke 和 Tauri desktop smoke 均通过。`./scripts/mes-runtime.sh preflight` 与 `verify` 因本机 Docker Compose 不可用而为 BLOCKED；不得据此宣称 PostgreSQL/MQTT/MinIO 真实运行通过。
+本轮 `./scripts/verify-all.sh` exit 0：Backend unit 39 套件/120 项、E2E 8 套件/23 项、Simulator 43 项；后端构建、数据库 schema 校验、前端构建、前端契约 smoke 和 Tauri desktop smoke 均通过。`./scripts/mes-runtime.sh preflight` 与 `verify` 因本机 Docker Compose 不可用而为 BLOCKED；不得据此宣称 PostgreSQL/MQTT/MinIO 真实运行通过。
 
 | 能力 | 代码证据 | 测试/验证证据 | 当前判定 |
 |---|---|---|---|
@@ -166,7 +166,7 @@ scripts/verify-desktop-release.sh \
 
 ## 8. 生产化缺口清单与退出证据
 
-以下清单按当前提交 `cfc5ce91` 的代码和脚本核对；“基础接口/演示”不等于生产完成。每一项只有在右栏证据归档后才能关闭。本基线的新增项包括主数据/告警控制边界、维修模块装配、维修/质量/工单状态约束、策略治理 E2E、数据库 seed/运行时检查和统一运行入口；它们仍属于代码级或隔离环境证据。
+以下清单按当前提交 `563edf1e` 的代码和脚本核对；“基础接口/演示”不等于生产完成。每一项只有在右栏证据归档后才能关闭。本基线的新增项包括主数据/告警控制边界、维修模块装配、维修/质量/工单状态约束、策略治理 E2E、数据库 seed/运行时检查和统一运行入口；它们仍属于代码级或隔离环境证据。
 
 | 缺口 | 当前真实状态 | 关闭所需退出证据 |
 |---|---|---|
@@ -204,4 +204,4 @@ scripts/verify-desktop-release.sh \
 
 ## 9. 当前未完成事项
 
-截至提交 `cfc5ce91`，质量/维修约束、基础持久化恢复、策略治理和运行时依赖门禁已有代码/测试证据，但以下事项仍不能标记为完成：ERPNext 真实旁路与四线对账、PostgreSQL 生产事务/重启恢复、ThingsBoard/Gateway 运行接入、库存扣减、IQC/IPQC/OQC/NCR/CAPA 完整闭环、对象存储、正式身份/TLS 与不可篡改审计、Tauri `.app/.dmg` 实机升级回滚。具体退出标准以 `docs/MES里程碑计划.md` 和 `docs/MES成熟功能域路线与端到端验收.md` 为准。
+截至提交 `563edf1e`，质量/维修约束、基础持久化恢复、策略治理和运行时依赖门禁已有代码/测试证据，但以下事项仍不能标记为完成：ERPNext 真实旁路与四线对账、PostgreSQL 生产事务/重启恢复、ThingsBoard/Gateway 运行接入、库存扣减、IQC/IPQC/OQC/NCR/CAPA 完整闭环、对象存储、正式身份/TLS 与不可篡改审计、Tauri `.app/.dmg` 实机升级回滚。具体退出标准以 `docs/MES里程碑计划.md` 和 `docs/MES成熟功能域路线与端到端验收.md` 为准。
