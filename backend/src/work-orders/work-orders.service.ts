@@ -638,7 +638,7 @@ export class WorkOrdersService implements OnModuleInit {
     this.ordersService.recordProgress(tenantId, orderId, completedQty);
   }
 
-  updateStatus(tenantId: string, id: string, dto: UpdateWorkOrderStatusDto, actorId = 'system'): WorkOrder {
+  updateStatus(tenantId: string, id: string, dto: UpdateWorkOrderStatusDto, actorId = 'system', persist = true): WorkOrder {
     const current = this.findOne(tenantId, id);
     if (!allowedTransitions[current.status].includes(dto.status)) {
       throw new ConflictException(`Cannot change work order from ${current.status} to ${dto.status}`);
@@ -663,9 +663,22 @@ export class WorkOrdersService implements OnModuleInit {
       updatedAt: timestamp(),
     };
     this.workOrders.set(id, updated);
-    void this.persistence?.saveWorkOrder(updated);
+    if (persist) void this.persistence?.saveWorkOrder(updated);
     this.auditService?.record(tenantId, actorId.trim() || 'system', { action: 'work_order.status', resource: 'work_order', resourceId: id, details: { from: current.status, to: updated.status, reason: updated.statusReason } });
     return updated;
+  }
+
+  /** Waits for durable persistence before acknowledging a work-order transition. */
+  async updateStatusReliable(tenantId: string, id: string, dto: UpdateWorkOrderStatusDto, actorId = 'system'): Promise<WorkOrder> {
+    const current = this.findOne(tenantId, id);
+    const updated = this.updateStatus(tenantId, id, dto, actorId, false);
+    try {
+      await this.persistence?.saveWorkOrder(updated);
+      return updated;
+    } catch (error: unknown) {
+      this.workOrders.set(id, current);
+      throw error;
+    }
   }
 
   remove(tenantId: string, id: string, actorId = 'system'): { id: string; deleted: true } {

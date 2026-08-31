@@ -41,6 +41,21 @@ describe('production execution flow', () => {
     expect(workOrders.findAll('tenant-demo')).toHaveLength(0);
   });
 
+  it('rolls back a work-order transition when durable persistence rejects it', async () => {
+    const persistence = {
+      saveWorkOrder: jest.fn().mockRejectedValue(new Error('database unavailable')),
+    };
+    const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService(), undefined, undefined, undefined, persistence as never);
+    const workOrder = workOrders.create('tenant-demo', {
+      orderNo: 'WO-STATUS-DURABLE-FAIL', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1,
+      dueAt: '2026-08-29T18:00:00.000Z',
+    }, 'system', false);
+
+    await expect(workOrders.updateStatusReliable('tenant-demo', workOrder.id, { status: 'released' }))
+      .rejects.toThrow('database unavailable');
+    expect(workOrders.findOne('tenant-demo', workOrder.id).status).toBe('draft');
+  });
+
   it('does not retain demo seeds when the enabled database restores an empty snapshot', async () => {
     const persistence = {
       isEnabled: () => true,

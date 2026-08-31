@@ -38,8 +38,8 @@ export class WorkOrdersController {
   }
 
   @Patch(':id/status')
-  updateStatus(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateWorkOrderStatusDto, @Headers('x-user-id') userId?: string) {
-    return { data: this.workOrdersService.updateStatus(tenantId, id, dto, userId), tenantId };
+  async updateStatus(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateWorkOrderStatusDto, @Headers('x-user-id') userId?: string) {
+    return { data: await this.workOrdersService.updateStatusReliable(tenantId, id, dto, userId), tenantId };
   }
 
   @Post(':id/report')
