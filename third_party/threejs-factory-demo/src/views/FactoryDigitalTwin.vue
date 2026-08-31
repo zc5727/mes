@@ -40,7 +40,7 @@
       @select-device="handleListSelect"
       :production-lines="lineSummaries"
       :selected-line-id="selectedLineId"
-      :line-busy="lineSubmitting"
+      :line-busy="lineSubmitting || dataBusy"
       @select-line="handleLineSelect"
       :can-manage-lines="true"
       @add-line="openLineDialog"
@@ -207,8 +207,13 @@ const reconnectRealtime = () => {
   websocketService.disconnect();
   startRealtime();
   startApiPolling();
-  dataNotice.value = '已发起实时连接，等待状态回传';
-  window.setTimeout(() => { dataBusy.value = false; }, 300);
+  void refreshApiSnapshot()
+    .then(() => { dataNotice.value = '数据源已重连，状态已刷新'; })
+    .catch(() => {
+      loadError.value = true;
+      dataNotice.value = '重连失败，请检查 API、SSE 配置和服务状态';
+    })
+    .finally(() => { dataBusy.value = false; });
 };
 
 const ackAlarm = async (id: string) => {
@@ -336,6 +341,8 @@ const handleCreateInspection = (deviceId: string) => {
 };
 
 const ensureLineSelection = () => {
+  const nextLine = productionLines.value.find((line) => line.id === selectedLineId.value) ?? productionLines.value[0];
+  if (nextLine && selectedLineId.value !== nextLine.id) selectedLineId.value = nextLine.id;
   if (selectedDeviceId.value && devices.value.some((device) => device.id === selectedDeviceId.value && device.lineId === selectedLineId.value)) return;
   const firstDevice = devices.value.find((device) => device.lineId === selectedLineId.value);
   store.selectDevice(firstDevice?.id ?? null);

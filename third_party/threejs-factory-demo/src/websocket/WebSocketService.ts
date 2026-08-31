@@ -161,7 +161,9 @@ export class WebSocketService {
 
   private connectRemote(options: ConnectOptions): void {
     if (!realtimeUrl || typeof WebSocket === 'undefined') {
-      this.startLocal(options.emitSnapshot !== false);
+      // The digital-twin page is API-first. A missing browser transport must
+      // enter the explicit offline state instead of silently fabricating data.
+      this.setConnectionState('offline');
       return;
     }
     if (realtimeProtocol === 'sse') {
