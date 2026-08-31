@@ -29,7 +29,10 @@
       </select>
       <button type="button" :disabled="controlBusy || !controlDeviceId" @click="injectFault">注入故障</button>
       <button type="button" class="secondary" :disabled="controlBusy || !controlDeviceId" @click="recoverDevice">恢复设备</button>
+      <button type="button" class="secondary" :disabled="dataBusy" @click="refreshData">{{ dataBusy ? '刷新中…' : '刷新数据' }}</button>
+      <button type="button" class="secondary" :disabled="dataBusy" @click="reconnectRealtime">重新连接</button>
       <small>{{ controlNotice || (controlMode === 'local' ? '仅影响本地演示数据' : '操作将经后端 simulator/control 执行') }}</small>
+      <small v-if="dataNotice" class="data-notice">{{ dataNotice }}</small>
     </section>
     <ThreeFactoryViewport
       :devices="devices"
@@ -125,6 +128,8 @@ const controlMode = ref<'api' | 'local'>(DATA_MODE);
 const requestedControlMode = ref<'api' | 'local'>(DATA_MODE);
 const controlBusy = ref(false);
 const controlNotice = ref('');
+const dataBusy = ref(false);
+const dataNotice = ref('');
 const faultTypes = [
   { value: 'OVERHEAT', label: '过热' },
   { value: 'JAM', label: '卡料' },
@@ -215,6 +220,37 @@ const handleListSelect = (id: string) => store.selectDevice(id);
 
 const handleDataChanged = () => {
   if (controlMode.value === 'api') void refreshApiSnapshot().catch(() => { loadError.value = true; });
+};
+
+const refreshData = async () => {
+  if (dataBusy.value) return;
+  dataBusy.value = true;
+  dataNotice.value = '';
+  try {
+    if (controlMode.value === 'api') {
+      await refreshApiSnapshot();
+    } else {
+      websocketService.disconnect();
+      startRealtime(true);
+    }
+    dataNotice.value = '数据已刷新';
+  } catch {
+    loadError.value = true;
+    dataNotice.value = '刷新失败，请检查服务和权限';
+  } finally {
+    dataBusy.value = false;
+  }
+};
+
+const reconnectRealtime = () => {
+  if (dataBusy.value) return;
+  dataBusy.value = true;
+  dataNotice.value = '';
+  websocketService.disconnect();
+  startRealtime(controlMode.value === 'local');
+  if (controlMode.value === 'api') startApiPolling();
+  dataNotice.value = controlMode.value === 'local' ? '本地仿真已重新连接' : '已发起实时连接，等待状态回传';
+  window.setTimeout(() => { dataBusy.value = false; }, 300);
 };
 
 const ackAlarm = async (id: string) => {
