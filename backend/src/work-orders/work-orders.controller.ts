@@ -43,8 +43,8 @@ export class WorkOrdersController {
   }
 
   @Post(':id/report')
-  report(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: ReportWorkOrderDto, @Headers('x-user-id') userId?: string) {
-    return { data: this.workOrdersService.report(tenantId, id, dto, userId), tenantId };
+  async report(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: ReportWorkOrderDto, @Headers('x-user-id') userId?: string) {
+    return { data: await this.workOrdersService.recordReport(tenantId, id, dto, userId), tenantId };
   }
 
   @Post(':id/complete-report')
@@ -53,13 +53,13 @@ export class WorkOrdersController {
   }
 
   @Post(':id/traceability/report')
-  traceabilityReport(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: ReportWorkOrderDto, @Headers('x-user-id') userId?: string) {
-    return { data: this.workOrdersService.reportTrace(tenantId, id, dto, userId), tenantId };
+  async traceabilityReport(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: ReportWorkOrderDto, @Headers('x-user-id') userId?: string) {
+    return { data: await this.workOrdersService.recordTraceableReport(tenantId, id, dto, userId), tenantId };
   }
 
   @Post(':id/operations/:operationCode/report')
-  operationReport(@TenantId() tenantId: string, @Param('id') id: string, @Param('operationCode') operationCode: string, @Body() dto: ReportWorkOrderDto, @Headers('x-user-id') userId?: string) {
-    return { data: this.workOrdersService.report(tenantId, id, { ...dto, operationCode }, userId), tenantId };
+  async operationReport(@TenantId() tenantId: string, @Param('id') id: string, @Param('operationCode') operationCode: string, @Body() dto: ReportWorkOrderDto, @Headers('x-user-id') userId?: string) {
+    return { data: await this.workOrdersService.recordReport(tenantId, id, { ...dto, operationCode }, userId), tenantId };
   }
 
   @Get(':id/reports')

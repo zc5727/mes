@@ -365,6 +365,69 @@ export class WorkOrdersService implements OnModuleInit {
     }
   }
 
+  /** Uses the durable transaction path when PostgreSQL is enabled. */
+  async recordReport(tenantId: string, id: string, dto: ReportWorkOrderDto, actorId = 'system'): Promise<{ workOrder: WorkOrder; report: WorkOrderReport }> {
+    if (this.persistence?.isEnabled?.() !== true) return this.report(tenantId, id, dto, actorId);
+    return this.reportPersistent(tenantId, id, dto, actorId);
+  }
+
+  /** Records a partial or final report atomically when PostgreSQL is enabled. */
+  private async reportPersistent(tenantId: string, id: string, dto: ReportWorkOrderDto, actorId: string): Promise<{ workOrder: WorkOrder; report: WorkOrderReport }> {
+    if (!this.persistence?.saveReportTransaction) throw new ConflictException('shared PostgreSQL transaction for report is unavailable');
+    const current = this.findOne(tenantId, id);
+    if (current.status !== 'in_progress') throw new ConflictException('Only in-progress work orders can report production');
+    const reportTraceId = dto.sourceTraceId?.trim() || createId('trace');
+    const existing = this.reports.find((item) => item.tenantId === tenantId && item.sourceTraceId === reportTraceId);
+    if (existing) {
+      if (existing.workOrderId !== id) throw new ConflictException(`Report trace ${reportTraceId} belongs to another work order`);
+      return { workOrder: current, report: existing };
+    }
+    if (dto.qualityRecordId && this.qualityService && !this.qualityService.canReportWorkOrder(tenantId, id, dto.qualityRecordId.trim(), reportTraceId)) {
+      throw new ConflictException('Quality release is required before reporting production');
+    }
+    if (current.completedQty + dto.quantity > current.plannedQty) throw new ConflictException('Report quantity exceeds planned quantity');
+    if (dto.deviceId && this.devicesService) {
+      const device = this.devicesService.findOne(tenantId, dto.deviceId);
+      if (device.lineId !== current.lineId) throw new ConflictException('Report device must belong to work order line');
+      if (device.status !== 'online') throw new ConflictException('Report device must be online');
+      if (this.maintenanceService?.isDeviceOccupied(tenantId, dto.deviceId)) throw new ConflictException('Report device is occupied by maintenance work');
+    }
+    const goodQty = dto.goodQty ?? dto.quantity;
+    const defectQty = dto.defectQty ?? dto.quantity - goodQty;
+    if (goodQty < 0 || defectQty < 0 || goodQty > dto.quantity || defectQty > dto.quantity || goodQty + defectQty !== dto.quantity) throw new ConflictException('Production quantities are invalid');
+    const serialNumbers = dto.serialNumbers ?? [];
+    if (serialNumbers.length && serialNumbers.length !== dto.quantity) throw new ConflictException('serialNumbers count must equal quantity');
+    if (new Set(serialNumbers).size !== serialNumbers.length) throw new ConflictException('serialNumbers must be unique');
+    const existingSerialNumbers = new Set(this.reports.filter((item) => item.tenantId === tenantId && item.workOrderId === id).flatMap((item) => item.serialNumbers));
+    if (serialNumbers.some((serialNumber) => existingSerialNumbers.has(serialNumber))) throw new ConflictException('serialNumbers already reported for work order');
+    const materialConsumptions = (dto.materialConsumptions ?? []).map((item) => ({ ...item, materialCode: item.materialCode.trim(), batchNo: item.batchNo.trim(), unit: item.unit?.trim() }));
+    if (materialConsumptions.some((item) => !item.materialCode || !item.batchNo || typeof item.quantity !== 'number' || !Number.isFinite(item.quantity) || item.quantity <= 0)) throw new ConflictException('material consumptions must have positive quantities, material codes and batch numbers');
+    if (dto.operationCode && this.masterDataService) this.masterDataService.validateOperation(tenantId, current.routingId, dto.operationCode.trim());
+    const report: WorkOrderReport = {
+      id: createId('report'), workOrderId: id, tenantId, quantity: dto.quantity, goodQty, defectQty,
+      deviceId: dto.deviceId ?? null, sourceTraceId: reportTraceId, reportedAt: timestamp(), batchNo: dto.batchNo?.trim() || null,
+      serialNumbers, operationCode: dto.operationCode?.trim() || null, operatorId: dto.operatorId?.trim() || null,
+      qualityRecordId: dto.qualityRecordId?.trim() || null, materialConsumptions,
+    };
+    const completedQty = current.completedQty + dto.quantity;
+    const workOrder: WorkOrder = { ...current, completedQty, status: completedQty === current.plannedQty ? 'completed' : current.status, updatedAt: timestamp() };
+    const commit = await this.persistence.saveReportTransaction(report, workOrder, materialConsumptions, dto.qualityRecordId?.trim());
+    if (!commit.created) {
+      const persisted = commit.existing;
+      if (!persisted || persisted.workOrderId !== id) throw new ConflictException(`Report trace ${reportTraceId} belongs to another work order`);
+      const restored: WorkOrderReport = { ...persisted, batchNo: persisted.batchNo ?? null, serialNumbers: persisted.serialNumbers ?? [], operationCode: persisted.operationCode ?? null, operatorId: persisted.operatorId ?? null, qualityRecordId: persisted.qualityRecordId ?? null, materialConsumptions: persisted.materialConsumptions ?? [] };
+      if (!this.reports.some((item) => item.id === restored.id)) this.reports.push(restored);
+      this.workOrders.set(id, workOrder);
+      return { workOrder, report: restored };
+    }
+    this.reports.push(report);
+    this.workOrders.set(id, workOrder);
+    this.masterDataService?.consumeBatchesWithRollback(tenantId, materialConsumptions, reportTraceId, actorId, false, false);
+    if (workOrder.orderId) this.syncOrderProgress(tenantId, workOrder.orderId);
+    this.auditService?.record(tenantId, dto.operatorId?.trim() || actorId.trim() || 'system', { action: 'work_order.report', resource: 'work_order', resourceId: id, details: { reportId: report.id, quantity: report.quantity, sourceTraceId: report.sourceTraceId }, traceId: report.sourceTraceId });
+    return { workOrder, report };
+  }
+
   async completeReport(tenantId: string, id: string, dto: ReportWorkOrderDto, actorId = 'system'): Promise<{ workOrder: WorkOrder; report: WorkOrderReport }> {
     const atomicPersistence = this.persistence?.isEnabled?.() === true;
     if (process.env.DATABASE_REQUIRED === 'true' && !atomicPersistence) throw new ConflictException('complete-report requires a shared PostgreSQL transaction; request rejected');
@@ -464,6 +527,11 @@ export class WorkOrdersService implements OnModuleInit {
       throw new ConflictException('Traceable report requires batchNo, operationCode and deviceId');
     }
     return this.report(tenantId, id, dto, actorId);
+  }
+
+  async recordTraceableReport(tenantId: string, id: string, dto: ReportWorkOrderDto, actorId = 'system'): Promise<{ workOrder: WorkOrder; report: WorkOrderReport }> {
+    if (!dto.batchNo?.trim() || !dto.operationCode?.trim() || !dto.deviceId?.trim()) throw new ConflictException('Traceable report requires batchNo, operationCode and deviceId');
+    return this.recordReport(tenantId, id, dto, actorId);
   }
 
   executionSummary(tenantId: string, id: string) {

@@ -80,19 +80,13 @@ export class CorePersistenceService {
     }
   }
 
-  /**
-   * Commits a completion report together with quality release and material
-   * consumption in one PostgreSQL transaction.
-   *
-   * This is deliberately separate from the legacy asynchronous projection
-   * methods: a production completion must fail closed rather than leave a
-   * report, inventory and work-order progress out of sync.
-   */
-  async saveCompleteReport(
+  /** Commits a production report and its dependent state in one transaction. */
+  async saveReportTransaction(
     report: PersistedReport,
     workOrder: PersistedWorkOrder,
     materialConsumptions: PersistedReport['materialConsumptions'],
-    qualityRecordId: string,
+    qualityRecordId?: string,
+    options: { requireQuality?: boolean; requireCompletion?: boolean } = {},
   ): Promise<{ created: boolean; existing?: PersistedReport }> {
     await this.prisma.ensureConnection();
     if (!this.prisma.isReady()) {
@@ -112,14 +106,21 @@ export class CorePersistenceService {
         });
         if (!current || current.tenantId !== workOrder.tenantId) throw new Error('Work order was not found in PostgreSQL');
         if (current.status !== 'in_progress') throw new Error('Work order is no longer in progress');
-        if (current.completedQty + report.quantity !== current.plannedQty) throw new Error('Completion quantity changed concurrently');
+        const nextCompletedQty = current.completedQty + report.quantity;
+        if (nextCompletedQty > current.plannedQty || (options.requireCompletion && nextCompletedQty !== current.plannedQty)) {
+          throw new Error('Work order quantity changed concurrently');
+        }
 
-        const quality = await transaction.qualityRecord.findUnique({
-          where: { id: qualityRecordId },
-          select: { tenantId: true, workOrderId: true, status: true },
-        });
-        if (!quality || quality.tenantId !== report.tenantId || quality.workOrderId !== report.workOrderId || quality.status !== 'confirmed') {
-          throw new Error('Quality record is not confirmed for this work order');
+        if (qualityRecordId) {
+          const quality = await transaction.qualityRecord.findUnique({
+            where: { id: qualityRecordId },
+            select: { tenantId: true, workOrderId: true, status: true },
+          });
+          if (!quality || quality.tenantId !== report.tenantId || quality.workOrderId !== report.workOrderId || quality.status !== 'confirmed') {
+            throw new Error('Quality record is not confirmed for this work order');
+          }
+        } else if (options.requireQuality) {
+          throw new Error('Quality record is required for completion');
         }
 
         for (const consumption of materialConsumptions ?? []) {
@@ -145,7 +146,7 @@ export class CorePersistenceService {
           },
           data: {
             completedQty: { increment: report.quantity },
-            status: 'completed',
+            status: nextCompletedQty === current.plannedQty ? 'completed' : 'in_progress',
             updatedAt: new Date(workOrder.updatedAt),
           },
         });
@@ -170,7 +171,7 @@ export class CorePersistenceService {
           if (orderProgress.count !== 1) throw new Error('Production order progress conflict during completion');
         }
 
-        if (typeof transaction.workOrderStatusHistory?.create === 'function') {
+        if (nextCompletedQty === current.plannedQty && typeof transaction.workOrderStatusHistory?.create === 'function') {
           await transaction.workOrderStatusHistory.create({ data: {
             id: `${report.id.slice(0, 32)}-status`, tenantId: report.tenantId, workOrderId: report.workOrderId,
             fromStatus: 'in_progress', toStatus: 'completed', reason: 'complete-report',
@@ -189,6 +190,16 @@ export class CorePersistenceService {
       this.failure('persist complete report transaction', error);
       throw error;
     }
+  }
+
+  /** Commits a final report with quality release and completion guards. */
+  async saveCompleteReport(
+    report: PersistedReport,
+    workOrder: PersistedWorkOrder,
+    materialConsumptions: PersistedReport['materialConsumptions'],
+    qualityRecordId: string,
+  ): Promise<{ created: boolean; existing?: PersistedReport }> {
+    return this.saveReportTransaction(report, workOrder, materialConsumptions, qualityRecordId, { requireQuality: true, requireCompletion: true });
   }
 
   async deleteFactory(id: string): Promise<void> { await this.write('factory deletion', () => this.prisma.factory.delete({ where: { id } })); }

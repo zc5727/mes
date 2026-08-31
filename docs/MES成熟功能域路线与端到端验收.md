@@ -343,7 +343,7 @@ SaaS 多租户商业化、Nanobot 原生集成、真实 PLC 自动控制、自�
 
 ### 10.1 当前状态
 
-工单报工已具备 `batchNo`、`serialNumbers`、`materialConsumptions`、`deviceId`、`operationCode` 和 `qualityRecordId`，并提供工单级追溯详情及按批次/序列号/原料批次检索。新增的 `POST /work-orders/:id/complete-report` 在启用 PostgreSQL 时，会在一个事务内校验已确认质量、扣减批次库存、写入报工、更新工单/订单进度并记录完工状态历史；普通分段报工仍保留兼容的异步投影路径，ERPNext 对账和真实现场验收仍未完成。
+工单报工已具备 `batchNo`、`serialNumbers`、`materialConsumptions`、`deviceId`、`operationCode` 和 `qualityRecordId`，并提供工单级追溯详情及按批次/序列号/原料批次检索。启用 PostgreSQL 时，HTTP 报工、工序报工和完工报工均进入条件事务：质量（如提供）、批次库存、报工、工单/订单进度和必要的完工状态历史保持一致；完工报工额外要求成品批次和质量确认。内存模式仍保留兼容演示适配器，ERPNext 对账和真实现场验收仍未完成。
 
 ### 10.2 统一追溯链
 
