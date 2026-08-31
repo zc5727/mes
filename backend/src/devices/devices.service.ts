@@ -29,6 +29,7 @@ export class DevicesService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     const snapshot = await this.persistence?.restore();
+    if (this.persistence?.isEnabled?.()) this.devices.clear();
     if (snapshot?.devices.length) {
       this.devices.clear();
       snapshot.devices.forEach((item) => this.devices.set(item.id, {

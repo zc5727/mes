@@ -3,6 +3,18 @@ import { DevicesService } from '../src/devices/devices.service';
 import { ProductionLinesService } from '../src/production-lines/production-lines.service';
 
 describe('DevicesService line ownership', () => {
+  it('does not retain demo devices when an enabled database restores an empty snapshot', async () => {
+    const persistence = {
+      isEnabled: () => true,
+      restore: jest.fn().mockResolvedValue({ devices: [] }),
+    };
+    const devices = new DevicesService(persistence as never);
+
+    await devices.onModuleInit();
+
+    expect(devices.findAll('tenant-demo')).toHaveLength(0);
+  });
+
   it('rejects a device when its line does not belong to the tenant', () => {
     const lines = new ProductionLinesService();
     const devices = new DevicesService(undefined, lines);
