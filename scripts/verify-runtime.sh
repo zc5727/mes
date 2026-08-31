@@ -3,12 +3,14 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${MES_RUNTIME_COMPOSE_FILE:-$ROOT_DIR/backend/docker-compose.yml}"
+export COMPOSE_PROJECT_NAME="${MES_RUNTIME_PROJECT_NAME:-mes-runtime-$$}"
 STARTED=false
 
 cleanup() {
   local exit_code=$?
   if [[ "$STARTED" == true ]]; then
     MES_RUNTIME_COMPOSE_FILE="$COMPOSE_FILE" "$ROOT_DIR/scripts/dev-down.sh" --infra || true
+    "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
   fi
   exit "$exit_code"
 }
@@ -80,7 +82,15 @@ if [[ "$minio_ready" != true ]]; then
 fi
 echo "PASS MinIO object storage readiness"
 
-if ! "${COMPOSE[@]}" exec -T postgres pg_isready -U mes -d mes >/dev/null; then
+postgres_ready=false
+for _ in $(seq 1 30); do
+  if "${COMPOSE[@]}" exec -T postgres pg_isready -U mes -d mes >/dev/null 2>&1; then
+    postgres_ready=true
+    break
+  fi
+  sleep 1
+done
+if [[ "$postgres_ready" != true ]]; then
   echo "BLOCKED: PostgreSQL healthcheck 未通过。" >&2
   exit 2
 fi
@@ -164,7 +174,6 @@ node "$ROOT_DIR/scripts/desktop-smoke.mjs" --app-dir "$ROOT_DIR/desktop"
 
 echo "停止并验证服务清理"
 MES_RUNTIME_COMPOSE_FILE="$COMPOSE_FILE" "$ROOT_DIR/scripts/dev-down.sh" --infra
-STARTED=false
 if nc -z localhost 3000 >/dev/null 2>&1 || nc -z localhost 5173 >/dev/null 2>&1 || nc -z localhost 5174 >/dev/null 2>&1 || nc -z localhost 1883 >/dev/null 2>&1 || nc -z localhost 5432 >/dev/null 2>&1 || nc -z localhost 9000 >/dev/null 2>&1; then
   echo "FAIL: 停止后仍有 MES 端口监听（3000/5173/5174/1883/5432/9000）" >&2
   exit 1
@@ -177,6 +186,8 @@ if [[ -n "$("${COMPOSE[@]}" ps -q 2>/dev/null)" ]]; then
   echo "FAIL: Docker Compose 服务未完全停止" >&2
   exit 1
 fi
+"${COMPOSE[@]}" down -v --remove-orphans >/dev/null
+STARTED=false
 echo "PASS service stop cleanup"
 
 echo "RUNTIME SMOKE PASS"

@@ -115,6 +115,21 @@ export class StrategyAuthorizationService {
     }
   }
 
+  /** Restrict simulator control to operational roles; never infer identity. */
+  assertCanControlSimulator(context: StrategyRequestContext): void {
+    const allowedRoles = new Set<StrategyRole>([
+      'system_admin',
+      'plant_manager',
+      'production_supervisor',
+      'equipment_supervisor',
+    ]);
+    if (!allowedRoles.has(context.role)) {
+      throw new ForbiddenException(
+        'ROLE_FORBIDDEN: simulator control is not permitted for this role',
+      );
+    }
+  }
+
   private assertAction(context: StrategyRequestContext, action: 'read' | 'simulate' | 'approve' | 'execute' | 'rollback', message: string): void {
     if (!STRATEGY_ACTION_MATRIX[context.role]?.has(action)) throw new ForbiddenException(`ROLE_FORBIDDEN: ${message}`);
   }

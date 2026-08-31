@@ -72,8 +72,9 @@ export class AgentToolRequestDto {
   @IsIn([...AGENT_READ_ONLY_TOOLS])
   tool!: AgentReadOnlyTool;
 
+  @IsOptional()
   @IsObject()
-  arguments!: Record<string, unknown>;
+  arguments?: Record<string, unknown>;
 
   @IsString()
   @IsNotEmpty()

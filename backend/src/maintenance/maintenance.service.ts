@@ -40,7 +40,9 @@ export class MaintenanceService implements OnModuleInit {
   list(tenantId: string): MaintenanceWorkOrder[] { return [...this.orders.values()].filter((item) => item.tenantId === tenantId); }
 
   isDeviceOccupied(tenantId: string, deviceId: string): boolean {
-    return this.list(tenantId).some((item) => item.deviceId === deviceId && ['draft', 'assigned', 'in_progress'].includes(item.status));
+    // A draft is only a planned maintenance request. It must not block
+    // production until it has been assigned to a technician or started.
+    return this.list(tenantId).some((item) => item.deviceId === deviceId && ['assigned', 'in_progress'].includes(item.status));
   }
 
   findOne(tenantId: string, id: string): MaintenanceWorkOrder {

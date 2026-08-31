@@ -108,13 +108,13 @@ describe('quality, maintenance and traceability contracts (e2e)', () => {
       .send({ batchNo: 'FG-E2E-001', lineId: 'line-cnc', workOrderId: 'wo-demo-001', operatorId: 'inspector-e2e', values: {}, traceId: 'report-e2e-release-001' }).expect(201);
     const qualityId = quality.body.data.id;
     await request(app.getHttpServer()).post('/api/v1/work-orders/wo-demo-001/report').set(headers)
-      .send({ quantity: 420, qualityRecordId: qualityId, deviceId: 'device-cnc-01', batchNo: 'FG-E2E-001', serialNumbers: Array.from({ length: 420 }, (_, index) => `SN-E2E-${index}`), materialConsumptions: [{ materialCode: 'RAW-E2E', batchNo: 'B-E2E-001', quantity: 5 }], sourceTraceId: 'report-e2e-release-001' }).expect(409);
+      .send({ quantity: 420, qualityRecordId: qualityId, deviceId: 'device-cnc-02', batchNo: 'FG-E2E-001', serialNumbers: Array.from({ length: 420 }, (_, index) => `SN-E2E-${index}`), materialConsumptions: [{ materialCode: 'RAW-E2E', batchNo: 'B-E2E-001', quantity: 5 }], sourceTraceId: 'report-e2e-release-001' }).expect(409);
     expect((await request(app.getHttpServer()).get('/api/v1/master-data/batches').set(headers)).body.data.find((item: { batchNo: string }) => item.batchNo === 'B-E2E-001').quantity).toBe(10);
 
     await request(app.getHttpServer()).post(`/api/v1/foundation/quality-records/${qualityId}/submit`).set(headers).send({ actorId: 'inspector-e2e' }).expect(201);
     await request(app.getHttpServer()).post(`/api/v1/foundation/quality-records/${qualityId}/confirm`).set(headers).send({ actorId: 'manager-e2e' }).expect(201);
     const completed = await request(app.getHttpServer()).post('/api/v1/work-orders/wo-demo-001/report').set(headers)
-      .send({ quantity: 420, qualityRecordId: qualityId, deviceId: 'device-cnc-01', batchNo: 'FG-E2E-001', serialNumbers: Array.from({ length: 420 }, (_, index) => `SN-E2E-${index}`), materialConsumptions: [{ materialCode: 'RAW-E2E', batchNo: 'B-E2E-001', quantity: 5 }], sourceTraceId: 'report-e2e-release-001' }).expect(201);
+      .send({ quantity: 420, qualityRecordId: qualityId, deviceId: 'device-cnc-02', batchNo: 'FG-E2E-001', serialNumbers: Array.from({ length: 420 }, (_, index) => `SN-E2E-${index}`), materialConsumptions: [{ materialCode: 'RAW-E2E', batchNo: 'B-E2E-001', quantity: 5 }], sourceTraceId: 'report-e2e-release-001' }).expect(201);
     expect(completed.body.data.workOrder.status).toBe('completed');
     expect(completed.body.data.workOrder.completedQty).toBe(1200);
     expect(batch.body.data.quantity).toBe(10);

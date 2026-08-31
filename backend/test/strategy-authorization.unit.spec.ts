@@ -59,4 +59,15 @@ describe('StrategyAuthorizationService', () => {
     expect(() => service.assertCanApprove(context('engineer'))).not.toThrow();
     expect(() => service.assertCanExecute(context('engineer'))).toThrow(/ROLE_FORBIDDEN/);
   });
+
+  it('limits direct audit writes to the audit-owner roles', () => {
+    const service = new StrategyAuthorizationService();
+    const context = (role: string) => service.fromHeaders(headers({ role }));
+
+    expect(() => service.assertCanRecordAudit(context('admin'))).not.toThrow();
+    expect(() => service.assertCanRecordAudit(context('plant_manager'))).not.toThrow();
+    expect(() => service.assertCanRecordAudit(context('supervisor'))).toThrow(
+      /ROLE_FORBIDDEN/,
+    );
+  });
 });

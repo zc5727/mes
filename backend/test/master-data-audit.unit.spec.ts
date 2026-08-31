@@ -15,7 +15,10 @@ describe('business foundation APIs', () => {
     const service = new AuditService();
     const approval = service.createApproval('tenant-a', { resource: 'simulator', resourceId: 'cmd-1' });
     service.record('tenant-a', 'operator-1', { action: 'simulator.fault', resource: 'simulator', resourceId: 'cmd-1' });
-    expect(service.list('tenant-a')).toHaveLength(1);
+    expect(service.list('tenant-a')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: 'APPROVAL_CREATED' }),
+      expect.objectContaining({ action: 'simulator.fault' }),
+    ]));
     expect(service.decide('tenant-a', approval.id, 'approved').status).toBe('approved');
     expect(service.listApprovals('tenant-b')).toHaveLength(0);
   });

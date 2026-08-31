@@ -75,6 +75,7 @@ export class AuditService {
     tenantId: string,
     dto: CreateApprovalDto,
     createdBy?: string,
+    traceId?: string,
   ): Approval {
     const item: Approval = {
       id: createId('approval'),
@@ -87,6 +88,14 @@ export class AuditService {
       createdBy: createdBy?.trim() || undefined,
     };
     this.approvals.set(tenantId, [...this.listApprovals(tenantId), item]);
+    this.record(tenantId, createdBy?.trim() || 'system', {
+      action: 'APPROVAL_CREATED',
+      resource: item.resource,
+      resourceId: item.resourceId,
+      traceId,
+      result: 'pending',
+      details: { approvalId: item.id, createdBy: item.createdBy },
+    });
     return item;
   }
 
@@ -96,6 +105,7 @@ export class AuditService {
     status: 'approved' | 'rejected',
     comment?: string,
     actor = 'system',
+    traceId?: string,
   ): Approval {
     const item = this.findApprovalOrThrow(tenantId, id);
     this.assertNotSelfApproval(item, actor);
@@ -122,6 +132,7 @@ export class AuditService {
         resource: item.resource,
         resourceId: item.resourceId,
         reason: `审批${status === 'approved' ? '通过' : '拒绝'}`,
+        traceId,
         result: status === 'approved' ? 'success' : 'rejected',
         details: { approvalId: id, status, createdBy: item.createdBy },
       },
@@ -134,6 +145,7 @@ export class AuditService {
     id: string,
     comment?: string,
     actor = 'system',
+    traceId?: string,
   ): Approval {
     const item = this.findApprovalOrThrow(tenantId, id);
     this.assertNotSelfApproval(item, actor);
@@ -157,6 +169,7 @@ export class AuditService {
       resource: item.resource,
       resourceId: item.resourceId,
       reason: '撤销审批',
+      traceId,
       result: 'success',
       details: { approvalId: id, status: 'revoked', createdBy: item.createdBy },
     });

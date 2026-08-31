@@ -44,12 +44,13 @@ export class AgentApiController {
       sessionId,
       serviceAccountId,
     });
+    this.assertServiceAccountRole(role, serviceAccountId);
     const trustedTraceId = this.requiredHeader(traceId, 'x-trace-id');
 
     if (request.tenantId !== trustedTenantId) {
       throw new ForbiddenException('TENANT_SCOPE_DENIED: request tenant differs from authenticated tenant');
     }
-    this.assertIdentityConsistency(request, trustedAuthorization, trustedTraceId);
+    this.assertIdentityConsistency(request, trustedAuthorization);
     return this.agentApiService.execute({
       ...request,
       tenantId: trustedTenantId,
@@ -83,10 +84,19 @@ export class AgentApiController {
     return value.trim();
   }
 
+  private assertServiceAccountRole(role: string | undefined, serviceAccountId: string | undefined): void {
+    if (!serviceAccountId?.trim() || process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT !== 'true') return;
+    const allowed = (process.env.MES_AGENT_ALLOWED_ROLES ?? 'auditor')
+      .split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
+    const normalizedRole = role?.trim().toLowerCase() ?? '';
+    if (!allowed.includes(normalizedRole)) {
+      throw new ForbiddenException('SERVICE_ACCOUNT_ROLE_DENIED: Agent service accounts are limited to read-only roles');
+    }
+  }
+
   private assertIdentityConsistency(
     request: AgentToolRequestDto,
     headers: AgentAuthorizationContext,
-    traceId: string,
   ): void {
     const bodyAuthorization = request.authorization;
     if (bodyAuthorization) {
@@ -109,11 +119,6 @@ export class AgentApiController {
           'IDENTITY_MISMATCH: serviceAccountId differs from authenticated header',
         );
       }
-    }
-    if (request.traceId !== traceId) {
-      throw new ForbiddenException(
-        'TRACE_MISMATCH: traceId differs from authenticated header',
-      );
     }
   }
 }

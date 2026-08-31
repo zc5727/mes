@@ -1,28 +1,70 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Post,
+} from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
+import { StrategyAuthorizationService } from '../strategies/strategy-authorization.service';
+import { StrategyRequestContext } from '../strategies/strategy.types';
+import { AuditService } from '../audit/audit.service';
 import { MqttIngestionService } from './mqtt-ingestion.service';
 import {
   normalizeSimulatorControlCommand,
   SimulatorControlDto,
   validateSimulatorControlCommand,
 } from './simulator-control.dto';
-import { AuditService } from '../audit/audit.service';
 
 @Controller('simulator')
 export class SimulatorControlController {
-  constructor(private readonly mqtt: MqttIngestionService, private readonly audit: AuditService) {}
+  constructor(
+    private readonly mqtt: MqttIngestionService,
+    private readonly audit: AuditService,
+    private readonly authorization: StrategyAuthorizationService,
+  ) {}
 
   @Post('control')
   @HttpCode(HttpStatus.ACCEPTED)
-  async control(@TenantId() tenantId: string, @Body() command: SimulatorControlDto) {
+  async control(
+    @TenantId() tenantId: string,
+    @Body() command: SimulatorControlDto,
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-role') role?: string,
+    @Headers('x-factory-id') factoryId?: string,
+    @Headers('x-scope') scope?: string,
+    @Headers('x-session-id') sessionId?: string,
+    @Headers('x-trace-id') traceId?: string,
+  ) {
+    const context = this.authorization.fromHeaders({
+      userId,
+      role,
+      factoryId,
+      scope,
+      sessionId,
+      traceId,
+    });
+    this.authorization.assertCanControlSimulator(context);
     validateSimulatorControlCommand(command);
+
     const normalizedCommand = normalizeSimulatorControlCommand(command);
-    const commandId = await this.mqtt.publishSimulatorControl(tenantId, normalizedCommand);
-    this.audit.record(tenantId, command.requestedBy ?? 'api-user', {
+    const commandId = await this.mqtt.publishSimulatorControl(
+      tenantId,
+      normalizedCommand,
+    );
+    this.audit.record(tenantId, context.userId, {
       action: `simulator.${command.action}`,
       resource: 'simulator',
       resourceId: commandId,
-      details: { ...command, normalizedAction: normalizedCommand.action, commandId },
+      operator: context.userId,
+      traceId: context.traceId,
+      details: {
+        ...command,
+        requestedBy: context.userId,
+        normalizedAction: normalizedCommand.action,
+        commandId,
+      },
     });
     return {
       data: {

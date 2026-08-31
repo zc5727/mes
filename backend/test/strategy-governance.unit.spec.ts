@@ -57,7 +57,7 @@ describe('StrategyGovernanceService', () => {
     governance.rememberIdempotent('tenant-a', 'request-1', snapshot, response);
 
     expect(governance.getIdempotent('tenant-a', 'request-1', governance.fingerprint(snapshot))).toBe(response);
-    expect(audit.list('tenant-a')).toHaveLength(1);
+    expect(audit.list('tenant-a')).toHaveLength(2);
     expect(() => governance.rememberIdempotent('tenant-a', 'request-1', {
       ...snapshot,
       timestamp: '2026-08-30T08:01:00.000Z',

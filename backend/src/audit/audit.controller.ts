@@ -78,7 +78,10 @@ export class AuditController {
     );
     this.authorization.assertCanRecordAudit(context);
     return {
-      data: this.service.record(tenantId, context.userId, dto),
+      data: this.service.record(tenantId, context.userId, {
+        ...dto,
+        operator: context.userId,
+      }),
       tenantId,
     };
   }
@@ -125,7 +128,12 @@ export class AuditController {
       );
     }
     return {
-      data: this.service.createApproval(tenantId, dto, context.userId),
+      data: this.service.createApproval(
+        tenantId,
+        dto,
+        context.userId,
+        context.traceId,
+      ),
       tenantId,
     };
   }
@@ -134,7 +142,7 @@ export class AuditController {
   approve(
     @TenantId() tenantId: string,
     @Param('id') id: string,
-    @Body() dto: ApprovalDecisionDto | undefined,
+    @Body() dto: ApprovalDecisionDto = new ApprovalDecisionDto(),
     @Headers('x-user-id') userId?: string,
     @Headers('x-role') role?: string,
     @Headers('x-factory-id') factoryId?: string,
@@ -146,7 +154,7 @@ export class AuditController {
       tenantId,
       id,
       'approved',
-      dto ?? {},
+      dto,
       userId,
       role,
       factoryId,
@@ -160,7 +168,7 @@ export class AuditController {
   reject(
     @TenantId() tenantId: string,
     @Param('id') id: string,
-    @Body() dto: ApprovalDecisionDto | undefined,
+    @Body() dto: ApprovalDecisionDto = new ApprovalDecisionDto(),
     @Headers('x-user-id') userId?: string,
     @Headers('x-role') role?: string,
     @Headers('x-factory-id') factoryId?: string,
@@ -172,7 +180,7 @@ export class AuditController {
       tenantId,
       id,
       'rejected',
-      dto ?? {},
+      dto,
       userId,
       role,
       factoryId,
@@ -186,7 +194,7 @@ export class AuditController {
   revoke(
     @TenantId() tenantId: string,
     @Param('id') id: string,
-    @Body() dto: ApprovalDecisionDto | undefined,
+    @Body() dto: ApprovalDecisionDto = new ApprovalDecisionDto(),
     @Headers('x-user-id') userId?: string,
     @Headers('x-role') role?: string,
     @Headers('x-factory-id') factoryId?: string,
@@ -205,7 +213,13 @@ export class AuditController {
     this.assertStrategyApprovalUsesGovernedApi(tenantId, id);
     this.authorization.assertCanApprove(context);
     return {
-      data: this.service.revoke(tenantId, id, dto?.comment, context.userId),
+      data: this.service.revoke(
+        tenantId,
+        id,
+        dto.comment,
+        context.userId,
+        context.traceId,
+      ),
       tenantId,
     };
   }
@@ -239,6 +253,7 @@ export class AuditController {
         status,
         dto.comment,
         context.userId,
+        context.traceId,
       ),
       tenantId,
     };

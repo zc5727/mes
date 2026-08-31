@@ -166,17 +166,15 @@ describe('strategy governance boundary (e2e)', () => {
     process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT = 'true';
     try {
       const denied = await request(server).post('/api/v1/agent-api/tools/execute')
-        .set(identity('supervisor'))
+        .set({ ...identity('supervisor'), 'x-service-account-id': 'nanobot-prod', 'x-trace-id': 'trace-agent-role' })
         .send({
           tool: 'get_production_overview', tenantId: 'tenant-demo', requestedBy: 'nanobot', traceId: 'trace-agent-role',
           authorization: {
             userId: 'supervisor-e2e', role: 'supervisor', factoryId: 'factory-demo', scope: '*',
             sessionId: 'session-supervisor', serviceAccountId: 'nanobot-prod',
           },
-        }).expect(201);
-      expect(denied.body.error).toEqual(expect.objectContaining({
-        code: 'AUTHORIZATION_DENIED', message: expect.stringContaining('SERVICE_ACCOUNT_ROLE_DENIED'),
-      }));
+        }).expect(403);
+      expect(denied.body.message).toEqual(expect.stringContaining('SERVICE_ACCOUNT_ROLE_DENIED'));
 
     } finally {
       delete process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT;

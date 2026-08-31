@@ -6,6 +6,6 @@ import { StrategyAuthorizationService } from '../strategies/strategy-authorizati
 @Module({
   controllers: [AuditController],
   providers: [AuditService, StrategyAuthorizationService],
-  exports: [AuditService],
+  exports: [AuditService, StrategyAuthorizationService],
 })
 export class AuditModule {}
