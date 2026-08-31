@@ -318,10 +318,23 @@ export class StrategyGovernanceService implements OnModuleInit {
     return this.updateLifecycle(tenantId, simulationId, 'revoked', actor, traceId, '撤销策略建议，不执行任何生产写入');
   }
 
-  executeSimulation(tenantId: string, simulationId: string, actor: string, traceId: string): TrackedStrategySimulation {
+  executeSimulation(
+    tenantId: string,
+    simulationId: string,
+    actor: string,
+    traceId: string,
+    confirmationId?: string,
+    sessionId?: string,
+  ): TrackedStrategySimulation {
     const tracked = this.getSimulation(tenantId, simulationId);
+    const confirmation = confirmationId?.trim()
+      ? this.listApprovalsForSimulation(tenantId, simulationId).find((approval) => approval.id === confirmationId.trim())
+      : undefined;
+    if (!confirmation || confirmation.status !== 'approved') {
+      throw new ConflictException('CONFIRMATION_NOT_APPROVED: an approved confirmationId is required before execution');
+    }
     if (this.lifecycleFor(tenantId, simulationId) !== 'approved') throw new ConflictException('STRATEGY_NOT_APPROVED: strategy must be approved before simulated execution');
-    return this.updateLifecycle(tenantId, simulationId, 'simulated_execution', actor, traceId, '仅执行仿真副本，不控制真实设备或修改工单');
+    return this.updateLifecycle(tenantId, simulationId, 'simulated_execution', actor, traceId, '仅执行仿真副本，不控制真实设备或修改工单', sessionId);
   }
 
   private createHighRiskApprovals(tenantId: string, result: StrategySimulationResult): string[] {
@@ -360,14 +373,14 @@ export class StrategyGovernanceService implements OnModuleInit {
     return 'approved';
   }
 
-  private updateLifecycle(tenantId: string, simulationId: string, status: StrategyLifecycleStatus, actor: string, traceId: string, reason: string): TrackedStrategySimulation {
+  private updateLifecycle(tenantId: string, simulationId: string, status: StrategyLifecycleStatus, actor: string, traceId: string, reason: string, sessionId?: string): TrackedStrategySimulation {
     const tracked = this.getSimulation(tenantId, simulationId);
     this.auditService.record(tenantId, actor, {
       action: `STRATEGY_${status.toUpperCase()}`,
       resource: 'strategy-simulation', resourceId: simulationId, operator: actor,
       object: `strategy-simulation:${simulationId}`, before: { lifecycleStatus: tracked.audit.lifecycleStatus },
       after: { lifecycleStatus: status, executionAllowed: false }, reason, traceId, result: 'success',
-      details: { lifecycleStatus: status, executionAllowed: false },
+      details: { lifecycleStatus: status, executionAllowed: false, sessionId },
     });
     const updated = { result: tracked.result, audit: { ...tracked.audit, lifecycleStatus: status } };
     this.simulations.set(this.key(tenantId, simulationId), updated);

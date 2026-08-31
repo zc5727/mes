@@ -54,10 +54,21 @@ describe('strategy governance boundary (e2e)', () => {
       .set(identity('supervisor', 'LINE-01,LINE-02')).expect(403);
     await request(server).post(`/api/v1/strategies/simulations/${simulationId}/approvals/${approvalId}/approve`)
       .set(identity('supervisor', 'LINE-01,LINE-02')).expect(200);
+    await request(server).post(`/api/v1/strategies/simulations/${simulationId}/execute`)
+      .set(identity('supervisor', 'LINE-01,LINE-02')).send({}).expect(409);
     const executed = await request(server).post(`/api/v1/strategies/simulations/${simulationId}/execute`)
-      .set(identity('supervisor', 'LINE-01,LINE-02')).expect(200);
+      .set(identity('supervisor', 'LINE-01,LINE-02')).send({ confirmationId: approvalId }).expect(200);
     expect(executed.body.data.audit.lifecycleStatus).toBe('simulated_execution');
     expect(executed.body.data.result.executionAllowed).toBe(false);
+    const auditLogs = await request(server).get('/api/v1/audit/logs')
+      .set(identity('supervisor', 'LINE-01,LINE-02')).expect(200);
+    expect(auditLogs.body.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        action: 'STRATEGY_SIMULATED_EXECUTION',
+        traceId: 'trace-supervisor',
+        details: expect.objectContaining({ sessionId: 'session-supervisor' }),
+      }),
+    ]));
 
     const replay = await request(server).post(`/api/v1/strategies/simulations/${simulationId}/replay`)
       .set(identity('supervisor', 'LINE-01,LINE-02')).expect(200);

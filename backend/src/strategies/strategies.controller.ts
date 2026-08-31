@@ -221,6 +221,7 @@ export class StrategiesController {
   @HttpCode(HttpStatus.OK)
   executeSimulation(
     @TenantId() tenantId: string, @Param('simulationId') simulationId: string,
+    @Body() body: { confirmationId?: string },
     @Headers('x-user-id') userId?: string, @Headers('x-role') role?: string, @Headers('x-factory-id') factoryId?: string,
     @Headers('x-scope') scope?: string, @Headers('x-session-id') sessionId?: string, @Headers('x-trace-id') traceId?: string,
   ) {
@@ -229,7 +230,11 @@ export class StrategiesController {
     const tracked = this.governance?.getSimulation(tenantId, simulationId);
     if (!tracked) return { data: null, tenantId };
     this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
-    return { data: this.governance?.executeSimulation(tenantId, simulationId, context.userId, context.traceId), tenantId, traceId: context.traceId };
+    return {
+      data: this.governance?.executeSimulation(tenantId, simulationId, context.userId, context.traceId, body?.confirmationId, context.sessionId),
+      tenantId,
+      traceId: context.traceId,
+    };
   }
 
   @Post('simulations/:simulationId/replay')
