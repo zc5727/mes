@@ -119,7 +119,7 @@ MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="$MES_API_KEY" MES_TENANT_ID="${M
 MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="$MES_API_KEY" MES_TENANT_ID="${MES_TENANT_ID:-tenant-demo}" npm --prefix "$ROOT_DIR/backend" run smoke:mqtt
 MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="$MES_API_KEY" MES_TENANT_ID="${MES_TENANT_ID:-tenant-demo}" npm --prefix "$ROOT_DIR/backend" run smoke:fault
 MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="$MES_API_KEY" MES_TENANT_ID="${MES_TENANT_ID:-tenant-demo}" npm --prefix "$ROOT_DIR/backend" run smoke:digital-twin
-MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="$MES_API_KEY" MES_TENANT_ID="${MES_TENANT_ID:-tenant-demo}" MES_STRATEGY_SMOKE_MODE=write npm --prefix "$ROOT_DIR/backend" run smoke:strategy-runtime
+MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="$MES_API_KEY" MES_TENANT_ID="${MES_TENANT_ID:-tenant-demo}" MES_STRATEGY_SMOKE_STATE="$ROOT_DIR/.runtime/strategy-governance-smoke.json" MES_STRATEGY_SMOKE_MODE=write npm --prefix "$ROOT_DIR/backend" run smoke:strategy-runtime
 
 echo "检查 PostgreSQL 重启后的 TCP/服务可用性"
 "${COMPOSE[@]}" restart postgres
@@ -147,7 +147,7 @@ readiness="$(curl -fsS http://localhost:3000/api/v1/health/readiness)"
 echo "$readiness" | grep -q '"enabled":true' || { echo "FAIL: 数据库未以 enabled=true 运行：$readiness" >&2; exit 1; }
 echo "$readiness" | grep -q '"status":"ready"' || { echo "FAIL: 后端重启后数据库未 ready：$readiness" >&2; exit 1; }
 echo "PASS backend restart recovery: DATABASE_ENABLED=true"
-MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="$MES_API_KEY" MES_TENANT_ID="${MES_TENANT_ID:-tenant-demo}" MES_STRATEGY_SMOKE_MODE=restore npm --prefix "$ROOT_DIR/backend" run smoke:strategy-runtime
+MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="$MES_API_KEY" MES_TENANT_ID="${MES_TENANT_ID:-tenant-demo}" MES_STRATEGY_SMOKE_STATE="$ROOT_DIR/.runtime/strategy-governance-smoke.json" MES_STRATEGY_SMOKE_MODE=restore npm --prefix "$ROOT_DIR/backend" run smoke:strategy-runtime
 
 echo "检查模拟器重启恢复"
 simulator_pid_file="$ROOT_DIR/.runtime/simulator.pid"

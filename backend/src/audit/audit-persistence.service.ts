@@ -68,7 +68,7 @@ export class AuditPersistenceService {
         this.prisma.auditApproval.findMany({ orderBy: { createdAt: 'asc' } }),
       ]);
       return {
-        audit: auditRows.map((row) => this.toAuditEntry(row)),
+        audit: orderAuditChain(auditRows.map((row) => this.toAuditEntry(row))),
         approvals: approvalRows.map((row) => this.toApproval(row)),
       };
     } catch (error: unknown) {
@@ -184,9 +184,9 @@ export class AuditPersistenceService {
       reason: row.reason,
       traceId: row.traceId,
       result: auditResult(row.result),
+      createdAt: row.createdAt.toISOString(),
       prevHash: row.prevHash ?? undefined,
       hash: row.hash ?? undefined,
-      createdAt: row.createdAt.toISOString(),
     };
   }
 
@@ -247,4 +247,44 @@ function approvalStatus(value: string): Approval['status'] {
   if (value === 'pending' || value === 'approved'
     || value === 'rejected' || value === 'revoked') return value;
   throw new Error(`unsupported persisted approval status: ${value}`);
+}
+
+/** Restore each tenant's hash chain in prevHash order, not timestamp order. */
+function orderAuditChain(entries: GovernedAuditEntry[]): GovernedAuditEntry[] {
+  const byTenant = new Map<string, GovernedAuditEntry[]>();
+  entries.forEach((entry) => {
+    byTenant.set(entry.tenantId, [...(byTenant.get(entry.tenantId) ?? []), entry]);
+  });
+
+  return [...byTenant.values()].flatMap((tenantEntries) => {
+    const byPreviousHash = new Map<string, GovernedAuditEntry>();
+    tenantEntries.forEach((entry) => {
+      if (entry.prevHash) byPreviousHash.set(entry.prevHash, entry);
+    });
+    const roots = tenantEntries
+      .filter((entry) => !entry.prevHash)
+      .sort(compareAuditEntries);
+    const ordered: GovernedAuditEntry[] = [];
+    const visited = new Set<string>();
+
+    const appendChain = (root: GovernedAuditEntry): void => {
+      let current: GovernedAuditEntry | undefined = root;
+      while (current && !visited.has(current.id)) {
+        ordered.push(current);
+        visited.add(current.id);
+        current = current.hash ? byPreviousHash.get(current.hash) : undefined;
+      }
+    };
+
+    roots.forEach(appendChain);
+    tenantEntries
+      .filter((entry) => !visited.has(entry.id))
+      .sort(compareAuditEntries)
+      .forEach(appendChain);
+    return ordered;
+  });
+}
+
+function compareAuditEntries(left: GovernedAuditEntry, right: GovernedAuditEntry): number {
+  return left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id);
 }
