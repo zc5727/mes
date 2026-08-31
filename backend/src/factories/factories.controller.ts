@@ -1,5 +1,5 @@
 import { RequireCapability } from '../common/route-capability.decorator';
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, Patch, Post } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { CreateFactoryDto } from './dto/create-factory.dto';
 import { UpdateFactoryDto } from './dto/update-factory.dto';
@@ -21,8 +21,8 @@ export class FactoriesController {
   }
 
   @Post()
-  create(@TenantId() tenantId: string, @Body() dto: CreateFactoryDto) {
-    return { data: this.factoriesService.create(tenantId, dto), tenantId };
+  async create(@TenantId() tenantId: string, @Body() dto: CreateFactoryDto, @Headers('x-user-id') userId?: string) {
+    return { data: await this.factoriesService.createReliable(tenantId, dto, userId), tenantId };
   }
 
   @Patch(':id')

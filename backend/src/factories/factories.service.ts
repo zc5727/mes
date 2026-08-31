@@ -60,7 +60,7 @@ export class FactoriesService implements OnModuleInit {
     return factory;
   }
 
-  create(tenantId: string, dto: CreateFactoryDto): Factory {
+  create(tenantId: string, dto: CreateFactoryDto, actorId = 'system', persist = true): Factory {
     const duplicate = this.findAll(tenantId).some((factory) => factory.code === dto.code);
     if (duplicate) {
       throw new ConflictException(`Factory code ${dto.code} already exists in tenant ${tenantId}`);
@@ -80,8 +80,8 @@ export class FactoriesService implements OnModuleInit {
       updatedAt: now,
     };
     this.factories.set(factory.id, factory);
-    void this.persistence?.saveFactory(factory);
-    this.audit?.record(tenantId, 'system', {
+    if (persist) void this.persistence?.saveFactory(factory);
+    this.audit?.record(tenantId, actorId.trim() || 'system', {
       action: 'factory.created',
       resource: 'factory',
       resourceId: factory.id,
@@ -89,6 +89,18 @@ export class FactoriesService implements OnModuleInit {
       details: { code: factory.code },
     });
     return factory;
+  }
+
+  /** Waits for durable factory persistence before acknowledging the API call. */
+  async createReliable(tenantId: string, dto: CreateFactoryDto, actorId = 'system'): Promise<Factory> {
+    const factory = this.create(tenantId, dto, actorId, false);
+    try {
+      await this.persistence?.saveFactory(factory);
+      return factory;
+    } catch (error: unknown) {
+      this.factories.delete(factory.id);
+      throw error;
+    }
   }
 
   update(tenantId: string, id: string, dto: UpdateFactoryDto): Factory {
