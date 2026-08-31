@@ -4,6 +4,7 @@ import { ProductionLinesService } from '../src/production-lines/production-lines
 import { WorkOrdersService } from '../src/work-orders/work-orders.service';
 import { DevicesService } from '../src/devices/devices.service';
 import { MasterDataService } from '../src/master-data/master-data.service';
+import { AuditService } from '../src/audit/audit.service';
 
 describe('production execution flow', () => {
   it('creates an order, runs a work order, reports production and completes it', () => {
@@ -70,6 +71,31 @@ describe('production execution flow', () => {
 
     const paused = workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'paused', reason: '设备换刀' });
     expect(paused.statusReason).toBe('设备换刀');
+  });
+
+  it('does not allow PATCH to bypass report-based production progress', () => {
+    const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService());
+    const workOrder = workOrders.create('tenant-demo', {
+      orderNo: 'WO-PROGRESS-GUARD', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 2,
+      dueAt: '2026-08-29T18:00:00.000Z',
+    });
+    expect(() => workOrders.update('tenant-demo', workOrder.id, { completedQty: 2 })).toThrow(ConflictException);
+  });
+
+  it('audits order and work-order lifecycle changes', () => {
+    const audit = new AuditService();
+    const orders = new OrdersService(undefined, audit);
+    const workOrders = new WorkOrdersService(orders, new ProductionLinesService(), undefined, undefined, audit);
+    const order = orders.create('tenant-demo', {
+      orderNo: 'PO-AUDIT-001', productCode: 'P', productName: '产品', plannedQty: 1,
+      dueAt: '2026-08-29T18:00:00.000Z', priority: 'normal',
+    });
+    const workOrder = workOrders.create('tenant-demo', {
+      orderId: order.id, orderNo: 'WO-AUDIT-001', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1,
+      dueAt: '2026-08-29T18:00:00.000Z',
+    });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' });
+    expect(audit.list('tenant-demo').map((item) => item.action)).toEqual(expect.arrayContaining(['order.create', 'work_order.status']));
   });
 
   it('rejects duplicate report traces and devices from another line', () => {

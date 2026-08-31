@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException, OnModuleInit, Optiona
 import { CorePersistenceService } from '../database/core-persistence.service';
 import { createId, MockEntity, timestamp } from '../common/mock.types';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { AuditService } from '../audit/audit.service';
 
 export interface ProductionOrder extends MockEntity {
   externalId?: string;
@@ -18,7 +19,7 @@ export interface ProductionOrder extends MockEntity {
 
 @Injectable()
 export class OrdersService implements OnModuleInit {
-  constructor(@Optional() private readonly persistence?: CorePersistenceService) {}
+  constructor(@Optional() private readonly persistence?: CorePersistenceService, @Optional() private readonly auditService?: AuditService) {}
 
   async onModuleInit(): Promise<void> {
     const snapshot = await this.persistence?.restore();
@@ -61,6 +62,7 @@ export class OrdersService implements OnModuleInit {
     };
     this.orders.set(order.id, order);
     void this.persistence?.saveOrder(order);
+    this.auditService?.record(tenantId, 'system', { action: 'order.create', resource: 'production_order', resourceId: order.id, details: { orderNo: order.orderNo, plannedQty: order.plannedQty } });
     return order;
   }
 
@@ -73,6 +75,7 @@ export class OrdersService implements OnModuleInit {
     const updated: ProductionOrder = { ...order, completedQty: nextQty, status, updatedAt: timestamp() };
     this.orders.set(id, updated);
     void this.persistence?.saveOrder(updated);
+    this.auditService?.record(tenantId, 'system', { action: 'order.progress', resource: 'production_order', resourceId: id, details: { completedQty: nextQty, status } });
     return updated;
   }
 }

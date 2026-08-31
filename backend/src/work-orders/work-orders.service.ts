@@ -226,6 +226,9 @@ export class WorkOrdersService implements OnModuleInit {
     if (current.status === 'completed' || current.status === 'cancelled') {
       throw new ConflictException(`Work orders in ${current.status} status cannot be edited`);
     }
+    if (dto.completedQty !== undefined && dto.completedQty !== current.completedQty) {
+      throw new ConflictException('completedQty can only be changed by production report');
+    }
     if (dto.lineId) this.productionLinesService.findOne(tenantId, dto.lineId);
     const plannedQty = dto.plannedQty ?? current.plannedQty;
     const completedQty = dto.completedQty ?? current.completedQty;
@@ -425,6 +428,7 @@ export class WorkOrdersService implements OnModuleInit {
     };
     this.workOrders.set(id, updated);
     void this.persistence?.saveWorkOrder(updated);
+    this.auditService?.record(tenantId, 'system', { action: 'work_order.status', resource: 'work_order', resourceId: id, details: { from: current.status, to: updated.status, reason: updated.statusReason } });
     return updated;
   }
 
