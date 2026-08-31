@@ -35,4 +35,12 @@ describe('batch inventory PostgreSQL persistence', () => {
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(upsert).toHaveBeenCalledTimes(2);
   });
+
+  it('surfaces a required-database transaction failure instead of silently accepting it', async () => {
+    const transaction = jest.fn().mockRejectedValue(new Error('deadlock'));
+    const prisma = { required: true, ensureConnection: jest.fn().mockResolvedValue(undefined), isReady: () => true, batchInventory: { upsert: jest.fn().mockReturnValue(Promise.resolve('write')) }, $transaction: transaction } as unknown as PrismaService;
+    await expect(new InventoryPersistenceService(prisma).saveMany([
+      { id: 'batch-1', tenantId: 'tenant-demo', materialCode: 'RAW-1', batchNo: 'B-1', quantity: 1, unit: 'kg', updatedAt: '2026-08-31T00:00:00.000Z' },
+    ])).rejects.toThrow('PostgreSQL is required');
+  });
 });
