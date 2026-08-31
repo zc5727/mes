@@ -276,6 +276,14 @@ describe('production execution flow', () => {
     expect(result.workOrder.status).toBe('completed');
     expect(masterData.listBatches('tenant-demo')[0].quantity).toBe(0);
     expect(workOrders.findReports('tenant-demo', workOrder.id)).toHaveLength(1);
+
+    const repeated = await workOrders.completeReport('tenant-demo', workOrder.id, {
+      quantity: 1, batchNo: 'FG-COMPLETE', qualityRecordId: 'quality-complete', sourceTraceId: 'complete-report-001',
+      materialConsumptions: [{ materialCode: 'RAW-COMPLETE', batchNo: 'B-COMPLETE', quantity: 1 }],
+    });
+    expect(repeated.report.id).toBe(result.report.id);
+    expect(masterData.listBatches('tenant-demo')[0].quantity).toBe(0);
+    expect(workOrders.findReports('tenant-demo', workOrder.id)).toHaveLength(1);
   });
 
   it('complete-report rejects quality failure without consuming inventory', async () => {

@@ -93,10 +93,16 @@ export class CorePersistenceService {
     workOrder: PersistedWorkOrder,
     materialConsumptions: PersistedReport['materialConsumptions'],
     qualityRecordId: string,
-  ): Promise<void> {
+  ): Promise<{ created: boolean; existing?: PersistedReport }> {
     await this.prisma.ensureConnection();
     if (!this.prisma.isReady()) {
       throw new Error('PostgreSQL is unavailable; complete report was not committed');
+    }
+    if (this.prisma.workOrderReport && typeof this.prisma.workOrderReport.findFirst === 'function') {
+      const existing = await this.prisma.workOrderReport.findFirst({
+        where: { tenantId: report.tenantId, sourceTraceId: report.sourceTraceId },
+      });
+      if (existing) return { created: false, existing: this.report(existing) };
     }
     try {
       await this.prisma.$transaction(async (transaction) => {
@@ -172,7 +178,14 @@ export class CorePersistenceService {
           } });
         }
       });
+      return { created: true };
     } catch (error: unknown) {
+      if ((error as { code?: string })?.code === 'P2002' && this.prisma.workOrderReport && typeof this.prisma.workOrderReport.findFirst === 'function') {
+        const existing = await this.prisma.workOrderReport.findFirst({
+          where: { tenantId: report.tenantId, sourceTraceId: report.sourceTraceId },
+        });
+        if (existing) return { created: false, existing: this.report(existing) };
+      }
       this.failure('persist complete report transaction', error);
       throw error;
     }

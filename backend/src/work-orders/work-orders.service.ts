@@ -369,6 +369,14 @@ export class WorkOrdersService implements OnModuleInit {
     const atomicPersistence = this.persistence?.isEnabled?.() === true;
     if (process.env.DATABASE_REQUIRED === 'true' && !atomicPersistence) throw new ConflictException('complete-report requires a shared PostgreSQL transaction; request rejected');
     if (atomicPersistence && !this.persistence?.saveCompleteReport) throw new ConflictException('shared PostgreSQL transaction for complete-report is unavailable');
+    const requestedTraceId = dto.sourceTraceId?.trim();
+    if (requestedTraceId) {
+      const existing = this.reports.find((item) => item.tenantId === tenantId && item.sourceTraceId === requestedTraceId);
+      if (existing) {
+        if (existing.workOrderId !== id) throw new ConflictException(`Report trace ${requestedTraceId} belongs to another work order`);
+        return { workOrder: this.findOne(tenantId, id), report: existing };
+      }
+    }
     if (!this.qualityService || !this.masterDataService || !dto.qualityRecordId?.trim()) {
       throw new ConflictException('complete-report requires quality and inventory validation services');
     }
@@ -422,7 +430,23 @@ export class WorkOrdersService implements OnModuleInit {
       qualityRecordId: dto.qualityRecordId?.trim() || null, materialConsumptions,
     };
     const workOrder: WorkOrder = { ...current, completedQty: current.plannedQty, status: 'completed', updatedAt: timestamp() };
-    await this.persistence.saveCompleteReport(report, workOrder, materialConsumptions, dto.qualityRecordId.trim());
+    const commit = await this.persistence.saveCompleteReport(report, workOrder, materialConsumptions, dto.qualityRecordId.trim());
+    if (!commit.created) {
+      const existing = commit.existing;
+      if (!existing || existing.workOrderId !== id) throw new ConflictException(`Report trace ${reportTraceId} belongs to another work order`);
+      const restored: WorkOrderReport = {
+        ...existing,
+        batchNo: existing.batchNo ?? null,
+        serialNumbers: existing.serialNumbers ?? [],
+        operationCode: existing.operationCode ?? null,
+        operatorId: existing.operatorId ?? null,
+        qualityRecordId: existing.qualityRecordId ?? null,
+        materialConsumptions: existing.materialConsumptions ?? [],
+      };
+      if (!this.reports.some((item) => item.id === restored.id)) this.reports.push(restored);
+      this.workOrders.set(id, workOrder);
+      return { workOrder, report: restored };
+    }
     this.reports.push(report);
     this.workOrders.set(id, workOrder);
     this.masterDataService?.consumeBatchesWithRollback(tenantId, materialConsumptions, reportTraceId, actorId, false, false);
