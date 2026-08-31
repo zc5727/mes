@@ -192,7 +192,7 @@ export class WorkOrdersService implements OnModuleInit {
     return workOrder;
   }
 
-  create(tenantId: string, dto: CreateWorkOrderDto, actorId = 'system'): WorkOrder {
+  create(tenantId: string, dto: CreateWorkOrderDto, actorId = 'system', persist = true): WorkOrder {
     const duplicate = this.findAll(tenantId).some((order) => order.orderNo === dto.orderNo);
     if (duplicate) {
       throw new ConflictException(`Work order ${dto.orderNo} already exists`);
@@ -229,7 +229,7 @@ export class WorkOrdersService implements OnModuleInit {
       updatedAt: now,
     };
     this.workOrders.set(workOrder.id, workOrder);
-    void this.persistence?.saveWorkOrder(workOrder);
+    if (persist) void this.persistence?.saveWorkOrder(workOrder);
     this.productionLinesService.registerWorkOrder(tenantId, workOrder.lineId);
     this.auditService?.record(tenantId, actorId.trim() || 'system', {
       action: 'work_order.created',
@@ -239,6 +239,23 @@ export class WorkOrdersService implements OnModuleInit {
       details: { orderNo: workOrder.orderNo, lineId: workOrder.lineId, plannedQty: workOrder.plannedQty },
     });
     return workOrder;
+  }
+
+  /**
+   * Durable HTTP boundary for work-order creation. The memory adapter remains
+   * synchronous for the execution engine, but API acknowledgement waits for
+   * PostgreSQL and rolls back line registration on failure.
+   */
+  async createReliable(tenantId: string, dto: CreateWorkOrderDto, actorId = 'system'): Promise<WorkOrder> {
+    const workOrder = this.create(tenantId, dto, actorId, false);
+    try {
+      await this.persistence?.saveWorkOrder(workOrder);
+      return workOrder;
+    } catch (error: unknown) {
+      this.workOrders.delete(workOrder.id);
+      this.productionLinesService.unregisterWorkOrder(tenantId, workOrder.lineId);
+      throw error;
+    }
   }
 
   update(tenantId: string, id: string, dto: UpdateWorkOrderDto, actorId = 'system'): WorkOrder {

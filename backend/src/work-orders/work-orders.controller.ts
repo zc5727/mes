@@ -33,8 +33,8 @@ export class WorkOrdersController {
   }
 
   @Post()
-  create(@TenantId() tenantId: string, @Body() dto: CreateWorkOrderDto, @Headers('x-user-id') userId?: string) {
-    return { data: this.workOrdersService.create(tenantId, dto, userId), tenantId };
+  async create(@TenantId() tenantId: string, @Body() dto: CreateWorkOrderDto, @Headers('x-user-id') userId?: string) {
+    return { data: await this.workOrdersService.createReliable(tenantId, dto, userId), tenantId };
   }
 
   @Patch(':id/status')
