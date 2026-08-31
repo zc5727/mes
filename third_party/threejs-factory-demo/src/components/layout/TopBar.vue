@@ -24,6 +24,10 @@
         <span>连接状态</span>
         <strong :class="connected ? 'status-running' : 'status-error'">{{ connectionLabel }}</strong>
       </div>
+      <div class="metric dependency-metric" :title="dependencyHealth?.mqtt.lastError || '基础设施状态'">
+        <span>基础设施</span>
+        <strong :class="dependencyClass">{{ dependencyLabel }}</strong>
+      </div>
       <div class="metric simulation-metric">
         <span>{{ dataSource === 'api' ? '外部 MES 来源' : '降级数据' }}</span>
         <strong>{{ dataSource === 'api' ? mesSource : simulationTime }}</strong>
@@ -37,6 +41,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { formatClock } from '@/utils/time';
 import type { SimulatorState } from '@/types/factory';
+import type { DependencyHealth } from '@/api/mesApi';
 
 const props = defineProps<{
   onlineDeviceCount: number;
@@ -47,6 +52,7 @@ const props = defineProps<{
   dataSource: 'api' | 'simulator';
   mesSource: string;
   simulation?: SimulatorState;
+  dependencyHealth?: DependencyHealth | null;
 }>();
 
 const connectionLabel = computed(() => ({
@@ -64,6 +70,14 @@ const simulationTime = computed(() => {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '未知' : date.toISOString().slice(11, 19);
 });
+const dependencyLabel = computed(() => {
+  if (!props.dependencyHealth) return 'CHECKING';
+  const { database, mqtt } = props.dependencyHealth;
+  if (database.status === 'unavailable' || (mqtt.enabled && !mqtt.connected)) return 'DEGRADED';
+  if (database.status === 'disabled') return mqtt.enabled ? 'MQTT OK' : 'DEMO';
+  return mqtt.enabled ? 'DB/MQTT OK' : 'DB OK';
+});
+const dependencyClass = computed(() => dependencyLabel.value === 'DEGRADED' ? 'status-error' : 'status-running');
 
 const clock = ref(formatClock());
 let timer: number | null = null;

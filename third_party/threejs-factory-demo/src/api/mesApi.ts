@@ -102,6 +102,18 @@ interface ApiLine {
   completedQty?: number;
 }
 
+export interface DependencyHealth {
+  database: { enabled: boolean; status: 'disabled' | 'ready' | 'unavailable' };
+  mqtt: {
+    enabled: boolean;
+    connected: boolean;
+    state: string;
+    lastHeartbeatAt: string | null;
+    lastError: string | null;
+    lastErrorCode: string | null;
+  };
+}
+
 interface ApiDevice {
   id: string;
   lineId: string;
@@ -233,6 +245,11 @@ export async function fetchFactorySnapshot(): Promise<FetchSnapshotResult> {
       productionSummary,
     },
   };
+}
+
+/** Retrieves non-sensitive dependency state for the operations header. */
+export function fetchDependencyHealth(): Promise<DependencyHealth> {
+  return get<DependencyHealth>('/health/components');
 }
 
 export function controlSimulator(command: SimulatorControlCommand) {

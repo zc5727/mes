@@ -8,6 +8,7 @@
       :connection-state="connectionState"
       :data-source="store.dataSource"
       :mes-source="mesSource"
+      :dependency-health="dependencyHealth"
     />
     <div v-if="loading" class="data-banner">正在接入 MES 数据...</div>
     <div v-else-if="loadError" class="data-banner data-banner--warning">
@@ -109,7 +110,7 @@ import OperationsPanel from '@/components/layout/OperationsPanel.vue';
 import RightPanel from '@/components/layout/RightPanel.vue';
 import TopBar from '@/components/layout/TopBar.vue';
 import ThreeFactoryViewport from '@/components/scene/ThreeFactoryViewport.vue';
-import { acknowledgeAlarm, canMesCapability, closeAlarm, createMaintenance, createProductionLine, deleteProductionLine, fetchFactorySnapshot, listWorkOrders, mesCapabilityReason, updateProductionLine } from '@/api/mesApi';
+import { acknowledgeAlarm, canMesCapability, closeAlarm, createMaintenance, createProductionLine, deleteProductionLine, fetchDependencyHealth, fetchFactorySnapshot, listWorkOrders, mesCapabilityReason, updateProductionLine, type DependencyHealth } from '@/api/mesApi';
 import { useFactoryStore } from '@/store/factoryStore';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
 import { toBackendDeviceId, toBackendLineId } from '@/api/identityMap';
@@ -126,6 +127,7 @@ const dataBusy = ref(false);
 const alarmSubmitting = ref(false);
 const objectActionBusy = ref<'work-order' | 'inspection' | null>(null);
 const dataNotice = ref('');
+const dependencyHealth = ref<DependencyHealth | null>(null);
 const viewScope = ref<'line' | 'factory'>('line');
 const canWrite = canMesCapability('write');
 const canControl = canMesCapability('control');
@@ -431,6 +433,7 @@ const refreshApiSnapshot = async () => {
   connectionState.value = 'polling';
   loadError.value = false;
   ensureLineSelection();
+  void fetchDependencyHealth().then((health) => { dependencyHealth.value = health; }).catch(() => { dependencyHealth.value = null; });
 };
 
 const startRealtime = () => {
