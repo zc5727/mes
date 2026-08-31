@@ -93,7 +93,9 @@ wait_for_tcp() {
   echo "$label 已就绪：$host:$port"
 }
 wait_for_http() {
-  local url="$1" label="$2" pid_file="$3" log_name="$4" deadline=$((SECONDS + 45))
+  # The backend may need to compile before it starts. Keep the readiness
+  # window long enough for a cold workspace without masking a dead process.
+  local url="$1" label="$2" pid_file="$3" log_name="$4" deadline=$((SECONDS + 120))
   until curl -fsS "$url" >/dev/null 2>&1; do
     if [[ -f "$pid_file" ]] && ! kill -0 "$(cat "$pid_file")" 2>/dev/null; then
       echo "$label 进程已退出，查看日志：$LOG_DIR/$log_name.log" >&2
