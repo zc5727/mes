@@ -78,4 +78,31 @@ describe('core PostgreSQL persistence repository', () => {
     expect(workOrder.upsert).toHaveBeenCalledTimes(1);
     expect(workOrderReport.upsert).toHaveBeenCalledTimes(1);
   });
+
+  it('increments persisted work-order progress conditionally under concurrency', async () => {
+    const create = jest.fn().mockResolvedValue(undefined);
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const findUnique = jest.fn().mockResolvedValue({ completedQty: 2 });
+    const update = jest.fn().mockResolvedValue(undefined);
+    const transaction = jest.fn(async (callback: (client: unknown) => Promise<void>) => callback({
+      workOrder: { create: jest.fn(), updateMany, findUnique, update },
+      workOrderReport: { create },
+    }));
+    const prisma = {
+      ensureConnection: jest.fn().mockResolvedValue(undefined), isReady: () => true,
+      workOrder: { updateMany, findUnique, update }, workOrderReport: { create }, $transaction: transaction,
+    } as unknown as PrismaService;
+
+    await new CorePersistenceService(prisma).saveReportAndWorkOrder(
+      { id: 'report-2', tenantId: 'tenant-demo', workOrderId: 'wo-2', deviceId: 'device-1', quantity: 2, goodQty: 2, defectQty: 0, sourceTraceId: 'trace-2', reportedAt: '2026-08-31T00:00:00.000Z' },
+      { id: 'wo-2', tenantId: 'tenant-demo', orderId: null, orderNo: 'WO-2', productCode: 'P-2', productName: '产品', lineId: 'line-1', plannedQty: 2, completedQty: 2, dueAt: '2026-09-01T00:00:00.000Z', priority: 'normal', status: 'completed', statusReason: '', createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z' },
+    );
+
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ completedQty: { lte: 0 }, status: 'in_progress' }),
+      data: expect.objectContaining({ completedQty: { increment: 2 } }),
+    }));
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'completed' }) }));
+  });
 });

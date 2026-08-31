@@ -71,8 +71,7 @@ export class CorePersistenceService {
     }
     try {
       await this.prisma.$transaction(async (transaction) => {
-        await this.workOrderUpsert(transaction, workOrder);
-        await this.reportUpsert(transaction, report);
+        await this.persistReportAndIncrementWorkOrder(transaction, report, workOrder);
       });
     } catch (error: unknown) {
       this.failure('persist work order report transaction', error);
@@ -108,11 +107,62 @@ export class CorePersistenceService {
   private json(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
     return value === null || value === undefined ? Prisma.JsonNull : value as Prisma.InputJsonValue;
   }
+
+  /**
+   * Inserts one report and atomically increments the work order from its
+   * current database value. This prevents two application instances from
+   * overwriting each other's progress with stale in-memory snapshots.
+   */
+  private async persistReportAndIncrementWorkOrder(client: any, report: PersistedReport, workOrder: PersistedWorkOrder): Promise<void> {
+    if (typeof client.workOrderReport.create !== 'function'
+      || typeof client.workOrder.updateMany !== 'function'
+      || typeof client.workOrder.findUnique !== 'function') {
+      await this.workOrderUpsert(client, workOrder);
+      await this.reportUpsert(client, report);
+      return;
+    }
+
+    await client.workOrderReport.create({ data: this.reportData(report) });
+    const progress = await client.workOrder.updateMany({
+      where: {
+        id: workOrder.id,
+        tenantId: workOrder.tenantId,
+        status: 'in_progress',
+        completedQty: { lte: workOrder.plannedQty - report.quantity },
+      },
+      data: { completedQty: { increment: report.quantity }, updatedAt: new Date(workOrder.updatedAt) },
+    });
+    if (progress.count !== 1) {
+      throw new Error('Work order progress conflict during persistence');
+    }
+
+    const current = await client.workOrder.findUnique({
+      where: { id: workOrder.id },
+      select: { completedQty: true },
+    });
+    if (current?.completedQty === workOrder.plannedQty) {
+      await client.workOrder.update({
+        where: { id: workOrder.id },
+        data: { status: 'completed', statusReason: workOrder.statusReason, updatedAt: new Date(workOrder.updatedAt) },
+      });
+    }
+  }
+
+  private reportData(item: PersistedReport) {
+    return {
+      id: item.id, tenantId: item.tenantId, workOrderId: item.workOrderId, deviceId: item.deviceId,
+      quantity: item.quantity, goodQty: item.goodQty, defectQty: item.defectQty, sourceTraceId: item.sourceTraceId,
+      batchNo: item.batchNo ?? null, serialNumbers: this.json(item.serialNumbers), operationCode: item.operationCode ?? null,
+      operatorId: item.operatorId ?? null, qualityRecordId: item.qualityRecordId ?? null,
+      materialConsumptions: this.json(item.materialConsumptions), reportedAt: new Date(item.reportedAt), createdAt: new Date(item.reportedAt),
+    };
+  }
+
   private workOrderUpsert(client: any, item: PersistedWorkOrder): Promise<unknown> {
     return client.workOrder.upsert({ where: { id: item.id }, create: { id: item.id, tenantId: item.tenantId, orderId: item.orderId, orderNo: item.orderNo, productCode: item.productCode, productName: item.productName, lineId: item.lineId, plannedQty: item.plannedQty, completedQty: item.completedQty, dueAt: new Date(item.dueAt), priority: item.priority as never, status: item.status as never, statusReason: item.statusReason, createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) }, update: { orderId: item.orderId, orderNo: item.orderNo, productCode: item.productCode, productName: item.productName, lineId: item.lineId, plannedQty: item.plannedQty, completedQty: item.completedQty, dueAt: new Date(item.dueAt), priority: item.priority as never, status: item.status as never, statusReason: item.statusReason, updatedAt: new Date(item.updatedAt) } });
   }
   private reportUpsert(client: any, item: PersistedReport): Promise<unknown> {
-    return client.workOrderReport.upsert({ where: { id: item.id }, create: { id: item.id, tenantId: item.tenantId, workOrderId: item.workOrderId, deviceId: item.deviceId, quantity: item.quantity, goodQty: item.goodQty, defectQty: item.defectQty, sourceTraceId: item.sourceTraceId, batchNo: item.batchNo ?? null, serialNumbers: this.json(item.serialNumbers), operationCode: item.operationCode ?? null, operatorId: item.operatorId ?? null, qualityRecordId: item.qualityRecordId ?? null, materialConsumptions: this.json(item.materialConsumptions), reportedAt: new Date(item.reportedAt), createdAt: new Date(item.reportedAt) }, update: { deviceId: item.deviceId, quantity: item.quantity, goodQty: item.goodQty, defectQty: item.defectQty, batchNo: item.batchNo ?? null, serialNumbers: this.json(item.serialNumbers), operationCode: item.operationCode ?? null, operatorId: item.operatorId ?? null, qualityRecordId: item.qualityRecordId ?? null, materialConsumptions: this.json(item.materialConsumptions), reportedAt: new Date(item.reportedAt) } });
+    return client.workOrderReport.upsert({ where: { id: item.id }, create: this.reportData(item), update: { deviceId: item.deviceId, quantity: item.quantity, goodQty: item.goodQty, defectQty: item.defectQty, batchNo: item.batchNo ?? null, serialNumbers: this.json(item.serialNumbers), operationCode: item.operationCode ?? null, operatorId: item.operatorId ?? null, qualityRecordId: item.qualityRecordId ?? null, materialConsumptions: this.json(item.materialConsumptions), reportedAt: new Date(item.reportedAt) } });
   }
   private factory(item: any): PersistedFactory { return { ...item, createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() }; }
   private line(item: any): PersistedLine { return { ...item, targetOee: item.targetOee === null ? 0 : Number(item.targetOee), createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() }; }
