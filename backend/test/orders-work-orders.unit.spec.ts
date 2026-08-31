@@ -259,6 +259,50 @@ describe('production execution flow', () => {
     }).report.batchNo).toBe('FG-001');
   });
 
+  it('complete-report validates quality and stock before committing production', async () => {
+    const masterData = new MasterDataService();
+    masterData.createBatch('tenant-demo', { materialCode: 'RAW-COMPLETE', batchNo: 'B-COMPLETE', quantity: 1 });
+    const quality = { canReportWorkOrder: jest.fn().mockReturnValue(true), canCompleteWorkOrder: jest.fn().mockReturnValue(true) };
+    const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService(), undefined, masterData, undefined, undefined, quality as never);
+    const workOrder = workOrders.create('tenant-demo', { orderNo: 'WO-COMPLETE-REPORT', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1, dueAt: '2026-08-31T18:00:00.000Z' });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'in_progress' });
+
+    const result = await workOrders.completeReport('tenant-demo', workOrder.id, {
+      quantity: 1, qualityRecordId: 'quality-complete', sourceTraceId: 'complete-report-001',
+      materialConsumptions: [{ materialCode: 'RAW-COMPLETE', batchNo: 'B-COMPLETE', quantity: 1 }],
+    });
+
+    expect(result.workOrder.status).toBe('completed');
+    expect(masterData.listBatches('tenant-demo')[0].quantity).toBe(0);
+    expect(workOrders.findReports('tenant-demo', workOrder.id)).toHaveLength(1);
+  });
+
+  it('complete-report rejects quality failure without consuming inventory', async () => {
+    const masterData = new MasterDataService();
+    masterData.createBatch('tenant-demo', { materialCode: 'RAW-REJECT', batchNo: 'B-REJECT', quantity: 1 });
+    const quality = { canReportWorkOrder: jest.fn().mockReturnValue(false), canCompleteWorkOrder: jest.fn().mockReturnValue(false) };
+    const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService(), undefined, masterData, undefined, undefined, quality as never);
+    const workOrder = workOrders.create('tenant-demo', { orderNo: 'WO-REJECT-REPORT', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1, dueAt: '2026-08-31T18:00:00.000Z' });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'in_progress' });
+
+    await expect(workOrders.completeReport('tenant-demo', workOrder.id, {
+      quantity: 1, qualityRecordId: 'quality-rejected', sourceTraceId: 'complete-report-002',
+      materialConsumptions: [{ materialCode: 'RAW-REJECT', batchNo: 'B-REJECT', quantity: 1 }],
+    })).rejects.toThrow(ConflictException);
+    expect(masterData.listBatches('tenant-demo')[0].quantity).toBe(1);
+    expect(workOrders.findReports('tenant-demo', workOrder.id)).toHaveLength(0);
+  });
+
+  it('complete-report fails closed when PostgreSQL is selected without a shared transaction', async () => {
+    const persistence = { isEnabled: () => true };
+    const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService(), undefined, undefined, undefined, persistence as never);
+
+    await expect(workOrders.completeReport('tenant-demo', 'missing-work-order', {} as never))
+      .rejects.toThrow('shared PostgreSQL transaction');
+  });
+
   it('queries the raw-material to finished-product trace by batch, serial and operation', () => {
     const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService());
     const workOrder = workOrders.create('tenant-demo', {

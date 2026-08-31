@@ -134,6 +134,31 @@ describe('quality, maintenance and traceability contracts (e2e)', () => {
     expect((await request(app.getHttpServer()).get('/api/v1/master-data/batches').set(headers)).body.data.find((item: { batchNo: string }) => item.batchNo === 'B-E2E-001').quantity).toBe(10);
   });
 
+  it('commits the guarded complete-report entry point after quality and stock checks', async () => {
+    const headers = { 'x-tenant-id': 'tenant-demo', 'x-user-role': 'supervisor' };
+    const batch = await request(app.getHttpServer()).post('/api/v1/master-data/batches').set(headers)
+      .send({ materialCode: 'RAW-ATOMIC-E2E', batchNo: 'B-ATOMIC-E2E', quantity: 1 }).expect(201);
+    const workOrder = await request(app.getHttpServer()).post('/api/v1/work-orders').set(headers).send({
+      orderNo: 'WO-ATOMIC-E2E', productCode: 'P-ATOMIC', productName: '原子报工测试件',
+      lineId: 'line-cnc', plannedQty: 1, dueAt: '2026-09-10T12:00:00.000Z',
+    }).expect(201);
+    const workOrderId = workOrder.body.data.id;
+    await request(app.getHttpServer()).patch(`/api/v1/work-orders/${workOrderId}/status`).set(headers).send({ status: 'released' }).expect(200);
+    await request(app.getHttpServer()).patch(`/api/v1/work-orders/${workOrderId}/status`).set(headers).send({ status: 'in_progress' }).expect(200);
+    const quality = await request(app.getHttpServer()).post('/api/v1/foundation/quality-records').set(headers).send({
+      batchNo: 'FG-ATOMIC-E2E', lineId: 'line-cnc', workOrderId, operatorId: 'inspector-atomic', values: {}, traceId: 'atomic-e2e-001',
+    }).expect(201);
+    const qualityId = quality.body.data.id;
+    await request(app.getHttpServer()).post(`/api/v1/foundation/quality-records/${qualityId}/submit`).set(headers).send({ actorId: 'inspector-atomic' }).expect(201);
+    await request(app.getHttpServer()).post(`/api/v1/foundation/quality-records/${qualityId}/confirm`).set(headers).send({ actorId: 'manager-atomic' }).expect(201);
+
+    await request(app.getHttpServer()).post(`/api/v1/work-orders/${workOrderId}/complete-report`).set(headers).send({
+      quantity: 1, qualityRecordId: qualityId, sourceTraceId: 'atomic-e2e-001',
+      materialConsumptions: [{ materialCode: 'RAW-ATOMIC-E2E', batchNo: 'B-ATOMIC-E2E', quantity: 1 }],
+    }).expect(201).expect(({ body }) => expect(body.data.workOrder).toEqual(expect.objectContaining({ status: 'completed', completedQty: 1 })));
+    expect((await request(app.getHttpServer()).get('/api/v1/master-data/batches').set(headers)).body.data.find((item: { batchNo: string }) => item.batchNo === batch.body.data.batchNo).quantity).toBe(0);
+  });
+
   it('hard-blocks direct completion while a linked quality record is not released', async () => {
     const headers = { 'x-tenant-id': 'tenant-demo', 'x-user-role': 'supervisor' };
     const workOrder = await request(app.getHttpServer()).post('/api/v1/work-orders').set(headers).send({

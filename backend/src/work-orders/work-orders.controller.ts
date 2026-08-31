@@ -47,6 +47,11 @@ export class WorkOrdersController {
     return { data: this.workOrdersService.report(tenantId, id, dto, userId), tenantId };
   }
 
+  @Post(':id/complete-report')
+  async completeReport(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: ReportWorkOrderDto, @Headers('x-user-id') userId?: string) {
+    return { data: await this.workOrdersService.completeReport(tenantId, id, dto, userId), tenantId };
+  }
+
   @Post(':id/traceability/report')
   traceabilityReport(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: ReportWorkOrderDto, @Headers('x-user-id') userId?: string) {
     return { data: this.workOrdersService.reportTrace(tenantId, id, dto, userId), tenantId };

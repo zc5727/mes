@@ -75,8 +75,12 @@ export class MasterDataService implements OnModuleInit {
     return updated;
   }
   consumeBatches(tenantId: string, consumptions: Array<{ materialCode: string; batchNo: string; quantity: number }>, idempotencyKey?: string, actorId = 'system'): void {
+    this.consumeBatchesWithRollback(tenantId, consumptions, idempotencyKey, actorId);
+  }
+
+  consumeBatchesWithRollback(tenantId: string, consumptions: Array<{ materialCode: string; batchNo: string; quantity: number }>, idempotencyKey?: string, actorId = 'system'): () => void {
     const operationKey = idempotencyKey?.trim() ? `${tenantId}:${idempotencyKey.trim()}` : undefined;
-    if (operationKey && this.batchConsumptionKeys.has(operationKey)) return;
+    if (operationKey && this.batchConsumptionKeys.has(operationKey)) return () => undefined;
     const resolved = consumptions.map((item) => {
       const key = `${tenantId}:${item.materialCode.trim()}:${item.batchNo.trim()}`;
       const batch = this.batches.get(key);
@@ -93,6 +97,10 @@ export class MasterDataService implements OnModuleInit {
     else updatedBatches.forEach((batch) => void this.inventoryPersistence?.save(batch));
     if (operationKey) this.batchConsumptionKeys.add(operationKey);
     this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'master_data.batch_consumed', resource: 'batch_inventory', traceId: idempotencyKey, details: { consumptions, idempotencyKey } });
+    return () => {
+      resolved.forEach(({ key, batch }) => this.batches.set(key, batch));
+      if (operationKey) this.batchConsumptionKeys.delete(operationKey);
+    };
   }
   returnBatch(tenantId: string, dto: BatchInventoryMovementDto, actorId = 'system'): BatchInventory {
     const operationKey = dto.idempotencyKey?.trim() ? `${tenantId}:${dto.idempotencyKey.trim()}` : undefined;

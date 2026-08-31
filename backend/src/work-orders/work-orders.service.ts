@@ -283,7 +283,7 @@ export class WorkOrdersService implements OnModuleInit {
     return updated;
   }
 
-  report(tenantId: string, id: string, dto: ReportWorkOrderDto, actorId = 'system'): { workOrder: WorkOrder; report: WorkOrderReport } {
+  report(tenantId: string, id: string, dto: ReportWorkOrderDto, actorId = 'system', rollbackOnFailure = false): { workOrder: WorkOrder; report: WorkOrderReport } {
     const current = this.findOne(tenantId, id);
     if (current.status !== 'in_progress') throw new ConflictException('Only in-progress work orders can report production');
     const reportTraceId = dto.sourceTraceId?.trim() || createId('trace');
@@ -320,31 +320,61 @@ export class WorkOrdersService implements OnModuleInit {
     if (completedQty === current.plannedQty && this.qualityService && !this.qualityService.canCompleteWorkOrder(tenantId, id)) {
       throw new ConflictException('Quality release is required before work order completion');
     }
-    if (this.masterDataService) this.masterDataService.consumeBatches(tenantId, materialConsumptions, reportTraceId);
-    const report: WorkOrderReport = {
-      id: createId('report'), workOrderId: id, tenantId, quantity: dto.quantity,
-      goodQty, defectQty, deviceId: dto.deviceId ?? null,
-      sourceTraceId: reportTraceId, reportedAt: timestamp(),
-      batchNo: dto.batchNo?.trim() || null, serialNumbers,
-      operationCode: dto.operationCode?.trim() || null,
-      operatorId: dto.operatorId?.trim() || null,
-      qualityRecordId: dto.qualityRecordId?.trim() || null,
-      materialConsumptions,
-    };
-    this.reports.push(report);
-    const workOrder = this.updateProgress(current, completedQty, false);
-    if (this.persistence?.saveReportAndWorkOrder) void this.persistence.saveReportAndWorkOrder(report, workOrder);
-    else {
-      void this.persistence?.saveReport(report);
-      void this.persistence?.saveWorkOrder(workOrder);
+    const rollback = rollbackOnFailure
+      ? this.masterDataService?.consumeBatchesWithRollback(tenantId, materialConsumptions, reportTraceId, actorId)
+      : undefined;
+    if (!rollbackOnFailure && this.masterDataService) this.masterDataService.consumeBatches(tenantId, materialConsumptions, reportTraceId, actorId);
+    const reportCount = this.reports.length;
+    try {
+      const report: WorkOrderReport = {
+        id: createId('report'), workOrderId: id, tenantId, quantity: dto.quantity,
+        goodQty, defectQty, deviceId: dto.deviceId ?? null,
+        sourceTraceId: reportTraceId, reportedAt: timestamp(),
+        batchNo: dto.batchNo?.trim() || null, serialNumbers,
+        operationCode: dto.operationCode?.trim() || null,
+        operatorId: dto.operatorId?.trim() || null,
+        qualityRecordId: dto.qualityRecordId?.trim() || null,
+        materialConsumptions,
+      };
+      this.reports.push(report);
+      const workOrder = this.updateProgress(current, completedQty, false);
+      if (this.persistence?.saveReportAndWorkOrder) void this.persistence.saveReportAndWorkOrder(report, workOrder);
+      else {
+        void this.persistence?.saveReport(report);
+        void this.persistence?.saveWorkOrder(workOrder);
+      }
+      if (workOrder.orderId) this.syncOrderProgress(tenantId, workOrder.orderId);
+      this.auditService?.record(tenantId, dto.operatorId?.trim() || actorId.trim() || 'system', {
+        action: 'work_order.report', resource: 'work_order', resourceId: id,
+        details: { reportId: report.id, quantity: report.quantity, sourceTraceId: report.sourceTraceId, operationCode: report.operationCode, batchNo: report.batchNo },
+        traceId: report.sourceTraceId,
+      });
+      return { workOrder, report };
+    } catch (error) {
+      if (rollback) {
+        this.reports.length = reportCount;
+        this.workOrders.set(id, current);
+        rollback();
+      }
+      throw error;
     }
-    if (workOrder.orderId) this.syncOrderProgress(tenantId, workOrder.orderId);
-    this.auditService?.record(tenantId, dto.operatorId?.trim() || actorId.trim() || 'system', {
-      action: 'work_order.report', resource: 'work_order', resourceId: id,
-      details: { reportId: report.id, quantity: report.quantity, sourceTraceId: report.sourceTraceId, operationCode: report.operationCode, batchNo: report.batchNo },
-      traceId: report.sourceTraceId,
-    });
-    return { workOrder, report };
+  }
+
+  async completeReport(tenantId: string, id: string, dto: ReportWorkOrderDto, actorId = 'system'): Promise<{ workOrder: WorkOrder; report: WorkOrderReport }> {
+    if (this.persistence?.isEnabled?.() || process.env.DATABASE_REQUIRED === 'true') {
+      throw new ConflictException('complete-report requires a shared PostgreSQL transaction; request rejected');
+    }
+    if (!this.qualityService || !this.masterDataService || !dto.qualityRecordId?.trim()) {
+      throw new ConflictException('complete-report requires quality and inventory validation services');
+    }
+    if (!dto.materialConsumptions?.length) {
+      throw new ConflictException('complete-report requires material consumptions');
+    }
+    const current = this.findOne(tenantId, id);
+    if (current.completedQty + dto.quantity !== current.plannedQty) {
+      throw new ConflictException('complete-report must report the remaining planned quantity');
+    }
+    return this.report(tenantId, id, dto, actorId, true);
   }
 
   /** Records a fully traceable production event without changing the legacy report contract. */
