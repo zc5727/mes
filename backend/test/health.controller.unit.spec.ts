@@ -29,4 +29,40 @@ describe('HealthController', () => {
       status: 'ready', service: 'mes-saas-backend', database: { enabled: true, status: 'ready' },
     });
   });
+
+  it('returns dependency diagnostics without exposing broker credentials', async () => {
+    const prisma = { readiness: jest.fn().mockResolvedValue({ enabled: true, status: 'ready' }) };
+    const mqtt = {
+      getStatus: jest.fn().mockReturnValue({
+        enabled: true,
+        connected: true,
+        state: 'connected',
+        brokerUrl: 'mqtt://secret-user:secret-password@localhost:1883',
+        telemetryTopic: 'mes/+/telemetry',
+        alarmsTopic: 'mes/+/alarms',
+        lastHeartbeatAt: '2026-09-01T00:00:00.000Z',
+        lastError: null,
+        lastErrorCode: null,
+        reconnectAttempts: 0,
+        messages: { received: 1, telemetry: 1, alarms: 0, http: 0, accepted: 1, duplicate: 0, stale: 0, malformed: 0, rejected: 0 },
+      }),
+    };
+
+    const payload = await new HealthController(prisma as never, mqtt as never).components();
+
+    expect(payload).toEqual({
+      service: 'mes-saas-backend',
+      timestamp: expect.any(String),
+      database: { enabled: true, status: 'ready' },
+      mqtt: {
+        enabled: true,
+        connected: true,
+        state: 'connected',
+        lastHeartbeatAt: '2026-09-01T00:00:00.000Z',
+        lastError: null,
+        lastErrorCode: null,
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain('secret-password');
+  });
 });

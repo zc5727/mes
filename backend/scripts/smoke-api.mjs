@@ -55,6 +55,7 @@ try {
   console.log(`API smoke passed: ${baseUrl}/health (${body.timestamp})`);
   const protectedEndpoints = [
     '/health/readiness',
+    '/health/components',
     '/factories',
     '/production-lines',
     '/devices',

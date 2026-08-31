@@ -1,6 +1,7 @@
 import { Controller, Get, Optional } from '@nestjs/common';
 import { Public } from './common/public.decorator';
 import { PrismaService } from './database/prisma.service';
+import { MqttIngestionService } from './mqtt/mqtt-ingestion.service';
 
 interface HealthPayload {
   status: 'ok';
@@ -17,9 +18,26 @@ interface ReadinessPayload {
   };
 }
 
+interface ComponentsPayload {
+  service: string;
+  timestamp: string;
+  database: ReadinessPayload['database'];
+  mqtt: {
+    enabled: boolean;
+    connected: boolean;
+    state: string;
+    lastHeartbeatAt: string | null;
+    lastError: string | null;
+    lastErrorCode: string | null;
+  };
+}
+
 @Controller('health')
 export class HealthController {
-  constructor(@Optional() private readonly prisma?: PrismaService) {}
+  constructor(
+    @Optional() private readonly prisma?: PrismaService,
+    @Optional() private readonly mqtt?: MqttIngestionService,
+  ) {}
 
   /** Returns a liveness response without checking external dependencies. */
   @Get()
@@ -44,6 +62,38 @@ export class HealthController {
       status,
       service: 'mes-saas-backend',
       database,
+    };
+  }
+
+  /** Exposes dependency diagnostics without leaking broker URLs or credentials. */
+  @Get('components')
+  @Public()
+  async components(): Promise<ComponentsPayload> {
+    const database = this.prisma
+      ? await this.prisma.readiness()
+      : { enabled: false, status: 'disabled' as const };
+    const mqtt = this.mqtt?.getStatus();
+    return {
+      service: 'mes-saas-backend',
+      timestamp: new Date().toISOString(),
+      database,
+      mqtt: mqtt
+        ? {
+            enabled: mqtt.enabled,
+            connected: mqtt.connected,
+            state: mqtt.state,
+            lastHeartbeatAt: mqtt.lastHeartbeatAt,
+            lastError: mqtt.lastError,
+            lastErrorCode: mqtt.lastErrorCode,
+          }
+        : {
+            enabled: false,
+            connected: false,
+            state: 'unavailable',
+            lastHeartbeatAt: null,
+            lastError: null,
+            lastErrorCode: null,
+          },
     };
   }
 }

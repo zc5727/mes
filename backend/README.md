@@ -125,7 +125,7 @@ POST /api/v1/integrations/erpnext/work-orders/:workOrderId/reports
 npm run verify:runtime
 ```
 
-该命令检查 `/api/v1/health` 和 `/api/v1/health/readiness`。PostgreSQL 未启用时 readiness 会明确返回 `database.status=disabled`；启用但连接失败时返回 `degraded`。
+该命令检查 `/api/v1/health` 和 `/api/v1/health/readiness`。PostgreSQL 未启用时 readiness 会明确返回 `database.status=disabled`；启用但连接失败时返回 `degraded`。部署诊断还可访问公开的 `/api/v1/health/components`，它只返回数据库和 MQTT 的状态、错误码与心跳时间，不返回 Broker 凭据或连接 URL。
 
 真实数据库验收使用：
 
