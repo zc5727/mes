@@ -58,4 +58,24 @@ describe('core PostgreSQL persistence repository', () => {
       }),
     }));
   });
+
+  it('persists work-order progress and report in one transaction', async () => {
+    const workOrder = { upsert: jest.fn().mockResolvedValue(undefined) };
+    const workOrderReport = { upsert: jest.fn().mockResolvedValue(undefined) };
+    const transaction = jest.fn(async (callback: (client: unknown) => Promise<void>) => callback({ workOrder, workOrderReport }));
+    const prisma = {
+      ensureConnection: jest.fn().mockResolvedValue(undefined), isReady: () => true,
+      workOrder, workOrderReport, $transaction: transaction,
+    } as unknown as PrismaService;
+    const service = new CorePersistenceService(prisma);
+
+    await service.saveReportAndWorkOrder(
+      { id: 'report-1', tenantId: 'tenant-demo', workOrderId: 'wo-1', deviceId: 'device-1', quantity: 1, goodQty: 1, defectQty: 0, sourceTraceId: 'trace-1', reportedAt: '2026-08-31T00:00:00.000Z' },
+      { id: 'wo-1', tenantId: 'tenant-demo', orderId: null, orderNo: 'WO-1', productCode: 'P-1', productName: '产品', lineId: 'line-1', plannedQty: 1, completedQty: 1, dueAt: '2026-09-01T00:00:00.000Z', priority: 'normal', status: 'completed', statusReason: '', createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z' },
+    );
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(workOrder.upsert).toHaveBeenCalledTimes(1);
+    expect(workOrderReport.upsert).toHaveBeenCalledTimes(1);
+  });
 });

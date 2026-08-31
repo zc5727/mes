@@ -298,8 +298,12 @@ export class WorkOrdersService implements OnModuleInit {
       materialConsumptions,
     };
     this.reports.push(report);
-    void this.persistence?.saveReport(report);
-    const workOrder = this.updateProgress(current, completedQty);
+    const workOrder = this.updateProgress(current, completedQty, false);
+    if (this.persistence?.saveReportAndWorkOrder) void this.persistence.saveReportAndWorkOrder(report, workOrder);
+    else {
+      void this.persistence?.saveReport(report);
+      void this.persistence?.saveWorkOrder(workOrder);
+    }
     if (workOrder.orderId) this.ordersService.recordProgress(tenantId, workOrder.orderId, completedQty);
     this.auditService?.record(tenantId, dto.operatorId ?? 'system', {
       action: 'work_order.report', resource: 'work_order', resourceId: id,
@@ -390,10 +394,10 @@ export class WorkOrdersService implements OnModuleInit {
     };
   }
 
-  private updateProgress(current: WorkOrder, completedQty: number): WorkOrder {
+  private updateProgress(current: WorkOrder, completedQty: number, persist = true): WorkOrder {
     const updated = { ...current, completedQty, status: completedQty === current.plannedQty ? 'completed' : current.status, updatedAt: timestamp() };
     this.workOrders.set(current.id, updated);
-    void this.persistence?.saveWorkOrder(updated);
+    if (persist) void this.persistence?.saveWorkOrder(updated);
     return updated;
   }
 

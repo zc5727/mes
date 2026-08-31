@@ -50,31 +50,29 @@ export class CorePersistenceService {
   }
 
   async saveWorkOrder(item: PersistedWorkOrder): Promise<void> {
-    await this.write('work order', () => this.prisma.workOrder.upsert({ where: { id: item.id }, create: { id: item.id, tenantId: item.tenantId, orderId: item.orderId, orderNo: item.orderNo, productCode: item.productCode, productName: item.productName, lineId: item.lineId, plannedQty: item.plannedQty, completedQty: item.completedQty, dueAt: new Date(item.dueAt), priority: item.priority as never, status: item.status as never, statusReason: item.statusReason, createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) }, update: { orderId: item.orderId, orderNo: item.orderNo, productCode: item.productCode, productName: item.productName, lineId: item.lineId, plannedQty: item.plannedQty, completedQty: item.completedQty, dueAt: new Date(item.dueAt), priority: item.priority as never, status: item.status as never, statusReason: item.statusReason, updatedAt: new Date(item.updatedAt) } }));
+    await this.write('work order', () => this.workOrderUpsert(this.prisma, item));
   }
 
   async saveReport(item: PersistedReport): Promise<void> {
-    await this.write('work order report', () => this.prisma.workOrderReport.upsert({
-      where: { id: item.id },
-      create: {
-        id: item.id, tenantId: item.tenantId, workOrderId: item.workOrderId,
-        deviceId: item.deviceId, quantity: item.quantity, goodQty: item.goodQty,
-        defectQty: item.defectQty, sourceTraceId: item.sourceTraceId,
-        batchNo: item.batchNo ?? null, serialNumbers: this.json(item.serialNumbers),
-        operationCode: item.operationCode ?? null, operatorId: item.operatorId ?? null,
-        qualityRecordId: item.qualityRecordId ?? null,
-        materialConsumptions: this.json(item.materialConsumptions),
-        reportedAt: new Date(item.reportedAt), createdAt: new Date(item.reportedAt),
-      },
-      update: {
-        deviceId: item.deviceId, quantity: item.quantity, goodQty: item.goodQty,
-        defectQty: item.defectQty, batchNo: item.batchNo ?? null,
-        serialNumbers: this.json(item.serialNumbers), operationCode: item.operationCode ?? null,
-        operatorId: item.operatorId ?? null, qualityRecordId: item.qualityRecordId ?? null,
-        materialConsumptions: this.json(item.materialConsumptions),
-        reportedAt: new Date(item.reportedAt),
-      },
-    }));
+    await this.write('work order report', () => this.reportUpsert(this.prisma, item));
+  }
+
+  /** Persists the report and its progress atomically when PostgreSQL is enabled. */
+  async saveReportAndWorkOrder(report: PersistedReport, workOrder: PersistedWorkOrder): Promise<void> {
+    await this.prisma.ensureConnection();
+    if (!this.prisma.isReady()) {
+      this.failIfRequired('persist work order report transaction');
+      return;
+    }
+    try {
+      await this.prisma.$transaction(async (transaction) => {
+        await this.workOrderUpsert(transaction, workOrder);
+        await this.reportUpsert(transaction, report);
+      });
+    } catch (error: unknown) {
+      this.failure('persist work order report transaction', error);
+      this.failIfRequired('persist work order report transaction', error);
+    }
   }
 
   async deleteFactory(id: string): Promise<void> { await this.write('factory deletion', () => this.prisma.factory.delete({ where: { id } })); }
@@ -104,6 +102,12 @@ export class CorePersistenceService {
 
   private json(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
     return value === null || value === undefined ? Prisma.JsonNull : value as Prisma.InputJsonValue;
+  }
+  private workOrderUpsert(client: any, item: PersistedWorkOrder): Promise<unknown> {
+    return client.workOrder.upsert({ where: { id: item.id }, create: { id: item.id, tenantId: item.tenantId, orderId: item.orderId, orderNo: item.orderNo, productCode: item.productCode, productName: item.productName, lineId: item.lineId, plannedQty: item.plannedQty, completedQty: item.completedQty, dueAt: new Date(item.dueAt), priority: item.priority as never, status: item.status as never, statusReason: item.statusReason, createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) }, update: { orderId: item.orderId, orderNo: item.orderNo, productCode: item.productCode, productName: item.productName, lineId: item.lineId, plannedQty: item.plannedQty, completedQty: item.completedQty, dueAt: new Date(item.dueAt), priority: item.priority as never, status: item.status as never, statusReason: item.statusReason, updatedAt: new Date(item.updatedAt) } });
+  }
+  private reportUpsert(client: any, item: PersistedReport): Promise<unknown> {
+    return client.workOrderReport.upsert({ where: { id: item.id }, create: { id: item.id, tenantId: item.tenantId, workOrderId: item.workOrderId, deviceId: item.deviceId, quantity: item.quantity, goodQty: item.goodQty, defectQty: item.defectQty, sourceTraceId: item.sourceTraceId, batchNo: item.batchNo ?? null, serialNumbers: this.json(item.serialNumbers), operationCode: item.operationCode ?? null, operatorId: item.operatorId ?? null, qualityRecordId: item.qualityRecordId ?? null, materialConsumptions: this.json(item.materialConsumptions), reportedAt: new Date(item.reportedAt), createdAt: new Date(item.reportedAt) }, update: { deviceId: item.deviceId, quantity: item.quantity, goodQty: item.goodQty, defectQty: item.defectQty, batchNo: item.batchNo ?? null, serialNumbers: this.json(item.serialNumbers), operationCode: item.operationCode ?? null, operatorId: item.operatorId ?? null, qualityRecordId: item.qualityRecordId ?? null, materialConsumptions: this.json(item.materialConsumptions), reportedAt: new Date(item.reportedAt) } });
   }
   private factory(item: any): PersistedFactory { return { ...item, createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() }; }
   private line(item: any): PersistedLine { return { ...item, targetOee: item.targetOee === null ? 0 : Number(item.targetOee), createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() }; }
