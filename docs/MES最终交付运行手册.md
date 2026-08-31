@@ -1,7 +1,7 @@
 # MES 最终交付运行手册
 
 **负责人：** 赵丞  
-**适用版本：** 核心 MES 试点版 v1.5 / 提交 `b8028e63`
+**适用版本：** 核心 MES 试点版 v1.5 / 提交 `c2afe105`
 **适用范围：** 单工厂、单车间、四条模拟产线；不包含 SaaS、Nanobot 原生集成和真实 PLC 控制。
 
 ## 1. 交付边界
@@ -146,11 +146,11 @@ scripts/verify-desktop-release.sh \
 - 数据库迁移、备份恢复、回滚和权限拒绝测试结果。
 - 操作者、时间、环境、产线、设备、工单、`traceId` 和证据文件路径。
 
-### 7.1 提交 b8028e63 已具备的代码/测试证据
+### 7.1 提交 c2afe105 已具备的代码/测试证据
 
 下表只记录仓库中确实存在的实现或测试文件，不等同于现场生产通过。本基线新增审计持久化边界、维修/质量/工单状态约束、策略治理 E2E、数据库运行时检查、迁移回滚检查入口和停机清理收口；它们仍需按第 8 节完成真实依赖与现场验收。
 
-本轮 `./scripts/verify-all.sh` exit 0：Backend unit 39 套件/122 项、E2E 8 套件/25 项、Simulator 43 项；后端构建、数据库 schema 校验、前端构建、前端契约 smoke 和 Tauri desktop smoke 均通过。`./scripts/mes-runtime.sh preflight` 通过；`verify --object-storage` 已完成 PostgreSQL/MQTT/MinIO readiness、14 张表校验、迁移回滚及 API/MQTT/故障/数字孪生 smoke，但 PostgreSQL 重启后 Backend 健康检查失败，退出码 7；不得宣称真实运行闭环通过。
+本轮 `./scripts/verify-all.sh` exit 0：Backend unit 39 suites / 123 tests、E2E 8 suites / 26 tests、Simulator 48 tests；后端构建、数据库 schema 校验、前端构建、前端契约 smoke 和 Tauri desktop smoke 均通过。`./scripts/mes-runtime.sh preflight` 通过；`verify --object-storage` 已完成 PostgreSQL/MQTT/MinIO readiness、14 张表校验、迁移回滚及 API/MQTT/故障/数字孪生 smoke，但 PostgreSQL 重启后 Backend 健康检查失败，退出码 7；不得宣称真实运行闭环通过。
 
 | 能力 | 代码证据 | 测试/验证证据 | 当前判定 |
 |---|---|---|---|
@@ -166,7 +166,7 @@ scripts/verify-desktop-release.sh \
 
 ## 8. 生产化缺口清单与退出证据
 
-以下清单按当前提交 `b8028e63` 的代码和脚本核对；“基础接口/演示”不等于生产完成。每一项只有在右栏证据归档后才能关闭。本基线收口了运行时停机清理，并保留主数据/告警控制边界、维修模块装配、维修/质量/工单状态约束、策略治理 E2E、数据库 seed/运行时检查和迁移回滚检查入口；这些证据仍不能替代现场生产验收。
+以下清单按当前提交 `c2afe105` 的代码和脚本核对；“基础接口/演示”不等于生产完成。每一项只有在右栏证据归档后才能关闭。本基线收口了运行时停机清理，并保留主数据/告警控制边界、维修模块装配、维修/质量/工单状态约束、策略治理 E2E、数据库 seed/运行时检查和迁移回滚检查入口；这些证据仍不能替代现场生产验收。
 
 | 缺口 | 当前真实状态 | 关闭所需退出证据 |
 |---|---|---|
@@ -204,10 +204,19 @@ scripts/verify-desktop-release.sh \
 
 ## 9. 当前未完成事项
 
-截至提交 `b8028e63`，质量/维修约束、基础持久化恢复、策略治理和运行时依赖门禁已有代码/测试证据，但以下事项仍不能标记为完成：ERPNext 真实旁路与四线对账、PostgreSQL 生产事务/重启恢复、ThingsBoard/Gateway 运行接入、库存扣减、IQC/IPQC/OQC/NCR/CAPA 完整闭环、对象存储、正式身份/TLS 与不可篡改审计、Tauri `.app/.dmg` 实机升级回滚。具体退出标准以 `docs/MES里程碑计划.md` 和 `docs/MES成熟功能域路线与端到端验收.md` 为准。
+截至提交 `c2afe105`，质量/维修约束、基础持久化恢复、策略治理和运行时依赖门禁已有代码/测试证据，但以下事项仍不能标记为完成：ERPNext 真实旁路与四线对账、PostgreSQL 生产事务/重启恢复、ThingsBoard/Gateway 运行接入、库存扣减、IQC/IPQC/OQC/NCR/CAPA 完整闭环、对象存储、正式身份/TLS 与不可篡改审计、Tauri `.app/.dmg` 实机升级回滚。具体退出标准以 `docs/MES里程碑计划.md` 和 `docs/MES成熟功能域路线与端到端验收.md` 为准。
 
-## 10. b8028e63 终极审计补充
+## 10. c2afe105 终极审计补充
 
 本基线新增 Modbus TCP/OPC UA 协议桥接。它们仅作为可重复的隔离适配器，不包含真实 PLC 写入，也不能替代现场协议、网络、证书、权限和断线恢复验收。
 
-当前工作树复核发现未提交 Agent API 与协议桥接改动存在 TypeScript 编译错误：Backend E2E 有 5 个套件未编译，Simulator `npm run check` 失败。故本轮不沿用上一基线的全量 PASS 结论；修复后须重新执行 `./scripts/verify-all.sh` 并更新证据。
+本轮 `./scripts/verify-all.sh` exit 0：Backend unit 39 suites / 123 tests、E2E 8 suites / 26 tests、Simulator 48 tests，以及后端/前端构建和 Tauri desktop smoke 均通过。该结果只证明代码和隔离环境门禁通过；ERPNext、ThingsBoard/Gateway、真实设备、生产恢复和桌面实机仍需单独验收。
+
+### 10.1 当前已验证 / 仍待现场总表
+
+| 当前已验证 | 仍待现场或外部依赖 |
+|---|---|
+| 四产线模拟、MQTT telemetry/alarm、故障恢复、数字孪生 SSE/REST、Modbus/OPC UA 隔离桥接 | ThingsBoard/Gateway、真实 PLC/OPC UA/Modbus 设备、TLS/ACL 和断线恢复 |
+| Backend unit 123、E2E 26、Simulator 48、构建、迁移校验、Tauri 结构 smoke | ERPNext 旁路对账、生产 PostgreSQL 重启恢复、备份恢复和并发压测 |
+| 质量/维修/追溯/库存/策略治理基础接口和授权边界 | IQC/IPQC/OQC/NCR/CAPA 完整闭环、备件扣减、对象存储、正式身份和不可篡改审计 |
+| 启停、readiness、单实例、逆序清理脚本级验证 | `.app/.dmg` 双击安装、签名、公证、窗口三维交互、升级回滚和生产发布 |
