@@ -103,6 +103,20 @@ export interface MqttIngestionOptions {
   gatewayId?: string;
 }
 
+export interface MqttIngestionStatus {
+  enabled: boolean;
+  connected: boolean;
+  state: 'disabled' | 'starting' | 'connected' | 'disconnected' | 'error';
+  brokerUrl: string | null;
+  telemetryTopic: string;
+  alarmsTopic: string;
+  lastHeartbeatAt: string | null;
+  lastError: string | null;
+  lastErrorCode: string | null;
+  reconnectAttempts: number;
+  messages: { received: number; telemetry: number; alarms: number; http: number; accepted: number; duplicate: number; stale: number; malformed: number };
+}
+
 export type SimulatorControlAction =
   | 'start'
   | 'stop'

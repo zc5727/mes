@@ -21,6 +21,10 @@
         <option value="local">本地仿真</option>
       </select>
       <span class="control-mode-badge">当前：{{ controlMode === 'api' ? 'API' : '本地仿真' }}</span>
+      <select v-model="viewScope" aria-label="视图范围">
+        <option value="line">当前产线视图</option>
+        <option value="factory">全厂视图</option>
+      </select>
       <select v-model="selectedFaultType" :disabled="controlBusy" aria-label="故障类型">
         <option v-for="fault in faultTypes" :key="fault.value" :value="fault.value">{{ fault.label }}</option>
       </select>
@@ -37,8 +41,8 @@
     <ThreeFactoryViewport
       :devices="devices"
       :agvs="agvs"
-      :visible-device-ids="lineDevices.map((device) => device.id)"
-      :visible-agv-ids="lineAgvs.map((agv) => agv.id)"
+      :visible-device-ids="visibleSceneDeviceIds"
+      :visible-agv-ids="visibleSceneAgvIds"
       :selected-device="activeSelectedDevice"
       @select-device="handleSceneSelect"
     />
@@ -130,6 +134,7 @@ const controlBusy = ref(false);
 const controlNotice = ref('');
 const dataBusy = ref(false);
 const dataNotice = ref('');
+const viewScope = ref<'line' | 'factory'>('line');
 const faultTypes = [
   { value: 'OVERHEAT', label: '过热' },
   { value: 'JAM', label: '卡料' },
@@ -197,6 +202,8 @@ const lineSummaries = computed<ProductionLineTelemetry[]>(() => {
 const selectedLine = computed(() => lineSummaries.value.find((line) => line.id === selectedLineId.value) ?? lineSummaries.value[0] ?? emptyLine);
 const lineDevices = computed(() => devices.value.filter((device) => device.lineId === selectedLineId.value));
 const lineAgvs = computed(() => agvs.value.filter((agv) => agv.lineId === selectedLineId.value));
+const visibleSceneDeviceIds = computed(() => (viewScope.value === 'factory' ? devices.value : lineDevices.value).map((device) => device.id));
+const visibleSceneAgvIds = computed(() => (viewScope.value === 'factory' ? agvs.value : lineAgvs.value).map((agv) => agv.id));
 const lineAlarms = computed(() => alarms.value.filter((alarm) => !alarm.lineId || alarm.lineId === selectedLineId.value));
 const selectedLineOnlineRate = computed(() => {
   if (!lineDevices.value.length) return 0;

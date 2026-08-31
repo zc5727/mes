@@ -2,6 +2,21 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPORT_DIR="${VERIFY_REPORT_DIR:-$ROOT_DIR/.runtime/reports}"
+mkdir -p "$REPORT_DIR"
+REPORT_FILE="${VERIFY_REPORT_FILE:-$REPORT_DIR/verify-all-$(date +%Y%m%d-%H%M%S).log}"
+exec > >(tee "$REPORT_FILE") 2>&1
+
+on_exit() {
+  local exit_code=$?
+  if (( exit_code == 0 )); then
+    echo "VERIFY-ALL REPORT: $REPORT_FILE"
+  else
+    echo "VERIFY-ALL FAILED (exit $exit_code). Report: $REPORT_FILE" >&2
+  fi
+  exit "$exit_code"
+}
+trap on_exit EXIT
 
 run() {
   echo "+ $*"

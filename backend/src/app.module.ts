@@ -25,6 +25,7 @@ import { DeviceConnectionsModule } from './device-connections/device-connections
 import { ApiKeyGuard } from './common/api-key.guard';
 import { ErpNextModule } from './integrations/erpnext/erpnext.module';
 import { SidecarModule } from './integrations/sidecar/sidecar.module';
+import { InventoryModule } from './inventory/inventory.module';
 
 @Module({
   controllers: [HealthController],
@@ -52,6 +53,7 @@ import { SidecarModule } from './integrations/sidecar/sidecar.module';
     DeviceConnectionsModule,
     ErpNextModule,
     SidecarModule,
+    InventoryModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ApiKeyGuard }],
 })

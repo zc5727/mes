@@ -8,11 +8,15 @@ const root = fileURLToPath(new URL('../third_party/threejs-factory-demo/src/', i
 const contracts = [
   ['views/FactoryDigitalTwin.vue', [
     '@select-line="handleLineSelect"', '@click="injectFault"', '@click="recoverDevice"',
-    '@submit.prevent="submitLine"', 'selectedLineId', 'lineFormError',
+    '@click="refreshData"', '@click="reconnectRealtime"', '@submit.prevent="submitLine"',
+    'aria-label="控制模式"', 'selectedLineId', 'lineFormError', 'showLineDialog',
   ]],
   ['components/layout/LeftPanel.vue', ['select-line', 'productionLines', 'line-list']],
-  ['components/layout/OperationsPanel.vue', ['@submit.prevent="submit"', 'apiEnabled', 'qualityRecords', 'maintenanceOrders']],
-  ['scene/FactoryScene.ts', ['OrbitControls', 'pointermove', 'click']],
+  ['components/layout/OperationsPanel.vue', [
+    '@submit.prevent="submit"', 'apiEnabled', 'qualityRecords', 'maintenanceOrders',
+    '新建工单', '新增设备', '图纸登记', '质量记录', '策略评估', 'type="file"',
+  ]],
+  ['scene/FactoryScene.ts', ['OrbitControls', 'pointermove', 'click', 'enableRotate', 'enableZoom']],
 ];
 
 for (const [relativePath, requiredFragments] of contracts) {

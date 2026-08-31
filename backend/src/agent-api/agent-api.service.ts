@@ -10,6 +10,9 @@ import { StrategyAuthorizationService } from '../strategies/strategy-authorizati
 import { StrategyRequestContext, StrategySnapshot, StrategySimulationResult } from '../strategies/strategy.types';
 import { AuditService } from '../audit/audit.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
+import { QualityService } from '../quality/quality.service';
+import { MaintenanceService } from '../maintenance/maintenance.service';
+import { MasterDataService } from '../master-data/master-data.service';
 import {
   AGENT_READ_ONLY_TOOLS,
   AgentReadOnlyTool,
@@ -41,6 +44,9 @@ export class AgentApiService {
     @Optional() private readonly governance?: StrategyGovernanceService,
     @Optional() private readonly authorization?: StrategyAuthorizationService,
     @Optional() private readonly auditService?: AuditService,
+    @Optional() private readonly qualityService?: QualityService,
+    @Optional() private readonly maintenanceService?: MaintenanceService,
+    @Optional() private readonly masterDataService?: MasterDataService,
   ) {}
 
   execute(request: RawAgentRequest): AgentToolResponse {
@@ -95,6 +101,18 @@ export class AgentApiService {
         return this.workOrderProgress(tenantId, this.requiredArg(args, 'workOrderId'), context);
       case 'get_delay_risk':
         return this.delayRisk(tenantId, this.requiredArg(args, 'workOrderId'), context);
+      case 'get_quality_records':
+        return this.qualityRecords(tenantId, args, context);
+      case 'get_quality_issues':
+        return this.qualityIssues(tenantId, args, context);
+      case 'get_maintenance_work_orders':
+        return this.maintenanceWorkOrders(tenantId, context);
+      case 'get_maintenance_plans':
+        return this.maintenancePlans(tenantId, context);
+      case 'get_inventory_batches':
+        return this.inventoryBatches(tenantId);
+      case 'get_spare_parts':
+        return this.spareParts(tenantId);
       case 'get_simulation_snapshot':
         return this.simulationSnapshot(tenantId, args, context);
       case 'get_strategy_result':
@@ -210,6 +228,57 @@ export class AgentApiService {
     const estimatedHours = remainingQty / 10;
     const risk = order.status === 'completed' ? 'low' : hoursUntilDue < estimatedHours ? 'high' : hoursUntilDue < estimatedHours * 1.25 ? 'medium' : 'low';
     return { workOrderId: order.id, risk, hoursUntilDue: this.round(hoursUntilDue), estimatedHours: this.round(estimatedHours), remainingQty, dueAt: order.dueAt };
+  }
+
+  private qualityRecords(tenantId: string, args: Record<string, unknown>, context?: StrategyRequestContext) {
+    if (!this.qualityService) return [];
+    const lineId = typeof args.lineId === 'string' ? args.lineId.trim() : undefined;
+    if (lineId) this.assertResource(context, 'line', lineId);
+    return this.qualityService.list(tenantId).filter((record) => {
+      if (lineId && record.lineId !== lineId) return false;
+      return !context || this.canReadLine(context, record.lineId);
+    });
+  }
+
+  private qualityIssues(tenantId: string, args: Record<string, unknown>, context?: StrategyRequestContext) {
+    if (!this.qualityService) return [];
+    const records = new Map(this.qualityService.list(tenantId).map((record) => [record.id, record]));
+    return this.qualityService.listIssues(tenantId).filter((issue) => {
+      const record = records.get(issue.qualityRecordId);
+      return Boolean(record && (!context || this.canReadLine(context, record.lineId)));
+    });
+  }
+
+  private maintenanceWorkOrders(tenantId: string, context?: StrategyRequestContext) {
+    if (!this.maintenanceService) return [];
+    return this.maintenanceService.list(tenantId).filter((item) => !context || this.canReadLine(context, item.lineId));
+  }
+
+  private maintenancePlans(tenantId: string, context?: StrategyRequestContext) {
+    if (!this.maintenanceService) return [];
+    return this.maintenanceService.listPreventivePlans(tenantId).filter((plan) => {
+      if (!context) return true;
+      const device = this.devicesService.findOne(tenantId, plan.deviceId);
+      return this.canReadLine(context, device.lineId);
+    });
+  }
+
+  private inventoryBatches(tenantId: string) {
+    return this.masterDataService?.listBatches(tenantId) ?? [];
+  }
+
+  private spareParts(tenantId: string) {
+    return this.maintenanceService?.listSpareParts(tenantId) ?? [];
+  }
+
+  private canReadLine(context: StrategyRequestContext, lineId: string): boolean {
+    try {
+      this.authorization?.assertResourceAccess(context, 'line', lineId);
+      return true;
+    } catch (error: unknown) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
   }
 
   private simulationSnapshot(tenantId: string, args: Record<string, unknown>, context?: StrategyRequestContext) {

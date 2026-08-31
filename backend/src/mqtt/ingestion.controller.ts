@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { IngestDeviceEventDto } from './dto/ingest-device-event.dto';
 import { MqttIngestionService } from './mqtt-ingestion.service';
@@ -7,6 +7,9 @@ import { MqttIngestionService } from './mqtt-ingestion.service';
 @Controller('ingestion')
 export class IngestionController {
   constructor(private readonly ingestion: MqttIngestionService) {}
+
+  @Get('status')
+  status(@TenantId() tenantId: string) { return { data: this.ingestion.getStatus(), tenantId }; }
 
   @Post('device-events')
   @HttpCode(HttpStatus.ACCEPTED)

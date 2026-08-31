@@ -31,7 +31,7 @@
 | `get_simulation_snapshot` | 可选 `simulationId` |
 | `get_strategy_result` | `simulationId` |
 
-成功和失败响应都包含 `traceId` 与 `meta`：`sourceTimestamp`、`permissionDecision`、`requiresApproval`。`audit` 包含 `calledAt`、`tenantId`、`requestedBy` 和已脱敏的 `arguments`。失败响应使用 `error.code` 与 `error.message`，不返回堆栈。
+成功和失败响应都包含 `traceId` 与 `meta`：`sourceTimestamp`、`permissionDecision`、`requiresApproval`。`audit` 包含 `calledAt`、`tenantId`、`sessionId`、`traceId`、`requestedBy` 和已脱敏的 `arguments`。只读工具覆盖 dashboard、设备、告警、工单、质量、维护、库存和策略仿真查询；失败响应使用 `error.code` 与 `error.message`，不返回堆栈。
 
 `GET /api/v1/agent-api/tools` 返回工具白名单。
 

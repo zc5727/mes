@@ -8,11 +8,14 @@ import { StrategyEngineService } from '../strategies/strategy-engine.service';
 import { StrategiesModule } from '../strategies/strategies.module';
 import { AuditModule } from '../audit/audit.module';
 import { WorkOrdersModule } from '../work-orders/work-orders.module';
+import { QualityModule } from '../quality/quality.module';
+import { MaintenanceModule } from '../maintenance/maintenance.module';
+import { MasterDataModule } from '../master-data/master-data.module';
 import { AgentApiController } from './agent-api.controller';
 import { AgentApiService } from './agent-api.service';
 
 @Module({
-  imports: [DashboardModule, ProductionLinesModule, DevicesModule, AlarmsModule, WorkOrdersModule, MqttModule, StrategiesModule, AuditModule],
+  imports: [DashboardModule, ProductionLinesModule, DevicesModule, AlarmsModule, WorkOrdersModule, MqttModule, StrategiesModule, AuditModule, QualityModule, MaintenanceModule, MasterDataModule],
   controllers: [AgentApiController],
   providers: [AgentApiService, StrategyEngineService],
 })
