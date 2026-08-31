@@ -20,6 +20,7 @@ export class MaintenanceService implements OnModuleInit {
   private readonly plans = new Map<string, PreventivePlan>();
   private readonly parts = new Map<string, SparePart>();
   private readonly partMovements = new Map<string, SparePart>();
+  private readonly partReturnMovements = new Map<string, SparePart>();
 
   constructor(
     private readonly devices: DevicesService,
@@ -124,10 +125,14 @@ export class MaintenanceService implements OnModuleInit {
   returnSparePart(tenantId: string, dto: ConsumeSparePartDto): SparePart {
     if (!Number.isInteger(dto.quantity) || dto.quantity <= 0) throw new BadRequestException('Spare part quantity must be a positive integer');
     const key = `${tenantId}:${dto.code.trim()}`;
+    if (dto.operationId && this.partReturnMovements.has(`${tenantId}:${dto.operationId}`)) return this.partReturnMovements.get(`${tenantId}:${dto.operationId}`)!;
     const part = this.parts.get(key);
     if (!part) throw new NotFoundException(`Spare part ${dto.code} not found`);
     const updated = { ...part, stock: part.stock + dto.quantity, updatedAt: timestamp() };
-    this.parts.set(key, updated); return updated;
+    this.parts.set(key, updated);
+    void this.persistence?.saveAux({ id: updated.id, tenantId, domain: 'spare-part', payload: updated as unknown as Record<string, unknown>, createdAt: updated.updatedAt, updatedAt: updated.updatedAt });
+    if (dto.operationId) this.partReturnMovements.set(`${tenantId}:${dto.operationId}`, updated);
+    return updated;
   }
   metrics(tenantId: string, deviceId?: string) {
     const completed = this.list(tenantId).filter((item) => item.status === 'completed' && (!deviceId || item.deviceId === deviceId) && item.completedAt);

@@ -24,7 +24,8 @@ describe('quality and maintenance minimum loops', () => {
     maintenance.createSparePart('tenant-demo', { code: 'SP-001', name: '润滑脂', stock: 2, minimumStock: 1 });
     expect(maintenance.consumeSparePart('tenant-demo', { code: 'SP-001', quantity: 2 }).stock).toBe(0);
     expect(() => maintenance.consumeSparePart('tenant-demo', { code: 'SP-001', quantity: 1 })).toThrow(ConflictException);
-    expect(maintenance.returnSparePart('tenant-demo', { code: 'SP-001', quantity: 1 }).stock).toBe(1);
+    expect(maintenance.returnSparePart('tenant-demo', { code: 'SP-001', quantity: 1, operationId: 'return-1' }).stock).toBe(1);
+    expect(maintenance.returnSparePart('tenant-demo', { code: 'SP-001', quantity: 1, operationId: 'return-1' }).stock).toBe(1);
   });
 
   it('requires a passed point inspection before closing an alarm-linked maintenance order', () => {
