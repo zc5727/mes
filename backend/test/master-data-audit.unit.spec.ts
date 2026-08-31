@@ -50,4 +50,17 @@ describe('business foundation APIs', () => {
     expect(service.list('tenant-b', 'routing')).toHaveLength(0);
     expect(() => service.create('tenant-a', 'routing', { code: 'ROUTE-BAD', name: '无效路线', productCode: 'P-01', version: '1.0', operationCodes: ['OP-MISSING'] })).toThrow('Unknown operation codes');
   });
+
+  it('keeps batch inventory tenant-scoped and consumes atomically', () => {
+    const service = new MasterDataService();
+    service.createBatch('tenant-a', { materialCode: 'RAW-01', batchNo: 'B-01', quantity: 5 });
+    expect(() => service.consumeBatches('tenant-b', [{ materialCode: 'RAW-01', batchNo: 'B-01', quantity: 1 }])).toThrow();
+    expect(() => service.consumeBatches('tenant-a', [
+      { materialCode: 'RAW-01', batchNo: 'B-01', quantity: 3 },
+      { materialCode: 'RAW-02', batchNo: 'MISSING', quantity: 1 },
+    ])).toThrow();
+    expect(service.listBatches('tenant-a')[0].quantity).toBe(5);
+    service.consumeBatches('tenant-a', [{ materialCode: 'RAW-01', batchNo: 'B-01', quantity: 2 }]);
+    expect(service.listBatches('tenant-a')[0].quantity).toBe(3);
+  });
 });

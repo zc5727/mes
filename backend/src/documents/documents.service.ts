@@ -1,14 +1,18 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { createId, timestamp } from '../common/mock.types';
+import { AuditService } from '../audit/audit.service';
 import type { ConfirmDocumentAnalysisDto, UpdateDocumentStatusDto, UploadDocumentDto } from './dto/upload-document.dto';
 import { DOCUMENT_STORAGE } from './documents.constants';
+import { DOCUMENT_SCANNER } from './documents.constants';
 import type {
   DocumentRecord,
   DocumentStatus,
   DocumentStorage,
   DocumentTraceEvent,
   UploadedDocumentFile,
+  DocumentSecurityScanner,
+  DocumentPreviewDescriptor,
 } from './documents.types';
 import { FoundationPersistenceService } from '../database/foundation-persistence.service';
 
@@ -28,7 +32,12 @@ const STATUS_TRANSITIONS: Record<DocumentStatus, DocumentStatus[]> = {
 export class DocumentsService implements OnModuleInit {
   private readonly records = new Map<string, DocumentRecord[]>();
 
-  constructor(@Inject(DOCUMENT_STORAGE) private readonly storage: DocumentStorage, @Optional() private readonly persistence?: FoundationPersistenceService) {}
+  constructor(
+    @Inject(DOCUMENT_STORAGE) private readonly storage: DocumentStorage,
+    @Optional() private readonly persistence?: FoundationPersistenceService,
+    @Optional() @Inject(DOCUMENT_SCANNER) private readonly scanner?: DocumentSecurityScanner,
+    @Optional() private readonly auditService?: AuditService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     const snapshot = await this.persistence?.restore();
@@ -49,6 +58,9 @@ export class DocumentsService implements OnModuleInit {
     const storageKey = `${this.safeSegment(tenantId)}/${id}${extension}`;
     const previous = current.at(-1) ?? null;
     const traceId = createId('trace');
+    const scan = await this.scan(uploadedFile, hash);
+    if (scan.status === 'infected') throw new BadRequestException(`Document rejected by security scanner: ${scan.message ?? 'infected'}`);
+    if (scan.status === 'error') throw new ConflictException(`Document security scan failed: ${scan.message ?? 'scanner error'}`);
     try {
       await this.storage.put(storageKey, uploadedFile.buffer);
     } catch (error: unknown) {
@@ -85,9 +97,18 @@ export class DocumentsService implements OnModuleInit {
         fileHash: hash,
         supersedesId: previous?.id ?? null,
       })],
+      securityScanStatus: scan.status,
+      securityScanProvider: scan.provider,
+      securityScanMessage: scan.message ?? null,
+      securityScannedAt: scan.status === 'not_scanned' ? null : now,
     };
     this.records.set(tenantId, [...(this.records.get(tenantId) ?? []), record]);
     void this.persistence?.saveDocument(record);
+    this.auditService?.record(tenantId, dto.uploadedBy.trim(), {
+      action: 'document.uploaded', resource: 'document', resourceId: id,
+      details: { documentKey: record.documentKey, version: record.version, fileHash: hash, securityScanStatus: scan.status },
+      traceId,
+    });
     return record;
   }
 
@@ -108,6 +129,14 @@ export class DocumentsService implements OnModuleInit {
     } catch (error: unknown) {
       throw new ConflictException(`Document binary read failed: ${this.errorMessage(error)}`);
     }
+  }
+
+  preview(tenantId: string, id: string): DocumentPreviewDescriptor {
+    const record = this.findOne(tenantId, id);
+    if (record.extension === '.pdf') return { supported: true, kind: 'pdf', renderer: 'browser', reason: 'PDF can be rendered by a browser PDF viewer' };
+    if (['.png', '.jpg', '.jpeg'].includes(record.extension)) return { supported: true, kind: 'image', renderer: 'browser', reason: 'Image can be rendered by a browser image viewer' };
+    if (['.dwg', '.dxf'].includes(record.extension)) return { supported: false, kind: 'cad', renderer: 'cad-viewer', reason: 'CAD preview requires a licensed or separately deployed CAD renderer' };
+    return { supported: false, kind: 'unsupported', renderer: 'none', reason: 'No preview renderer is configured' };
   }
 
   updateStatus(tenantId: string, id: string, dto: UpdateDocumentStatusDto): DocumentRecord {
@@ -162,7 +191,20 @@ export class DocumentsService implements OnModuleInit {
     const updated = { ...current, ...patch };
     this.records.set(current.tenantId, (this.records.get(current.tenantId) ?? []).map((item) => item.id === current.id ? updated : item));
     void this.persistence?.saveDocument(updated);
+    this.auditService?.record(current.tenantId, String(patch['uploadedBy'] ?? 'system'), {
+      action: 'document.updated', resource: 'document', resourceId: current.id,
+      details: { changedFields: Object.keys(patch) },
+    });
     return updated;
+  }
+
+  private async scan(file: UploadedDocumentFile, hash: string) {
+    if (!this.scanner) return { status: 'not_scanned' as const, provider: 'none', message: 'No antivirus scanner configured' };
+    try {
+      return await this.scanner.scan({ fileName: file.originalname, contentType: file.mimetype, size: file.size, sha256: hash, content: file.buffer });
+    } catch (error: unknown) {
+      return { status: 'error' as const, provider: 'configured-scanner', message: this.errorMessage(error) };
+    }
   }
 
   private validateFile(file?: UploadedDocumentFile): asserts file is UploadedDocumentFile {

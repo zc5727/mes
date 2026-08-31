@@ -45,6 +45,17 @@ const READ_ROLES = new Set<StrategyRole>([
   'auditor',
 ]);
 
+export const STRATEGY_ACTION_MATRIX: Readonly<Record<StrategyRole, ReadonlySet<'read' | 'simulate' | 'rollback'>>> = {
+  system_admin: new Set(['read', 'simulate', 'rollback']),
+  plant_manager: new Set(['read', 'simulate', 'rollback']),
+  production_supervisor: new Set(['read', 'simulate', 'rollback']),
+  equipment_supervisor: new Set(['read', 'simulate', 'rollback']),
+  quality_supervisor: new Set(['read', 'simulate']),
+  team_leader: new Set(['read']),
+  operator: new Set([]),
+  auditor: new Set(['read']),
+};
+
 @Injectable()
 export class StrategyAuthorizationService {
   /** Build a trusted request context from the identity headers supplied by the API gateway. */
@@ -70,24 +81,23 @@ export class StrategyAuthorizationService {
 
   /** Ensure a caller may submit a strategy simulation for every resource in a snapshot. */
   assertCanSimulate(context: StrategyRequestContext, snapshot: StrategySnapshot): void {
-    if (!SIMULATION_ROLES.has(context.role)) {
-      throw new ForbiddenException('ROLE_FORBIDDEN: strategy simulation is not permitted');
-    }
+    this.assertAction(context, 'simulate', 'strategy simulation is not permitted');
     this.assertSnapshotAccess(context, snapshot);
   }
 
   /** Ensure a caller may read strategy results and audit records. */
   assertCanRead(context: StrategyRequestContext): void {
-    if (!READ_ROLES.has(context.role)) {
-      throw new ForbiddenException('ROLE_FORBIDDEN: strategy result is not readable');
-    }
+    if (!READ_ROLES.has(context.role)) throw new ForbiddenException('ROLE_FORBIDDEN: strategy result is not readable');
+    this.assertAction(context, 'read', 'strategy result is not readable');
   }
 
   /** Discard a simulation result only; this never authorizes production execution. */
   assertCanRollback(context: StrategyRequestContext): void {
-    if (!SIMULATION_ROLES.has(context.role)) {
-      throw new ForbiddenException('ROLE_FORBIDDEN: simulation rollback is not permitted');
-    }
+    this.assertAction(context, 'rollback', 'simulation rollback is not permitted');
+  }
+
+  private assertAction(context: StrategyRequestContext, action: 'read' | 'simulate' | 'rollback', message: string): void {
+    if (!STRATEGY_ACTION_MATRIX[context.role]?.has(action)) throw new ForbiddenException(`ROLE_FORBIDDEN: ${message}`);
   }
 
   /** Check factory and line/resource scope without trusting a client-selected role or scope. */

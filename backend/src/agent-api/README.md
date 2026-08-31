@@ -16,6 +16,8 @@
 }
 ```
 
+生产环境还必须通过 `Authorization: Bearer <MES_API_KEY>` 和 `x-tenant-id` 网关校验；当 `MES_REQUIRE_SESSION=true` 时，Agent/策略接口必须携带 `x-session-id`。`MES_RATE_LIMIT_PER_MINUTE` 控制单 IP/租户限流，`MES_SENSITIVE_FIELDS` 控制审计参数脱敏。
+
 工具：
 
 | 工具 | 参数 |
@@ -29,7 +31,7 @@
 | `get_simulation_snapshot` | 可选 `simulationId` |
 | `get_strategy_result` | `simulationId` |
 
-成功响应包含 `ok`、`tool`、`traceId`、`data` 和 `audit`。`audit` 包含 `calledAt`、`tenantId`、`requestedBy` 和原始 `arguments`。失败响应使用 `error.code` 与 `error.message`，不返回堆栈。
+成功和失败响应都包含 `traceId` 与 `meta`：`sourceTimestamp`、`permissionDecision`、`requiresApproval`。`audit` 包含 `calledAt`、`tenantId`、`requestedBy` 和已脱敏的 `arguments`。失败响应使用 `error.code` 与 `error.message`，不返回堆栈。
 
 `GET /api/v1/agent-api/tools` 返回工具白名单。
 

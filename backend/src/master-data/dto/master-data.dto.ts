@@ -1,4 +1,4 @@
-import { IsArray, IsInt, IsISO8601, IsObject, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsArray, IsInt, IsISO8601, IsNumber, IsObject, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export class CreateProductDto {
   @IsString() @MinLength(2) @MaxLength(40) code!: string;
@@ -35,6 +35,7 @@ export class CreateOperationDto {
   @IsString() @MinLength(2) @MaxLength(100) name!: string;
   @IsOptional() @IsInt() @Min(1) @Max(100000) standardSeconds?: number;
   @IsOptional() @IsString() @MaxLength(80) workstation?: string;
+  @IsOptional() @IsObject() parameters?: Record<string, unknown>;
 }
 
 export class CreateBomDto {
@@ -52,4 +53,11 @@ export class CreateRoutingDto {
   @IsString() @MinLength(1) @MaxLength(40) productCode!: string;
   @IsString() @MinLength(1) @MaxLength(20) version!: string;
   @IsArray() @IsString({ each: true }) operationCodes!: string[];
+}
+
+export class CreateBatchInventoryDto {
+  @IsString() @MinLength(2) @MaxLength(40) materialCode!: string;
+  @IsString() @MinLength(2) @MaxLength(80) batchNo!: string;
+  @IsNumber() @Min(0) quantity!: number;
+  @IsOptional() @IsString() @MaxLength(20) unit?: string;
 }

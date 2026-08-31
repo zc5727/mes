@@ -22,7 +22,7 @@ export interface DocumentRecord {
   version: number;
   supersedesId: string | null;
   storageKey: string;
-  storageProvider: 'local-disk';
+  storageProvider: 'local-disk' | 's3' | 'minio';
   status: DocumentStatus;
   lineId: string | null;
   workOrderId: string | null;
@@ -36,6 +36,10 @@ export interface DocumentRecord {
   analysisConfirmedBy: string | null;
   analysisConfirmedAt: string | null;
   trace: DocumentTraceEvent[];
+  securityScanStatus: 'not_scanned' | 'clean' | 'infected' | 'error';
+  securityScanProvider: string;
+  securityScanMessage: string | null;
+  securityScannedAt: string | null;
 }
 
 export interface UploadedDocumentFile {
@@ -46,9 +50,35 @@ export interface UploadedDocumentFile {
 }
 
 export interface DocumentStorage {
-  readonly provider: 'local-disk';
+  readonly provider: 'local-disk' | 's3' | 'minio';
   readonly root: string;
   put(storageKey: string, content: Buffer): Promise<void>;
   read(storageKey: string): Promise<Buffer>;
   remove(storageKey: string): Promise<void>;
+}
+
+/** S3-compatible contract for a future S3/MinIO adapter; no binary is sent directly to clients. */
+export interface DocumentScanInput {
+  fileName: string;
+  contentType: string;
+  size: number;
+  sha256: string;
+  content: Buffer;
+}
+
+export interface DocumentScanResult {
+  status: 'not_scanned' | 'clean' | 'infected' | 'error';
+  provider: string;
+  message?: string;
+}
+
+export interface DocumentSecurityScanner {
+  scan(input: DocumentScanInput): Promise<DocumentScanResult>;
+}
+
+export interface DocumentPreviewDescriptor {
+  supported: boolean;
+  kind: 'pdf' | 'image' | 'cad' | 'unsupported';
+  renderer: 'browser' | 'cad-viewer' | 'none';
+  reason: string;
 }

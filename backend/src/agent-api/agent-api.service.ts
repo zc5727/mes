@@ -267,7 +267,20 @@ export class AgentApiService {
   }
 
   private audit(tenantId: string, requestedBy: string | undefined, args: Record<string, unknown>): AgentToolAudit {
-    return { calledAt: new Date().toISOString(), requestedBy, tenantId, arguments: { ...args } };
+    return { calledAt: new Date().toISOString(), requestedBy, tenantId, arguments: this.maskSensitive(args) };
+  }
+
+  private maskSensitive(value: Record<string, unknown>): Record<string, unknown> {
+    const configured = (process.env.MES_SENSITIVE_FIELDS ?? 'password,token,secret,apiKey,authorization')
+      .split(',').map((field) => field.trim().toLowerCase()).filter(Boolean);
+    const mask = (item: unknown): unknown => {
+      if (Array.isArray(item)) return item.map(mask);
+      if (!item || typeof item !== 'object') return item;
+      return Object.fromEntries(Object.entries(item as Record<string, unknown>).map(([key, child]) => [
+        key, configured.includes(key.toLowerCase()) ? '[REDACTED]' : mask(child),
+      ]));
+    };
+    return mask(value) as Record<string, unknown>;
   }
 
   private failure(tool: AgentReadOnlyTool | string, traceId: string, code: string, message: string, audit: AgentToolAudit): AgentToolResponse {

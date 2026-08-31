@@ -35,10 +35,10 @@ fi
 
 echo "检查 Docker Compose 配置"
 "${COMPOSE[@]}" config >/dev/null
-echo "启动真实 PostgreSQL/MQTT 服务"
-"${COMPOSE[@]}" up -d postgres mqtt
+echo "启动真实 PostgreSQL/MQTT/对象存储服务"
+"${COMPOSE[@]}" up -d postgres mqtt minio
 STARTED=true
-for port in 5432 1883; do
+for port in 5432 1883 9000; do
   for _ in $(seq 1 30); do
     nc -z localhost "$port" >/dev/null 2>&1 && break
     sleep 1
@@ -49,11 +49,15 @@ for port in 5432 1883; do
   }
 done
 
+curl --fail --silent --show-error http://localhost:9000/minio/health/live >/dev/null
+echo "PASS MinIO object storage readiness"
+
 "${COMPOSE[@]}" exec -T postgres pg_isready -U mes -d mes >/dev/null
 echo "PASS PostgreSQL protocol readiness"
 
 echo "执行真实数据库迁移"
 npm --prefix "$ROOT_DIR/backend" run db:migrate
+"$ROOT_DIR/scripts/verify-migration-rollback.sh" "${COMPOSE[@]}"
 
 if [[ -z "${MES_API_KEY:-}" && -f "$ROOT_DIR/backend/.env" ]]; then
   MES_API_KEY="$(sed -n 's/^MES_API_KEY=//p' "$ROOT_DIR/backend/.env" | head -n 1)"
@@ -100,11 +104,26 @@ echo "$readiness" | grep -q '"enabled":true' || { echo "FAIL: 数据库未以 en
 echo "$readiness" | grep -q '"status":"ready"' || { echo "FAIL: 后端重启后数据库未 ready：$readiness" >&2; exit 1; }
 echo "PASS backend restart recovery: DATABASE_ENABLED=true"
 
+echo "检查模拟器重启恢复"
+simulator_pid_file="$ROOT_DIR/.runtime/simulator.pid"
+simulator_pid="$(cat "$simulator_pid_file")"
+pkill -TERM -P "$simulator_pid" 2>/dev/null || true
+kill "$simulator_pid" 2>/dev/null || true
+rm -f "$simulator_pid_file"
+for _ in $(seq 1 30); do
+  if ! kill -0 "$simulator_pid" 2>/dev/null; then break; fi
+  sleep 1
+done
+DATABASE_ENABLED=true MQTT_ENABLED=true "$ROOT_DIR/scripts/dev-up.sh" --mqtt --no-frontend
+simulator_pid="$(cat "$simulator_pid_file")"
+kill -0 "$simulator_pid" 2>/dev/null || { echo "FAIL: 模拟器重启后进程未存活" >&2; exit 1; }
+echo "PASS simulator restart recovery: PID=$simulator_pid"
+
 echo "停止并验证服务清理"
 "$ROOT_DIR/scripts/dev-down.sh" --infra
 STARTED=false
-if nc -z localhost 3000 >/dev/null 2>&1 || nc -z localhost 1883 >/dev/null 2>&1 || nc -z localhost 5432 >/dev/null 2>&1; then
-  echo "FAIL: 停止后仍有 MES 端口监听（3000/1883/5432）" >&2
+if nc -z localhost 3000 >/dev/null 2>&1 || nc -z localhost 1883 >/dev/null 2>&1 || nc -z localhost 5432 >/dev/null 2>&1 || nc -z localhost 9000 >/dev/null 2>&1; then
+  echo "FAIL: 停止后仍有 MES 端口监听（3000/1883/5432/9000）" >&2
   exit 1
 fi
 if [[ -d "$ROOT_DIR/.runtime" ]] && compgen -G "$ROOT_DIR/.runtime/*.pid" >/dev/null; then

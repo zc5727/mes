@@ -1,1 +1,2 @@
 export const DOCUMENT_STORAGE = Symbol('DOCUMENT_STORAGE');
+export const DOCUMENT_SCANNER = Symbol('DOCUMENT_SCANNER');

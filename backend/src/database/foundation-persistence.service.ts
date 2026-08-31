@@ -73,7 +73,10 @@ export class FoundationPersistenceService {
       workOrderId: item.workOrderId, productCode: item.productCode, uploadedBy: item.uploadedBy, uploadedAt: new Date(item.uploadedAt),
       analysisStatus: item.analysisStatus, analysisDraft: item.analysisDraft as Prisma.InputJsonValue,
       analysisConfirmedBy: item.analysisConfirmedBy, analysisConfirmedAt: item.analysisConfirmedAt ? new Date(item.analysisConfirmedAt) : null,
-      trace: item.trace as unknown as Prisma.InputJsonValue, updatedAt: new Date(item.updatedAt),
+      trace: item.trace as unknown as Prisma.InputJsonValue,
+      securityScanStatus: item.securityScanStatus, securityScanProvider: item.securityScanProvider,
+      securityScanMessage: item.securityScanMessage, securityScannedAt: item.securityScannedAt ? new Date(item.securityScannedAt) : null,
+      updatedAt: new Date(item.updatedAt),
     };
   }
 
@@ -89,7 +92,7 @@ export class FoundationPersistenceService {
     return { ...item, completedAt: item.completedAt?.toISOString() ?? null, plannedAt: item.plannedAt.toISOString(), createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() };
   }
   private document(item: any): DocumentRecord {
-    return { ...item, supersedesId: item.supersedesId ?? null, lineId: item.lineId ?? null, workOrderId: item.workOrderId ?? null, productCode: item.productCode ?? null, analysisConfirmedBy: item.analysisConfirmedBy ?? null, analysisConfirmedAt: item.analysisConfirmedAt?.toISOString() ?? null, uploadedAt: item.uploadedAt.toISOString(), createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() };
+    return { ...item, supersedesId: item.supersedesId ?? null, lineId: item.lineId ?? null, workOrderId: item.workOrderId ?? null, productCode: item.productCode ?? null, analysisConfirmedBy: item.analysisConfirmedBy ?? null, analysisConfirmedAt: item.analysisConfirmedAt?.toISOString() ?? null, securityScanStatus: item.securityScanStatus ?? 'not_scanned', securityScanProvider: item.securityScanProvider ?? 'none', securityScanMessage: item.securityScanMessage ?? null, securityScannedAt: item.securityScannedAt?.toISOString() ?? null, uploadedAt: item.uploadedAt.toISOString(), createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() };
   }
 
   private async write(label: string, operation: () => Promise<unknown>): Promise<void> {

@@ -30,6 +30,11 @@ export class DocumentsController {
     }).send(content);
   }
 
+  @Get(':id/preview')
+  preview(@TenantId() tenantId: string, @Param('id') id: string) {
+    return { data: this.documentsService.preview(tenantId, id), tenantId };
+  }
+
   @Post('upload')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }))
   async upload(@TenantId() tenantId: string, @Body() dto: UploadDocumentDto, @UploadedFile() file?: UploadedDocumentFile) {

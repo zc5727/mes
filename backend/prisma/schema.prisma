@@ -66,6 +66,7 @@ model Tenant {
   qualityRecords   QualityRecord[]
   maintenanceWorkOrders MaintenanceWorkOrder[]
   documents        DocumentRecord[]
+  batchInventories BatchInventory[]
 
   @@map("tenants")
 }
@@ -353,6 +354,10 @@ model DocumentRecord {
   analysisConfirmedBy   String?  @map("analysis_confirmed_by") @db.VarChar(80)
   analysisConfirmedAt   DateTime? @map("analysis_confirmed_at")
   trace                 Json
+  securityScanStatus    String   @default("not_scanned") @map("security_scan_status") @db.VarChar(20)
+  securityScanProvider  String   @default("none") @map("security_scan_provider") @db.VarChar(80)
+  securityScanMessage   String?  @map("security_scan_message") @db.VarChar(255)
+  securityScannedAt     DateTime? @map("security_scanned_at")
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
   tenant                Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
@@ -502,4 +507,18 @@ model Routing {
   @@unique([tenantId, code, version])
   @@index([tenantId, productCode])
   @@map("routings")
+}
+
+model BatchInventory {
+  id         String   @id @db.VarChar(40)
+  tenantId   String   @map("tenant_id") @db.VarChar(40)
+  materialCode String @map("material_code") @db.VarChar(40)
+  batchNo    String   @map("batch_no") @db.VarChar(80)
+  quantity   Decimal  @db.Decimal(18, 6)
+  unit       String?  @db.VarChar(20)
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@unique([tenantId, materialCode, batchNo])
+  @@index([tenantId, materialCode])
+  @@map("batch_inventories")
 }
