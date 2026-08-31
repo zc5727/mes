@@ -17,7 +17,7 @@ EOF
 }
 
 compose() {
-  local file="$ROOT_DIR/backend/docker-compose.yml"
+  local file="${MES_RUNTIME_COMPOSE_FILE:-$ROOT_DIR/backend/docker-compose.yml}"
   if docker compose version >/dev/null 2>&1; then
     docker compose -f "$file" "$@"
   elif command -v docker-compose >/dev/null 2>&1; then
@@ -29,7 +29,7 @@ compose() {
 }
 
 preflight() {
-  local file="$ROOT_DIR/backend/docker-compose.yml"
+  local file="${MES_RUNTIME_COMPOSE_FILE:-$ROOT_DIR/backend/docker-compose.yml}"
   if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
     echo "BLOCKED: Docker Compose 不可用。" >&2
     return 2

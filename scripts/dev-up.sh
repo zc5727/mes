@@ -37,10 +37,11 @@ cleanup_on_failure() {
 trap cleanup_on_failure EXIT
 
 docker_compose() {
+  local compose_file="${MES_RUNTIME_COMPOSE_FILE:-$ROOT_DIR/backend/docker-compose.yml}"
   if docker compose version >/dev/null 2>&1; then
-    docker compose -f "$ROOT_DIR/backend/docker-compose.yml" "$@"
+    docker compose -f "$compose_file" "$@"
   elif command -v docker-compose >/dev/null 2>&1; then
-    docker-compose -f "$ROOT_DIR/backend/docker-compose.yml" "$@"
+    docker-compose -f "$compose_file" "$@"
   else
     return 127
   fi

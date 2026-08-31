@@ -24,10 +24,11 @@ for pid_file in "$RUNTIME_DIR"/*.pid; do
   rm -f "$pid_file"
 done
 if [[ "${1:-}" == "--infra" ]]; then
+  compose_file="${MES_RUNTIME_COMPOSE_FILE:-$ROOT_DIR/backend/docker-compose.yml}"
   if docker compose version >/dev/null 2>&1; then
-    docker compose -f "$ROOT_DIR/backend/docker-compose.yml" down
+    docker compose -f "$compose_file" down
   elif command -v docker-compose >/dev/null 2>&1; then
-    docker-compose -f "$ROOT_DIR/backend/docker-compose.yml" down
+    docker-compose -f "$compose_file" down
   else
     docker stop mes-postgres mes-mqtt mes-minio 2>/dev/null || true
   fi
