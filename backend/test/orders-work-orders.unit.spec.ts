@@ -83,6 +83,16 @@ describe('production execution flow', () => {
     expect(() => workOrders.update('tenant-demo', workOrder.id, { completedQty: 2 })).toThrow(ConflictException);
   });
 
+  it('does not start work on an inactive or maintenance line', () => {
+    const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService());
+    const workOrder = workOrders.create('tenant-demo', {
+      orderNo: 'WO-LINE-MAINTENANCE', productCode: 'P', productName: '产品', lineId: 'line-welding', plannedQty: 1,
+      dueAt: '2026-08-29T18:00:00.000Z',
+    });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' });
+    expect(() => workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'in_progress' })).toThrow(ConflictException);
+  });
+
   it('audits order and work-order lifecycle changes', () => {
     const audit = new AuditService();
     const orders = new OrdersService(undefined, audit);

@@ -416,6 +416,9 @@ export class WorkOrdersService implements OnModuleInit {
     if ((dto.status === 'paused' || dto.status === 'cancelled') && !dto.reason?.trim()) {
       throw new ConflictException(`A reason is required when work order is ${dto.status}`);
     }
+    if (dto.status === 'in_progress' && this.productionLinesService.findOne(tenantId, current.lineId).status !== 'active') {
+      throw new ConflictException('Work order can start only on an active production line');
+    }
     if (dto.status === 'completed' && current.completedQty !== current.plannedQty) {
       throw new ConflictException('Work order can be completed only after planned quantity is reported');
     }
