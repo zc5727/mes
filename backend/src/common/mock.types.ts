@@ -12,5 +12,7 @@ export function timestamp(): string {
 }
 
 export function createId(prefix: string): string {
-  return `${prefix}-${crypto.randomUUID()}`;
+  const suffixLength = Math.max(0, 40 - prefix.length - 1);
+  const suffix = crypto.randomUUID().replaceAll('-', '').slice(0, suffixLength);
+  return `${prefix}-${suffix}`;
 }

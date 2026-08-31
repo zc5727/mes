@@ -26,6 +26,36 @@ describe('MES resilience and failure boundaries', () => {
     expect(recovered.metrics).toEqual({ temperature: 43.2, load: 71, healthy: true });
   });
 
+  it('does not let a delayed device telemetry overwrite the current ledger state', () => {
+    const service = new DevicesService();
+    const current = service.ingestTelemetry('tenant-demo', 'device-cnc-01', {
+      timestamp: '2026-08-28T09:00:00.000Z', metrics: { temperature: 50 },
+    });
+
+    const delayed = service.ingestTelemetry('tenant-demo', 'device-cnc-01', {
+      timestamp: '2026-08-28T08:59:00.000Z', metrics: { temperature: 10 },
+    });
+
+    expect(delayed).toEqual(current);
+    expect(service.findOne('tenant-demo', 'device-cnc-01').metrics).toEqual({ temperature: 50 });
+  });
+
+  it('projects gateway device IDs into the tenant-scoped ledger with alarm state', () => {
+    const service = new DevicesService();
+
+    const projected = service.projectTelemetry('tenant-demo', 'line-cnc', 'cnc-01', {
+      timestamp: '2026-08-28T09:00:00.000Z', metrics: { temperatureCelsius: 90 }, status: 'alarm',
+      statusReason: 'OVERHEAT',
+    });
+
+    expect(projected).toEqual(expect.objectContaining({
+      id: 'device-cnc-01', status: 'alarm', statusReason: 'OVERHEAT',
+    }));
+    expect(service.projectTelemetry('tenant-other', 'line-cnc', 'cnc-01', {
+      timestamp: '2026-08-28T09:01:00.000Z', metrics: {}, status: 'online',
+    })).toBeUndefined();
+  });
+
   it('does not leak device data across tenants', () => {
     const service = new DevicesService();
 
@@ -59,4 +89,3 @@ describe('MES resilience and failure boundaries', () => {
     })).toThrow(ConflictException);
   });
 });
-

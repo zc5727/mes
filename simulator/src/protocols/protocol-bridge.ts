@@ -18,6 +18,22 @@ export interface ProtocolEndpointConfig {
   timeoutMs?: number;
 }
 
+export interface OpcUaSecurityContract {
+  securityMode: "None";
+  securityPolicy: "None";
+  authentication: "anonymous";
+}
+
+export type OpcUaSecurityInput = Partial<Record<keyof OpcUaSecurityContract, string>>;
+
+/** The synthetic OPC UA endpoint has no certificate or authenticated write contract. */
+export function parseOpcUaSecurity(input: OpcUaSecurityInput = {}): OpcUaSecurityContract {
+  if (input.securityMode !== undefined && input.securityMode !== "None") throw new Error("synthetic OPC UA supports securityMode None only");
+  if (input.securityPolicy !== undefined && input.securityPolicy !== "None") throw new Error("synthetic OPC UA supports securityPolicy None only");
+  if (input.authentication !== undefined && input.authentication !== "anonymous") throw new Error("synthetic OPC UA supports anonymous authentication only");
+  return { securityMode: "None", securityPolicy: "None", authentication: "anonymous" };
+}
+
 /** Validate an endpoint before a simulator process opens a socket. */
 export function parseProtocolEndpoint(input: Partial<ProtocolEndpointConfig>): ProtocolEndpointConfig {
   if (input.protocol !== "modbus-tcp" && input.protocol !== "opc-ua" && input.protocol !== "mtconnect") throw new Error("protocol must be modbus-tcp, opc-ua or mtconnect");
@@ -142,13 +158,20 @@ export class ModbusTcpTelemetryClient implements ProtocolTelemetrySource {
         pending = Buffer.concat([pending, chunk]);
         if (pending.length < 9) return;
         const byteCount = pending[8];
-        if (pending.length !== 9 + byteCount) { fail(new Error(`Modbus response has invalid byte count: ${byteCount}`)); return; }
+        const expectedLength = 9 + byteCount;
+        if (byteCount > 252) { fail(new Error(`Modbus response has invalid byte count: ${byteCount}`)); return; }
+        if (pending.length < expectedLength) return;
+        if (pending.length !== expectedLength) { fail(new Error(`Modbus response has invalid byte count: ${byteCount}`)); return; }
         clearTimeout(timer);
         socket.end();
         if (pending.readUInt16BE(0) !== 1 || pending.readUInt16BE(2) !== 0 || pending[6] !== this.unitId) { reject(new Error("Modbus response identity does not match request")); return; }
         if (pending[7] & 0x80) { reject(new Error(`Modbus exception code: ${pending[8]}`)); return; }
         if (pending[7] !== 3 || byteCount !== REGISTER_COUNT * 2) { reject(new Error("Modbus response function or register count is invalid")); return; }
         resolve(pending.subarray(9));
+      });
+      socket.once("close", () => {
+        if (pending.length >= 9) fail(new Error(`Modbus response has invalid byte count: ${pending[8]}`));
+        else fail(new Error("Modbus TCP connection closed before response"));
       });
       socket.once("error", (error) => { fail(error); });
     });
@@ -163,7 +186,13 @@ export class OpcUaTelemetrySimulator implements ProtocolTelemetrySource {
   private initialized = false;
   private started = false;
   private startPromise?: Promise<void>;
-  constructor(private readonly values: Omit<DeterministicTelemetryValues, "faultCode">, private readonly port = 4841, private readonly host = "127.0.0.1") {
+  constructor(
+    private readonly values: Omit<DeterministicTelemetryValues, "faultCode">,
+    private readonly port = 4841,
+    private readonly host = "127.0.0.1",
+    security: OpcUaSecurityInput = {},
+  ) {
+    parseOpcUaSecurity(security);
     this.server = new OPCUAServer({ hostname: host, alternateHostname: [host], port, resourcePath: "/MES/SimulatedDevice", securityModes: [MessageSecurityMode.None], securityPolicies: [SecurityPolicy.None], allowAnonymous: true });
   }
 

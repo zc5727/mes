@@ -11,7 +11,7 @@ export interface ProtocolCapability {
 /** Runtime capability registry. Unknown transports must not be silently downgraded. */
 export const PROTOCOL_CAPABILITIES: Readonly<Record<string, ProtocolCapability>> = {
   mqtt: { status: "IMPLEMENTED", read: true, write: true, subscribe: true, notes: "Existing MessagePublisher and simulator control topics." },
-  http: { status: "CONTRACT_ADAPTER_ONLY", read: true, write: false, subscribe: false, notes: "Canonical event adapter only; no HTTP server is opened by simulator." },
+  http: { status: "SYNTHETIC_CONTRACT", read: true, write: false, subscribe: false, notes: "Strict local POST /events ingest; no control writes, HTTPS or vendor compatibility." },
   websocket: { status: "NOT_IMPLEMENTED", read: false, write: false, subscribe: false, notes: "No WebSocket endpoint or adapter in simulator." },
   "modbus-tcp": { status: "SYNTHETIC_CONTRACT", read: true, write: false, subscribe: false, notes: "Synthetic FC03 holding-register endpoint." },
   "opc-ua": { status: "SYNTHETIC_CONTRACT", read: true, write: false, subscribe: false, notes: "Synthetic read-only nodes; no vendor namespace or methods." },

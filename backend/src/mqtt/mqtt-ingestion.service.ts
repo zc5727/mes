@@ -6,6 +6,7 @@ import { createDefaultMqttClient } from './mqtt-client.factory';
 import { parseSimulatorMessage } from './mqtt-parser';
 import { IngestDeviceEventDto } from './dto/ingest-device-event.dto';
 import { mapGatewayPoints } from './point-mapping';
+import { DevicesService } from '../devices/devices.service';
 import {
   DEFAULT_ALARMS_TOPIC,
   DEFAULT_TELEMETRY_TOPIC,
@@ -40,6 +41,7 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     private readonly deviceCache: DeviceTelemetryCache = new DeviceTelemetryCache(),
     private readonly alarmDeduplicator: AlarmDeduplicator = new AlarmDeduplicator(),
     @Optional() private readonly persistence?: MqttStatePersistenceService,
+    @Optional() private readonly devicesService?: DevicesService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -188,6 +190,7 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     }
     const result = this.deviceCache.upsert(tenantId, telemetry, 'http://gateway/device-events');
     if (result.accepted) {
+      this.projectDeviceTelemetry(tenantId, telemetry);
       this.messageCounters.http += 1; this.messageCounters.accepted += 1;
       void this.persistence?.saveTelemetry(result.current);
       this.notifyProjection(tenantId);
@@ -302,6 +305,7 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
       this.messageCounters.telemetry += 1; this.lastHeartbeatAt = new Date().toISOString();
       const result = this.deviceCache.upsert(message.tenantId, message.data, message.topic);
       if (result.accepted) {
+        this.projectDeviceTelemetry(message.tenantId, message.data);
         this.messageCounters.accepted += 1;
         void this.persistence?.saveTelemetry(result.current);
         this.notifyProjection(message.tenantId);
@@ -372,6 +376,25 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     const parsed = this.numberPoint(value, fallback);
     if (!Number.isInteger(parsed) || parsed < 0) throw new BadRequestException('Count device point must be a non-negative integer');
     return parsed;
+  }
+
+  private projectDeviceTelemetry(tenantId: string, telemetry: SimulatorTelemetry): void {
+    if (!this.devicesService) return;
+    const status = telemetry.status === 'FAULT'
+      ? 'alarm'
+      : telemetry.status === 'STOPPED' ? 'offline' : 'online';
+    this.devicesService.projectTelemetry(tenantId, telemetry.lineId, telemetry.deviceId, {
+      timestamp: telemetry.timestamp,
+      metrics: {
+        temperatureCelsius: telemetry.temperatureCelsius,
+        cycleTimeSeconds: telemetry.cycleTimeSeconds,
+        totalCount: telemetry.totalCount,
+        goodCount: telemetry.goodCount,
+        defectCount: telemetry.defectCount,
+      },
+      status,
+      statusReason: telemetry.activeFaults.join(', '),
+    });
   }
 
   private requiredText(value: string, field: string): string {

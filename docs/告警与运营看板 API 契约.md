@@ -35,6 +35,7 @@
 
 - `GET /dashboard/overview`
 - `GET /dashboard/lines/:lineId`
+- `GET /dashboard/history?lineId=:lineId`（生产历史）
 - `GET /dashboard/stream`（SSE）
 
 `overview` 保留 `lines`、`devices`、`alarms`、`workOrders` 等原有聚合字段，并提供：
@@ -45,6 +46,8 @@
 - `productionMetrics.todayOutput`、`plannedQty`、`completedQty`、`remainingQty`、`completionRate` 和 `oee`。
 
 OEE 优先使用实时设备计数计算；没有计数遥测时返回产线目标 OEE，并通过 `oeeAvailable=false`、`oeeSource=target` 明确其来源。没有租户产线时 `oee` 为 `null`，不会借用其他租户数据。
+
+`GET /dashboard/history` 返回按上报时间排序的工单产量历史点，包含 `quantity`、`goodQty`、`defectQty`、累计完成量和 `completionRate`；可通过 `lineId` 限定产线，数据为空时返回空数组。
 
 看板数据优先读取现有内存服务和 MQTT 缓存。产线详情不存在时返回 HTTP 404。看板接口为只读接口，不提供设备控制、PLC 控制或智能助手能力。
 

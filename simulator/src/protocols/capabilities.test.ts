@@ -5,8 +5,8 @@ import { getProtocolCapability } from "./capabilities";
 test("protocol capability registry is explicit and fail-closed", () => {
   assert.equal(getProtocolCapability("MQTT").status, "IMPLEMENTED");
   assert.deepEqual(getProtocolCapability("http"), {
-    status: "CONTRACT_ADAPTER_ONLY", read: true, write: false, subscribe: false,
-    notes: "Canonical event adapter only; no HTTP server is opened by simulator.",
+    status: "SYNTHETIC_CONTRACT", read: true, write: false, subscribe: false,
+    notes: "Strict local POST /events ingest; no control writes, HTTPS or vendor compatibility.",
   });
   assert.equal(getProtocolCapability("websocket").status, "NOT_IMPLEMENTED");
   assert.equal(getProtocolCapability("focas").status, "NOT_IMPLEMENTED");

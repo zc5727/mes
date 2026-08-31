@@ -68,6 +68,12 @@ export class MtConnectTelemetrySimulator implements ProtocolTelemetrySource {
 
   private handleRequest(message: IncomingMessage, response: ServerResponse): void {
     const path = message.url?.split("?")[0];
+    if (message.method !== "GET") {
+      response.statusCode = 405;
+      response.setHeader("allow", "GET");
+      response.end("method not allowed");
+      return;
+    }
     if (path === "/probe") {
       sendXml(response, probeDocument(this.identity.deviceId));
       return;
@@ -85,7 +91,8 @@ function probeDocument(deviceId: string): string {
   const items = Object.entries(MTCONNECT_SYNTHETIC_DATA_ITEMS)
     .map(([name, id]) => `<DataItem id="${id}" name="${name}" type="${name === "status" ? "EVENT" : "SAMPLE"}" />`)
     .join("");
-  return `<?xml version="1.0" encoding="UTF-8"?><MTConnectDevices><Device uuid="sim-${deviceId}" name="${deviceId}"><ComponentStream component="Device">${items}</ComponentStream></Device></MTConnectDevices>`;
+  const escapedDeviceId = escapeXml(deviceId);
+  return `<?xml version="1.0" encoding="UTF-8"?><MTConnectDevices><Device uuid="sim-${escapedDeviceId}" name="${escapedDeviceId}"><ComponentStream component="Device">${items}</ComponentStream></Device></MTConnectDevices>`;
 }
 
 function currentDocument(values: MtConnectTelemetryValues): string {
@@ -95,6 +102,7 @@ function currentDocument(values: MtConnectTelemetryValues): string {
 }
 
 function parseCurrent(xml: string, identity: MtConnectIdentity): MtConnectTelemetryFrame {
+  if (!xml.includes("<MTConnectStreams>") || !xml.includes("</MTConnectStreams>")) throw new Error("invalid MTConnect streams document");
   const execution = tagValue(xml, "Execution", MTCONNECT_SYNTHETIC_DATA_ITEMS.status);
   const status = statusFor(execution);
   const alarm = tagValue(xml, "Alarm", MTCONNECT_SYNTHETIC_DATA_ITEMS.alarm);
@@ -142,9 +150,14 @@ function readHttp(host: string, port: number, path: string): Promise<string> {
       response.on("data", (chunk: Buffer) => chunks.push(chunk));
       response.once("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     });
+    client.setTimeout(2_000, () => client.destroy(new Error("MTConnect HTTP request timed out")));
     client.once("error", reject);
     client.end();
   });
+}
+
+function escapeXml(value: string): string {
+  return value.replace(/[&<>\"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[character] ?? character);
 }
 
 function listen(server: Server, port: number, host: string): Promise<void> {

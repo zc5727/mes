@@ -6,6 +6,21 @@ COMPOSE_FILE="${MES_RUNTIME_COMPOSE_FILE:-$ROOT_DIR/backend/docker-compose.yml}"
 export COMPOSE_PROJECT_NAME="${MES_RUNTIME_PROJECT_NAME:-mes-runtime-$$}"
 STARTED=false
 
+wait_for_http() {
+  local url="$1"
+  local label="$2"
+
+  for _ in $(seq 1 30); do
+    if curl --fail --silent --show-error "$url" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "BLOCKED: $label 未在 30 秒内就绪：$url" >&2
+  return 1
+}
+
 cleanup() {
   local exit_code=$?
   if [[ "$STARTED" == true ]]; then
@@ -129,7 +144,7 @@ for _ in $(seq 1 30); do
 done
 nc -z localhost 5432
 "${COMPOSE[@]}" exec -T postgres pg_isready -U mes -d mes >/dev/null
-curl -fsS http://localhost:3000/api/v1/health >/dev/null
+wait_for_http "http://localhost:3000/api/v1/health" "PostgreSQL 重启后的后端健康检查"
 echo "检查数据库迁移状态"
 npm --prefix "$ROOT_DIR/backend" run db:migrate
 echo "检查后端重启后的真实数据库 readiness"

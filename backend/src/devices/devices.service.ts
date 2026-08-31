@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { CorePersistenceService } from '../database/core-persistence.service';
 import { createId, MockEntity, timestamp } from '../common/mock.types';
 import { CreateDeviceDto } from './dto/create-device.dto';
@@ -22,6 +22,8 @@ export interface Device extends MockEntity {
 
 @Injectable()
 export class DevicesService implements OnModuleInit {
+  private readonly logger = new Logger(DevicesService.name);
+
   constructor(
     @Optional() private readonly persistence?: CorePersistenceService,
     @Optional() private readonly productionLines?: ProductionLinesService,
@@ -104,7 +106,7 @@ export class DevicesService implements OnModuleInit {
       updatedAt: now,
     };
     this.devices.set(device.id, device);
-    void this.persistence?.saveDevice(device);
+    this.persist('save device', this.persistence?.saveDevice(device));
     return device;
   }
 
@@ -122,7 +124,7 @@ export class DevicesService implements OnModuleInit {
 
     const updated: Device = { ...current, ...dto, updatedAt: timestamp() };
     this.devices.set(id, updated);
-    void this.persistence?.saveDevice(updated);
+    this.persist('save device', this.persistence?.saveDevice(updated));
     return updated;
   }
 
@@ -135,30 +137,53 @@ export class DevicesService implements OnModuleInit {
       updatedAt: timestamp(),
     };
     this.devices.set(id, updated);
-    void this.persistence?.saveDevice(updated);
+    this.persist('save device', this.persistence?.saveDevice(updated));
     return updated;
   }
 
   ingestTelemetry(tenantId: string, id: string, dto: IngestTelemetryDto): Device {
     const current = this.findOne(tenantId, id);
     const observedAt = dto.timestamp ?? timestamp();
-    const updated: Device = {
-      ...current,
-      status: 'online',
-      statusReason: '',
-      lastSeenAt: observedAt,
-      metrics: dto.metrics,
-      updatedAt: timestamp(),
-    };
-    this.devices.set(id, updated);
-    void this.persistence?.saveDevice(updated);
-    return updated;
+    return this.applyTelemetry(current, observedAt, dto.metrics, 'online', '');
+  }
+
+  /**
+   * Projects a protocol-neutral telemetry state onto the device ledger.
+   * Unknown source IDs are ignored because gateways may report devices before
+   * the MES asset catalog has been synchronized; known devices remain tenant
+   * and line scoped.
+   */
+  projectTelemetry(
+    tenantId: string,
+    lineId: string,
+    sourceDeviceId: string,
+    input: {
+      timestamp: string;
+      metrics: Record<string, number | string | boolean | null>;
+      status: 'online' | 'offline' | 'alarm';
+      statusReason?: string;
+    },
+  ): Device | undefined {
+    const device = this.findAll(tenantId, lineId).find((item) => (
+      item.id === sourceDeviceId
+      || item.id === `device-${sourceDeviceId}`
+      || item.code === sourceDeviceId
+      || item.code === sourceDeviceId.toUpperCase()
+    ));
+    if (!device) return undefined;
+    return this.applyTelemetry(
+      device,
+      input.timestamp,
+      input.metrics,
+      input.status,
+      input.statusReason ?? '',
+    );
   }
 
   remove(tenantId: string, id: string): { id: string; deleted: true } {
     this.findOne(tenantId, id);
     this.devices.delete(id);
-    void this.persistence?.deleteDevice(id);
+    this.persist('delete device', this.persistence?.deleteDevice(id));
     return { id, deleted: true };
   }
 
@@ -186,5 +211,40 @@ export class DevicesService implements OnModuleInit {
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     };
+  }
+
+  private applyTelemetry(
+    current: Device,
+    observedAt: string,
+    metrics: Record<string, number | string | boolean | null>,
+    status: Device['status'],
+    statusReason: string,
+  ): Device {
+    if (Number.isNaN(Date.parse(observedAt))) {
+      throw new BadRequestException('timestamp must be an ISO timestamp');
+    }
+    if (current.lastSeenAt) {
+      const currentTimestamp = Date.parse(current.lastSeenAt);
+      const incomingTimestamp = Date.parse(observedAt);
+      if (!Number.isNaN(currentTimestamp) && incomingTimestamp <= currentTimestamp) return current;
+    }
+    const updated: Device = {
+      ...current,
+      status,
+      statusReason,
+      lastSeenAt: observedAt,
+      metrics,
+      updatedAt: timestamp(),
+    };
+    this.devices.set(current.id, updated);
+    this.persist('save device telemetry projection', this.persistence?.saveDevice(updated));
+    return updated;
+  }
+
+  private persist(operation: string, promise?: Promise<void>): void {
+    if (!promise) return;
+    void promise.catch((error: unknown) => {
+      this.logger.error(`${operation} failed; in-memory device state remains available: ${error instanceof Error ? error.message : String(error)}`);
+    });
   }
 }

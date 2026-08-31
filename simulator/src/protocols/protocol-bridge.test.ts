@@ -1,7 +1,7 @@
 import { connect, createServer } from "node:net";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ModbusTcpSimulatorServer, ModbusTcpTelemetryClient, OpcUaTelemetrySimulator, parseProtocolEndpoint, type DeterministicTelemetryValues } from "./protocol-bridge";
+import { ModbusTcpSimulatorServer, ModbusTcpTelemetryClient, OpcUaTelemetrySimulator, parseOpcUaSecurity, parseProtocolEndpoint, type DeterministicTelemetryValues } from "./protocol-bridge";
 import { ProtocolRunner } from "./protocol-runner";
 
 const values: DeterministicTelemetryValues = {
@@ -14,6 +14,9 @@ test("protocol endpoint validation rejects unsafe or incomplete configuration", 
   assert.throws(() => parseProtocolEndpoint({ protocol: "opc-ua", host: "", port: 4842 }), /host is required/);
   assert.throws(() => parseProtocolEndpoint({ protocol: "modbus-tcp", host: "127.0.0.1", port: 70000 }), /port must be/);
   assert.throws(() => new ProtocolRunner({ protocol: "mtconnect", host: "", port: 16014 }), /host is required/);
+  assert.deepEqual(parseOpcUaSecurity(), { securityMode: "None", securityPolicy: "None", authentication: "anonymous" });
+  assert.throws(() => parseOpcUaSecurity({ securityPolicy: "Basic256Sha256" }), /securityPolicy None only/);
+  assert.throws(() => parseOpcUaSecurity({ authentication: "username-password" }), /anonymous authentication only/);
 });
 
 test("Modbus TCP server/client reads deterministic telemetry and maps to canonical MQTT", async () => {
@@ -80,6 +83,42 @@ test("Modbus TCP rejects a bad function frame and surfaces disconnects", async (
     await server.close();
     await assert.rejects(new ModbusTcpTelemetryClient({ tenantId: values.tenantId, lineId: values.lineId, deviceId: values.deviceId, timestamp: values.timestamp }, "127.0.0.1", 16003).readTelemetry());
   } finally { await server.close().catch(() => undefined); }
+});
+
+test("Modbus TCP reconnects after a remote disconnect without accepting stale data", async () => {
+  let connections = 0;
+  const sockets = new Set<import("node:net").Socket>();
+  const server = createServer((socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+    connections += 1;
+    if (connections === 1) {
+      socket.end();
+      return;
+    }
+    socket.once("data", () => {
+      const registers = Buffer.alloc(20);
+      registers.writeUInt16BE(1, 0);
+      registers.writeUInt16BE(425, 2);
+      registers.writeUInt16BE(84, 4);
+      registers.writeUInt32BE(100, 6);
+      registers.writeUInt32BE(98, 10);
+      registers.writeUInt32BE(2, 14);
+      const response = Buffer.alloc(9 + registers.length);
+      response.writeUInt16BE(1, 0); response.writeUInt16BE(3 + registers.length, 4); response[6] = 1; response[7] = 3; response[8] = registers.length;
+      registers.copy(response, 9);
+      socket.end(response);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(16015, "127.0.0.1", resolve));
+  try {
+    const message = await new ModbusTcpTelemetryClient({ tenantId: values.tenantId, lineId: values.lineId, deviceId: values.deviceId, timestamp: values.timestamp }, "127.0.0.1", 16015, 1, 1000).readTelemetry(2);
+    assert.equal((message.payload.data as Record<string, unknown>).totalCount, 100);
+    assert.equal(connections, 2);
+  } finally {
+    sockets.forEach((socket) => socket.destroy());
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
 });
 
 test("separate Modbus endpoints keep device telemetry isolated", async () => {

@@ -7,9 +7,10 @@ import { SimulatorControlController } from './simulator-control.controller';
 import { IngestionController } from './ingestion.controller';
 import { MQTT_CLIENT_FACTORY, MQTT_INGESTION_OPTIONS } from './mqtt.types';
 import { AuditModule } from '../audit/audit.module';
+import { DevicesModule } from '../devices/devices.module';
 
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, DevicesModule],
   providers: [
     DeviceTelemetryCache,
     AlarmDeduplicator,
