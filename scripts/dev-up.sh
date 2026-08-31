@@ -69,7 +69,9 @@ start_container_fallback() {
 start_infra() {
   if docker compose version >/dev/null 2>&1 || command -v docker-compose >/dev/null 2>&1; then
     local compose_args=(--profile infra up -d postgres mqtt)
-    [[ "${MES_OBJECT_STORAGE:-false}" == true ]] && compose_args=(--profile infra --profile object-storage up -d postgres mqtt minio)
+    case "${MES_OBJECT_STORAGE:-false}" in
+      true|minio|s3) compose_args=(--profile infra --profile object-storage up -d postgres mqtt minio) ;;
+    esac
     if ! docker_compose "${compose_args[@]}"; then
       echo "Docker Compose 启动基础设施失败，请检查 docker compose 日志" >&2
       return 1
@@ -80,7 +82,7 @@ start_infra() {
   echo "Docker Compose 不可用，使用 Docker Engine 启动本地依赖" >&2
   start_container_fallback mes-postgres postgres:16-alpine '-p 5432:5432'
   start_container_fallback mes-mqtt eclipse-mosquitto:2 '-p 1883:1883 -p 9001:9001'
-  if [[ "${MES_OBJECT_STORAGE:-false}" == true ]]; then
+  if [[ "${MES_OBJECT_STORAGE:-false}" == true || "${MES_OBJECT_STORAGE:-false}" == minio || "${MES_OBJECT_STORAGE:-false}" == s3 ]]; then
     start_container_fallback mes-minio minio/minio:latest '-p 9000:9000 -p 9002:9001' 'server /data --console-address :9001'
   fi
 }

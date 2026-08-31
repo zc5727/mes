@@ -40,6 +40,8 @@ export class DocumentsService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    const storageWithReadiness = this.storage as DocumentStorage & { ensureReady?: () => Promise<void> };
+    await storageWithReadiness.ensureReady?.();
     const snapshot = await this.persistence?.restore();
     if (snapshot?.documents.length) snapshot.documents.forEach((record) => this.records.set(record.tenantId, [...(this.records.get(record.tenantId) ?? []), record]));
   }

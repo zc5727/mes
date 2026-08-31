@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { DeleteObjectCommand, GetObjectCommand, PutBucketLifecycleConfigurationCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { CreateBucketCommand, DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutBucketLifecycleConfigurationCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import type { DocumentStorage } from './documents.types';
 
 export interface S3DocumentStorageOptions {
@@ -42,6 +42,25 @@ export class S3DocumentStorageAdapter implements DocumentStorage {
 
   async remove(storageKey: string): Promise<void> { await this.retry(() => this.client.send(new DeleteObjectCommand({ Bucket: this.options.bucket, Key: this.safeKey(storageKey) }))); }
 
+  /**
+   * Verifies the configured bucket before the application advertises document
+   * storage as ready. MinIO and S3 both make bucket creation idempotent at the
+   * application boundary by returning an already-exists error for a race.
+   */
+  async ensureReady(): Promise<void> {
+    try {
+      await this.retry(() => this.client.send(new HeadBucketCommand({ Bucket: this.options.bucket })));
+    } catch (error: unknown) {
+      if (!this.isMissingBucket(error)) throw error;
+      try {
+        await this.retry(() => this.client.send(new CreateBucketCommand({ Bucket: this.options.bucket })));
+      } catch (createError: unknown) {
+        if (!this.isAlreadyExists(createError)) throw createError;
+      }
+    }
+    await this.configureLifecycle();
+  }
+
   /** Apply a bucket lifecycle policy without pretending that malware scanning succeeded. */
   async configureLifecycle(): Promise<void> {
     if (this.options.lifecycleDays === 0) return;
@@ -61,12 +80,39 @@ export class S3DocumentStorageAdapter implements DocumentStorage {
     if (!key || key.startsWith('/') || key.split('/').some((segment) => segment === '..')) throw new BadRequestException('Invalid S3 document storage key');
     return key;
   }
+
+  private isMissingBucket(error: unknown): boolean {
+    const candidate = error as { name?: string; $metadata?: { httpStatusCode?: number }; Code?: string };
+    return candidate?.$metadata?.httpStatusCode === 404
+      || candidate?.name === 'NotFound'
+      || candidate?.name === 'NoSuchBucket'
+      || candidate?.Code === 'NoSuchBucket';
+  }
+
+  private isAlreadyExists(error: unknown): boolean {
+    const candidate = error as { name?: string; $metadata?: { httpStatusCode?: number }; Code?: string };
+    return candidate?.$metadata?.httpStatusCode === 409
+      || candidate?.name === 'BucketAlreadyOwnedByYou'
+      || candidate?.name === 'BucketAlreadyExists'
+      || candidate?.Code === 'BucketAlreadyOwnedByYou'
+      || candidate?.Code === 'BucketAlreadyExists';
+  }
 }
 
 export function s3DocumentStorageOptions(env: NodeJS.ProcessEnv = process.env): S3DocumentStorageOptions {
-  const endpoint = env.MES_OBJECT_STORAGE_ENDPOINT ?? env.S3_ENDPOINT ?? '';
+  const endpoint = env.MES_OBJECT_STORAGE_ENDPOINT
+    ?? env.S3_ENDPOINT
+    ?? minioEndpoint(env);
   const bucket = env.MES_OBJECT_STORAGE_BUCKET ?? env.S3_BUCKET ?? 'mes-documents';
-  const accessKeyId = env.MES_OBJECT_STORAGE_ACCESS_KEY ?? env.S3_ACCESS_KEY ?? '';
-  const secretAccessKey = env.MES_OBJECT_STORAGE_SECRET_KEY ?? env.S3_SECRET_KEY ?? '';
+  const accessKeyId = env.MES_OBJECT_STORAGE_ACCESS_KEY ?? env.S3_ACCESS_KEY ?? env.MINIO_ACCESS_KEY ?? '';
+  const secretAccessKey = env.MES_OBJECT_STORAGE_SECRET_KEY ?? env.S3_SECRET_KEY ?? env.MINIO_SECRET_KEY ?? '';
   return { endpoint, bucket, region: env.S3_REGION ?? 'us-east-1', accessKeyId, secretAccessKey, forcePathStyle: (env.S3_FORCE_PATH_STYLE ?? 'true') === 'true', maxAttempts: Number(env.S3_MAX_ATTEMPTS ?? 3), lifecycleDays: Number(env.S3_LIFECYCLE_DAYS ?? 0) };
+}
+
+function minioEndpoint(env: NodeJS.ProcessEnv): string {
+  const host = env.MINIO_ENDPOINT?.trim();
+  if (!host) return '';
+  if (/^https?:\/\//i.test(host)) return host;
+  const port = env.MINIO_PORT?.trim() || '9000';
+  return `http://${host}:${port}`;
 }

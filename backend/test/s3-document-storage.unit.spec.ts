@@ -26,7 +26,29 @@ describe('S3DocumentStorageAdapter', () => {
     await expect(storage.remove('../escape')).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('creates a missing bucket and applies the configured lifecycle policy', async () => {
+    const commands: string[] = [];
+    const client = { send: jest.fn(async (command: { constructor: { name: string } }) => {
+      commands.push(command.constructor.name);
+      if (command.constructor.name === 'HeadBucketCommand') {
+        const error = Object.assign(new Error('missing'), { name: 'NotFound', $metadata: { httpStatusCode: 404 } });
+        throw error;
+      }
+      return {};
+    }) } as never;
+    const storage = new S3DocumentStorageAdapter({ endpoint: 'http://minio:9000', bucket: 'mes-documents', region: 'us-east-1', accessKeyId: 'key', secretAccessKey: 'secret', forcePathStyle: true, maxAttempts: 1, lifecycleDays: 30 }, client);
+
+    await expect(storage.ensureReady()).resolves.toBeUndefined();
+    expect(commands).toEqual(['HeadBucketCommand', 'CreateBucketCommand', 'PutBucketLifecycleConfigurationCommand']);
+  });
+
   it('loads explicit MinIO/S3 configuration without claiming scanner success', () => {
     expect(s3DocumentStorageOptions({ MES_OBJECT_STORAGE_ENDPOINT: 'http://localhost:9000', MES_OBJECT_STORAGE_BUCKET: 'mes-documents', MES_OBJECT_STORAGE_ACCESS_KEY: 'mes_dev', MES_OBJECT_STORAGE_SECRET_KEY: 'secret', S3_LIFECYCLE_DAYS: '30' })).toMatchObject({ endpoint: 'http://localhost:9000', bucket: 'mes-documents', lifecycleDays: 30 });
+  });
+
+  it('supports the repository MinIO environment names used by local startup', () => {
+    expect(s3DocumentStorageOptions({ MINIO_ENDPOINT: 'localhost', MINIO_PORT: '9000', MINIO_ACCESS_KEY: 'mes_dev', MINIO_SECRET_KEY: 'mes_dev_secret' })).toMatchObject({
+      endpoint: 'http://localhost:9000', accessKeyId: 'mes_dev', secretAccessKey: 'mes_dev_secret',
+    });
   });
 });

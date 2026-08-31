@@ -18,7 +18,14 @@ import { AuditModule } from '../audit/audit.module';
     {
       provide: DOCUMENT_STORAGE,
       inject: [LocalDocumentStorageAdapter],
-      useFactory: (local: LocalDocumentStorageAdapter) => ['s3', 'minio'].includes(process.env.MES_OBJECT_STORAGE ?? '') ? new S3DocumentStorageAdapter(s3DocumentStorageOptions()) : local,
+      useFactory: (local: LocalDocumentStorageAdapter) => {
+        const mode = (process.env.MES_OBJECT_STORAGE ?? 'local').trim().toLowerCase();
+        // `true` is retained as a compatibility alias for the existing
+        // runtime scripts; explicit `minio`/`s3` remains the documented form.
+        return ['s3', 'minio', 'true'].includes(mode)
+          ? new S3DocumentStorageAdapter(s3DocumentStorageOptions())
+          : local;
+      },
     },
     { provide: DOCUMENT_SCANNER, useExisting: NoopDocumentSecurityScanner },
   ],
