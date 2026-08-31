@@ -78,12 +78,12 @@ export class WorkOrdersController {
   }
 
   @Patch(':id')
-  update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateWorkOrderDto, @Headers('x-user-id') userId?: string) {
-    return { data: this.workOrdersService.update(tenantId, id, dto, userId), tenantId };
+  async update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateWorkOrderDto, @Headers('x-user-id') userId?: string) {
+    return { data: await this.workOrdersService.updateReliable(tenantId, id, dto, userId), tenantId };
   }
 
   @Delete(':id')
-  remove(@TenantId() tenantId: string, @Param('id') id: string, @Headers('x-user-id') userId?: string) {
-    return { data: this.workOrdersService.remove(tenantId, id, userId), tenantId };
+  async remove(@TenantId() tenantId: string, @Param('id') id: string, @Headers('x-user-id') userId?: string) {
+    return { data: await this.workOrdersService.removeReliable(tenantId, id, userId), tenantId };
   }
 }

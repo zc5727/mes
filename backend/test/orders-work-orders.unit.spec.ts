@@ -56,6 +56,40 @@ describe('production execution flow', () => {
     expect(workOrders.findOne('tenant-demo', workOrder.id).status).toBe('draft');
   });
 
+  it('rolls back a work-order edit when durable persistence rejects it', async () => {
+    const persistence = { saveWorkOrder: jest.fn().mockRejectedValue(new Error('database unavailable')) };
+    const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService(), undefined, undefined, undefined, persistence as never);
+    const workOrder = workOrders.create('tenant-demo', {
+      orderNo: 'WO-EDIT-DURABLE-FAIL', productCode: 'P', productName: '原产品', lineId: 'line-cnc', plannedQty: 1,
+      dueAt: '2026-08-29T18:00:00.000Z',
+    }, 'system', false);
+
+    await expect(workOrders.updateReliable('tenant-demo', workOrder.id, { productName: '新产品' }))
+      .rejects.toThrow('database unavailable');
+    expect(workOrders.findOne('tenant-demo', workOrder.id).productName).toBe('原产品');
+  });
+
+  it('restores a work order and its line reference when durable deletion rejects it', async () => {
+    const persistence = {
+      saveWorkOrder: jest.fn().mockResolvedValue(undefined),
+      deleteWorkOrder: jest.fn().mockRejectedValue(new Error('database unavailable')),
+    };
+    const lines = new ProductionLinesService();
+    const workOrders = new WorkOrdersService(new OrdersService(), lines, undefined, undefined, undefined, persistence as never);
+    const workOrder = workOrders.create('tenant-demo', {
+      orderNo: 'WO-DELETE-DURABLE-FAIL', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1,
+      dueAt: '2026-08-29T18:00:00.000Z',
+    }, 'system', false);
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' });
+
+    await expect(workOrders.removeReliable('tenant-demo', workOrder.id)).rejects.toThrow('database unavailable');
+    expect(workOrders.findOne('tenant-demo', workOrder.id).id).toBe(workOrder.id);
+    expect(() => workOrders.create('tenant-demo', {
+      orderNo: 'WO-LINE-REFERENCE-CHECK', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1,
+      dueAt: '2026-08-29T18:00:00.000Z',
+    })).not.toThrow();
+  });
+
   it('does not retain demo seeds when the enabled database restores an empty snapshot', async () => {
     const persistence = {
       isEnabled: () => true,

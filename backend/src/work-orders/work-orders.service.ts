@@ -258,7 +258,7 @@ export class WorkOrdersService implements OnModuleInit {
     }
   }
 
-  update(tenantId: string, id: string, dto: UpdateWorkOrderDto, actorId = 'system'): WorkOrder {
+  update(tenantId: string, id: string, dto: UpdateWorkOrderDto, actorId = 'system', persist = true): WorkOrder {
     const current = this.findOne(tenantId, id);
     if (current.status === 'completed' || current.status === 'cancelled') {
       throw new ConflictException(`Work orders in ${current.status} status cannot be edited`);
@@ -288,7 +288,7 @@ export class WorkOrdersService implements OnModuleInit {
       this.productionLinesService.registerWorkOrder(tenantId, dto.lineId);
     }
     this.workOrders.set(id, updated);
-    void this.persistence?.saveWorkOrder(updated);
+    if (persist) void this.persistence?.saveWorkOrder(updated);
     this.auditService?.record(tenantId, actorId.trim() || 'system', {
       action: 'work_order.updated',
       resource: 'work_order',
@@ -298,6 +298,23 @@ export class WorkOrdersService implements OnModuleInit {
       details: { orderNo: updated.orderNo, lineId: updated.lineId, plannedQty: updated.plannedQty },
     });
     return updated;
+  }
+
+  /** Waits for durable persistence before acknowledging a work-order edit. */
+  async updateReliable(tenantId: string, id: string, dto: UpdateWorkOrderDto, actorId = 'system'): Promise<WorkOrder> {
+    const current = this.findOne(tenantId, id);
+    const updated = this.update(tenantId, id, dto, actorId, false);
+    try {
+      await this.persistence?.saveWorkOrder(updated);
+      return updated;
+    } catch (error: unknown) {
+      this.workOrders.set(id, current);
+      if (updated.lineId !== current.lineId) {
+        this.productionLinesService.unregisterWorkOrder(tenantId, updated.lineId);
+        this.productionLinesService.registerWorkOrder(tenantId, current.lineId);
+      }
+      throw error;
+    }
   }
 
   report(tenantId: string, id: string, dto: ReportWorkOrderDto, actorId = 'system', rollbackOnFailure = false): { workOrder: WorkOrder; report: WorkOrderReport } {
@@ -681,7 +698,7 @@ export class WorkOrdersService implements OnModuleInit {
     }
   }
 
-  remove(tenantId: string, id: string, actorId = 'system'): { id: string; deleted: true } {
+  remove(tenantId: string, id: string, actorId = 'system', persist = true): { id: string; deleted: true } {
     const workOrder = this.findOne(tenantId, id);
     if (workOrder.status === 'in_progress') {
       throw new ConflictException('In-progress work orders cannot be deleted');
@@ -691,7 +708,7 @@ export class WorkOrdersService implements OnModuleInit {
     }
 
     this.workOrders.delete(id);
-    void this.persistence?.deleteWorkOrder(id);
+    if (persist) void this.persistence?.deleteWorkOrder(id);
     this.productionLinesService.unregisterWorkOrder(tenantId, workOrder.lineId);
     this.auditService?.record(tenantId, actorId.trim() || 'system', {
       action: 'work_order.deleted',
@@ -701,5 +718,19 @@ export class WorkOrdersService implements OnModuleInit {
       details: { orderNo: workOrder.orderNo, lineId: workOrder.lineId },
     });
     return { id, deleted: true };
+  }
+
+  /** Deletes a work order only after the durable delete succeeds. */
+  async removeReliable(tenantId: string, id: string, actorId = 'system'): Promise<{ id: string; deleted: true }> {
+    const current = this.findOne(tenantId, id);
+    const result = this.remove(tenantId, id, actorId, false);
+    try {
+      await this.persistence?.deleteWorkOrder(id);
+      return result;
+    } catch (error: unknown) {
+      this.workOrders.set(id, current);
+      this.productionLinesService.registerWorkOrder(tenantId, current.lineId);
+      throw error;
+    }
   }
 }
