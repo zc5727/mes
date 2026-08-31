@@ -83,7 +83,7 @@ npm --prefix third_party/threejs-factory-demo run build
 ./scripts/verify-runtime.sh --object-storage
 ```
 
-该脚本覆盖服务启动、健康检查、浏览器 smoke、API、MQTT、故障闭环和 PostgreSQL 容器重启。本轮实测已在 `DATABASE_ENABLED=true` 下完成依赖 readiness、14 张表校验和迁移回滚，但 API smoke 因默认端口 3199 与托管 Backend 端口 3000 不一致失败；因此不能把该命令记为真实运行闭环通过。
+该脚本覆盖服务启动、健康检查、浏览器 smoke、API、MQTT、故障闭环和 PostgreSQL 容器重启。最近一次实测在 `DATABASE_ENABLED=true` 下完成依赖 readiness、14 张表校验、迁移回滚和业务 smoke，但 PostgreSQL 重启后 Backend 健康检查失败，退出码 7；因此不能把该命令记为真实运行闭环通过。
 
 ### 4.3 浏览器/桌面验收
 
