@@ -50,4 +50,17 @@ describe('InventoryService', () => {
     expect(service.count('tenant-demo', 'factory-demo', count)).toEqual(first);
     expect(service.listLedger('tenant-demo', 'factory-demo')).toHaveLength(2);
   });
+
+  it('rolls back balance and ledger when durable stock movement fails', async () => {
+    const persistence = { saveAuxBatchReliable: jest.fn().mockRejectedValue(new Error('database unavailable')) };
+    const service = new InventoryService(persistence as never);
+    service.createMaterial('tenant-demo', 'factory-demo', { code: 'MAT-ROLLBACK', name: 'Steel', unit: 'kg' }, 'system', false);
+    service.createLocation('tenant-demo', 'factory-demo', { warehouseCode: 'WH-01', locationCode: 'A-ROLLBACK' }, 'system', false);
+
+    await expect(service.receiptReliable('tenant-demo', 'factory-demo', {
+      materialCode: 'MAT-ROLLBACK', batchNo: 'B-ROLLBACK', locationCode: 'A-ROLLBACK', quantity: 10, idempotencyKey: 'receipt-rollback',
+    })).rejects.toThrow('database unavailable');
+    expect(service.listBalances('tenant-demo', 'factory-demo', {})).toHaveLength(0);
+    expect(service.listLedger('tenant-demo', 'factory-demo')).toHaveLength(0);
+  });
 });
