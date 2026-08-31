@@ -28,9 +28,18 @@ const STATUS_TRANSITIONS: Record<DocumentStatus, DocumentStatus[]> = {
   archived: [],
 };
 
+interface AnalysisJob {
+  tenantId: string;
+  documentId: string;
+  actorId: string;
+  attempts: number;
+  queuedAt: string;
+}
+
 @Injectable()
 export class DocumentsService implements OnModuleInit {
   private readonly records = new Map<string, DocumentRecord[]>();
+  private readonly analysisJobs = new Map<string, AnalysisJob>();
 
   constructor(
     @Inject(DOCUMENT_STORAGE) private readonly storage: DocumentStorage,
@@ -44,6 +53,11 @@ export class DocumentsService implements OnModuleInit {
     await storageWithReadiness.ensureReady?.();
     const snapshot = await this.persistence?.restore();
     if (snapshot?.documents.length) snapshot.documents.forEach((record) => this.records.set(record.tenantId, [...(this.records.get(record.tenantId) ?? []), record]));
+    for (const record of snapshot?.documents ?? []) {
+      if (record.analysisStatus === 'queued' || record.analysisStatus === 'processing') {
+        this.scheduleAnalysis(record.tenantId, record.id, 'system');
+      }
+    }
   }
 
   async upload(tenantId: string, dto: UploadDocumentDto, file?: UploadedDocumentFile, persist = true): Promise<DocumentRecord> {
@@ -221,6 +235,48 @@ export class DocumentsService implements OnModuleInit {
     );
   }
 
+  /**
+   * Queues a document analysis job and returns immediately. The persisted
+   * status makes restarts and the UI's polling behavior explicit; a failed
+   * job remains retryable instead of being mistaken for a valid analysis.
+   */
+  async queueAnalysis(tenantId: string, id: string, actorId: string): Promise<DocumentRecord> {
+    const current = this.findOne(tenantId, id);
+    if (current.analysisStatus === 'confirmed') {
+      throw new ConflictException('Confirmed document analysis cannot be queued again');
+    }
+    const key = this.analysisKey(tenantId, id);
+    if (this.analysisJobs.has(key) || current.analysisStatus === 'queued' || current.analysisStatus === 'processing') {
+      return current;
+    }
+    const queuedAt = timestamp();
+    const job: AnalysisJob = { tenantId, documentId: id, actorId: actorId.trim(), attempts: 0, queuedAt };
+    this.analysisJobs.set(key, job);
+    const queued = this.replace(current, {
+      analysisStatus: 'queued',
+      updatedAt: queuedAt,
+      trace: [...current.trace, this.trace('analysis_queued', queuedAt, job.actorId, createId('trace'), { queuedAt })],
+    }, job.actorId, 'document.analysis_queued', false);
+    try {
+      await this.persistence?.saveDocumentReliable(queued);
+    } catch (error: unknown) {
+      this.analysisJobs.delete(key);
+      this.records.set(tenantId, this.list(tenantId).map((item) => item.id === id ? current : item));
+      throw error;
+    }
+    this.scheduleAnalysis(tenantId, id, job.actorId);
+    return queued;
+  }
+
+  /** Requeues only a failed analysis; successful or in-flight jobs are idempotent. */
+  async retryAnalysis(tenantId: string, id: string, actorId: string): Promise<DocumentRecord> {
+    const current = this.findOne(tenantId, id);
+    if (current.analysisStatus !== 'failed') {
+      throw new ConflictException('Only failed document analysis can be retried');
+    }
+    return this.queueAnalysis(tenantId, id, actorId);
+  }
+
   confirmAnalysis(tenantId: string, id: string, dto: ConfirmDocumentAnalysisDto, persist = true): DocumentRecord {
     const current = this.findOne(tenantId, id);
     if (current.analysisStatus !== 'draft') throw new ConflictException('Only an analysis draft can be confirmed');
@@ -251,6 +307,45 @@ export class DocumentsService implements OnModuleInit {
     return (this.records.get(tenantId) ?? [])
       .filter((record) => record.documentKey === documentKey.trim())
       .sort((left, right) => left.version - right.version);
+  }
+
+  private scheduleAnalysis(tenantId: string, id: string, actorId: string): void {
+    const key = this.analysisKey(tenantId, id);
+    const job = this.analysisJobs.get(key) ?? { tenantId, documentId: id, actorId: actorId.trim() || 'system', attempts: 0, queuedAt: timestamp() };
+    this.analysisJobs.set(key, job);
+    setTimeout(() => { void this.processAnalysis(job); }, 0);
+  }
+
+  private async processAnalysis(job: AnalysisJob): Promise<void> {
+    const key = this.analysisKey(job.tenantId, job.documentId);
+    const current = this.findOne(job.tenantId, job.documentId);
+    if (current.analysisStatus === 'confirmed' || !this.analysisJobs.has(key)) return;
+    job.attempts += 1;
+    const startedAt = timestamp();
+    const processing = this.replace(current, {
+      analysisStatus: 'processing',
+      updatedAt: startedAt,
+      trace: [...current.trace, this.trace('analysis_started', startedAt, job.actorId, createId('trace'), { attempt: job.attempts })],
+    }, job.actorId, 'document.analysis_started');
+    try {
+      const { record, content } = await this.readContent(job.tenantId, job.documentId);
+      await this.saveAnalysisDraftReliable(job.tenantId, job.documentId, this.structuralAnalysis(record, content), job.actorId);
+      this.analysisJobs.delete(key);
+    } catch (error: unknown) {
+      const failedAt = timestamp();
+      const message = this.errorMessage(error);
+      this.replace(processing, {
+        analysisStatus: 'failed',
+        updatedAt: failedAt,
+        analysisDraft: { analyzer: 'local-structural-v1', requiresHumanReview: true, error: message, failedAt },
+        trace: [...processing.trace, this.trace('analysis_failed', failedAt, job.actorId, createId('trace'), { attempt: job.attempts, error: message })],
+      }, job.actorId, 'document.analysis_failed');
+      this.analysisJobs.delete(key);
+    }
+  }
+
+  private analysisKey(tenantId: string, id: string): string {
+    return `${tenantId}:${id}`;
   }
 
   private replace(current: DocumentRecord, patch: Partial<DocumentRecord>, actorId = 'system', action = 'document.updated', persist = true): DocumentRecord {

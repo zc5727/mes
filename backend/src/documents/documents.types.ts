@@ -1,9 +1,9 @@
 export type DocumentStatus = 'draft' | 'reviewing' | 'approved' | 'released' | 'rejected' | 'archived';
 
-export type DocumentAnalysisStatus = 'not_started' | 'draft' | 'confirmed';
+export type DocumentAnalysisStatus = 'not_started' | 'queued' | 'processing' | 'failed' | 'draft' | 'confirmed';
 
 export interface DocumentTraceEvent {
-  type: 'uploaded' | 'status_changed' | 'analysis_draft_saved' | 'analysis_confirmed';
+  type: 'uploaded' | 'status_changed' | 'analysis_queued' | 'analysis_started' | 'analysis_failed' | 'analysis_draft_saved' | 'analysis_confirmed';
   at: string;
   actorId: string;
   traceId: string;

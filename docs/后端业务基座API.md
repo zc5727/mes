@@ -59,6 +59,8 @@ GET /foundation/documents/:id/preview
 POST /foundation/documents/:id/analyze
 POST /foundation/documents/:id/analysis-draft
 POST /foundation/documents/:id/analysis/confirm
+POST /foundation/documents/:id/analysis/jobs
+POST /foundation/documents/:id/analysis/retry
 PATCH /foundation/documents/:id/status
 GET/POST /foundation/quality-records
 ```

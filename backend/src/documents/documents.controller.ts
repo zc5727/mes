@@ -58,6 +58,16 @@ export class DocumentsController {
     return { data: await this.documentsService.analyze(tenantId, id, dto.actorId), tenantId };
   }
 
+  @Post(':id/analysis/jobs')
+  async queueAnalysis(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: AnalyzeDocumentDto) {
+    return { data: await this.documentsService.queueAnalysis(tenantId, id, dto.actorId), tenantId };
+  }
+
+  @Post(':id/analysis/retry')
+  async retryAnalysis(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: AnalyzeDocumentDto) {
+    return { data: await this.documentsService.retryAnalysis(tenantId, id, dto.actorId), tenantId };
+  }
+
   @Post(':id/analysis/confirm')
   async confirmAnalysis(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: ConfirmDocumentAnalysisDto) {
     return { data: await this.documentsService.confirmAnalysisReliable(tenantId, id, dto), tenantId };

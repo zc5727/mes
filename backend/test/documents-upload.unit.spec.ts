@@ -67,6 +67,23 @@ describe('document upload boundary', () => {
     }));
   });
 
+  it('supports asynchronous analysis with a retryable failure state', async () => {
+    const stored = Buffer.from('%PDF-1.7\n/Type /Page\n');
+    storage.read = jest.fn().mockRejectedValueOnce(new Error('temporary storage outage')).mockResolvedValue(stored);
+    const service = new DocumentsService(storage);
+    const record = await service.upload('tenant-demo', { documentKey: 'drawing-async-001', uploadedBy: 'engineer' }, file());
+
+    const queued = await service.queueAnalysis('tenant-demo', record.id, 'engineer');
+    expect(queued.analysisStatus).toBe('queued');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(service.findOne('tenant-demo', record.id).analysisStatus).toBe('failed');
+
+    const retried = await service.retryAnalysis('tenant-demo', record.id, 'engineer');
+    expect(retried.analysisStatus).toBe('queued');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(service.findOne('tenant-demo', record.id).analysisStatus).toBe('draft');
+  });
+
   it('removes the binary and memory projection when metadata persistence fails', async () => {
     const persistence = { saveDocumentReliable: jest.fn().mockRejectedValue(new Error('database unavailable')) };
     const service = new DocumentsService(storage, persistence as never);

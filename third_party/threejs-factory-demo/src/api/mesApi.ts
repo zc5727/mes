@@ -364,6 +364,14 @@ export function analyzeDocument(id: string, actorId: string) {
   return post<Record<string, unknown>>(`/foundation/documents/${encodeURIComponent(id)}/analyze`, { actorId });
 }
 
+export function queueDocumentAnalysis(id: string, actorId: string) {
+  return post<Record<string, unknown>>(`/foundation/documents/${encodeURIComponent(id)}/analysis/jobs`, { actorId });
+}
+
+export function retryDocumentAnalysis(id: string, actorId: string) {
+  return post<Record<string, unknown>>(`/foundation/documents/${encodeURIComponent(id)}/analysis/retry`, { actorId });
+}
+
 export function confirmDocumentAnalysis(id: string, reviewerId: string, analysis?: Record<string, unknown>) {
   return post<Record<string, unknown>>(`/foundation/documents/${encodeURIComponent(id)}/analysis/confirm`, { reviewerId, analysis });
 }
