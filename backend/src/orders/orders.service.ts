@@ -55,7 +55,7 @@ export class OrdersService implements OnModuleInit {
     return order;
   }
 
-  create(tenantId: string, dto: CreateOrderDto, actorId = 'system'): ProductionOrder {
+  create(tenantId: string, dto: CreateOrderDto, actorId = 'system', persist = true): ProductionOrder {
     if (this.findAll(tenantId).some((order) => order.orderNo === dto.orderNo)) {
       throw new ConflictException(`Order ${dto.orderNo} already exists`);
     }
@@ -67,9 +67,25 @@ export class OrdersService implements OnModuleInit {
       dueAt: dto.dueAt, priority: dto.priority, status: 'planned', createdAt: now, updatedAt: now,
     };
     this.orders.set(order.id, order);
-    void this.persistence?.saveOrder(order);
+    if (persist) void this.persistence?.saveOrder(order);
     this.auditService?.record(tenantId, actorId.trim() || 'system', { action: 'order.create', resource: 'production_order', resourceId: order.id, details: { orderNo: order.orderNo, plannedQty: order.plannedQty } });
     return order;
+  }
+
+  /**
+   * Durable HTTP boundary for order creation. The synchronous method remains
+   * available to the in-memory execution adapter and unit tests, while API
+   * writes roll back their memory projection if PostgreSQL rejects them.
+   */
+  async createReliable(tenantId: string, dto: CreateOrderDto, actorId = 'system'): Promise<ProductionOrder> {
+    const order = this.create(tenantId, dto, actorId, false);
+    try {
+      await this.persistence?.saveOrder(order);
+      return order;
+    } catch (error: unknown) {
+      this.orders.delete(order.id);
+      throw error;
+    }
   }
 
   recordProgress(tenantId: string, id: string, completedQty: number): ProductionOrder {

@@ -16,7 +16,7 @@ export class OrdersController {
   findOne(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.ordersService.findOne(tenantId, id), tenantId }; }
 
   @Post()
-  create(@TenantId() tenantId: string, @Body() dto: CreateOrderDto, @Headers('x-user-id') userId?: string) {
-    return { data: this.ordersService.create(tenantId, dto, userId), tenantId };
+  async create(@TenantId() tenantId: string, @Body() dto: CreateOrderDto, @Headers('x-user-id') userId?: string) {
+    return { data: await this.ordersService.createReliable(tenantId, dto, userId), tenantId };
   }
 }

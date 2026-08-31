@@ -8,6 +8,22 @@ import { AuditService } from '../src/audit/audit.service';
 import { MaintenanceService } from '../src/maintenance/maintenance.service';
 
 describe('production execution flow', () => {
+  it('does not acknowledge an order when durable persistence rejects it', async () => {
+    const persistence = {
+      isEnabled: () => true,
+      restore: jest.fn().mockResolvedValue({ factories: [], lines: [], devices: [], orders: [], workOrders: [], reports: [] }),
+      saveOrder: jest.fn().mockRejectedValue(new Error('database unavailable')),
+    };
+    const orders = new OrdersService(persistence as never);
+    await orders.onModuleInit();
+
+    await expect(orders.createReliable('tenant-demo', {
+      orderNo: 'PO-DURABLE-FAIL', productCode: 'P', productName: '产品', plannedQty: 1,
+      dueAt: '2026-08-29T18:00:00.000Z', priority: 'normal',
+    })).rejects.toThrow('database unavailable');
+    expect(orders.findAll('tenant-demo')).toHaveLength(0);
+  });
+
   it('does not retain demo seeds when the enabled database restores an empty snapshot', async () => {
     const persistence = {
       isEnabled: () => true,
