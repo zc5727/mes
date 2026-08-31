@@ -189,6 +189,22 @@ npm run protocols:smoke
 
 该测试只监听 `127.0.0.1:16002`、`16003` 和 `4842`，不连接真实设备。
 
+也可以从模拟器启动入口运行单协议本地 smoke，并将 canonical telemetry 输出到 stdout：
+
+```bash
+npm run protocols:smoke:modbus
+npm run protocols:smoke:opcua
+```
+
+等价的可配置入口：
+
+```bash
+SIMULATOR_PROTOCOL=modbus-tcp SIMULATOR_PROTOCOL_HOST=127.0.0.1 SIMULATOR_PROTOCOL_PORT=1502 npm run dev
+SIMULATOR_PROTOCOL=opc-ua SIMULATOR_PROTOCOL_PORT=4841 MQTT_URL=mqtt://localhost:1883 npm run dev
+```
+
+设置 `MQTT_URL` 时，读取结果会通过现有 `MessagePublisher` 发布到 canonical MQTT topic；未设置时打印到 stdout。`SIMULATOR_PROTOCOL` 只启动只读协议联调分支，不启动产线控制，也不发送设备写入命令。
+
 ## 故障注入
 
 故障注入接口已封装在 `FactorySimulator` 和 `ProductionLineSimulator` 中，供后续 REST、WebSocket 或测试脚本调用：
