@@ -33,6 +33,8 @@ export class RoleCapabilityGuard implements CanActivate {
       ROUTE_CAPABILITY_KEY,
       [context.getHandler(), context.getClass()],
     );
+    const userRole = this.headerValue(request.headers['x-user-role']);
+    this.assertRoleHeaderConsistency(userRole, request.headers['x-role']);
 
     // Read-only requests remain compatible even when their controller also
     // contains administrative write routes.
@@ -46,7 +48,7 @@ export class RoleCapabilityGuard implements CanActivate {
 
     if (capability === 'read') return true;
 
-    const role = this.headerValue(request.headers['x-user-role']);
+    const role = userRole;
     if (!role) {
       throw new UnauthorizedException(
         'ROLE_REQUIRED: x-user-role is required for write and control routes',
@@ -73,6 +75,20 @@ export class RoleCapabilityGuard implements CanActivate {
     const normalized = Array.isArray(value) ? value[0] : value;
     const trimmed = normalized?.trim();
     return trimmed || undefined;
+  }
+
+  private assertRoleHeaderConsistency(
+    userRole: string | undefined,
+    legacyRole: string | string[] | undefined,
+  ): void {
+    if (!userRole) return;
+    const normalizedLegacyRole = this.headerValue(legacyRole);
+    if (!normalizedLegacyRole) return;
+    if (this.normalizeRole(userRole) !== this.normalizeRole(normalizedLegacyRole)) {
+      throw new ForbiddenException(
+        'ROLE_MISMATCH: x-user-role and x-role must identify the same role',
+      );
+    }
   }
 
   private allowedRoles(
@@ -102,6 +118,11 @@ export class RoleCapabilityGuard implements CanActivate {
       quality_supervisor: 'engineer',
       'quality-supervisor': 'engineer',
       质量主管: 'engineer',
+      auditor: 'viewer',
+      观察员: 'viewer',
+      team_leader: 'viewer',
+      'team-leader': 'viewer',
+      班组长: 'viewer',
       system_admin: 'admin',
     };
     const normalized = role.trim().toLowerCase();

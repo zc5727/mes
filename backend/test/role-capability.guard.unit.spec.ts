@@ -4,14 +4,22 @@ import { Reflector } from '@nestjs/core';
 import { RoleCapabilityGuard } from '../src/common/role-capability.guard';
 import { ROUTE_CAPABILITY_KEY, type RouteCapability } from '../src/common/route-capability.decorator';
 
-function createContext(method: string, capability?: RouteCapability, role?: string): ExecutionContext {
+function createContext(
+  method: string,
+  capability?: RouteCapability,
+  role?: string,
+  legacyRole?: string,
+): ExecutionContext {
   const handler = () => undefined;
   if (capability) Reflect.defineMetadata(ROUTE_CAPABILITY_KEY, capability, handler);
   return {
     getHandler: () => handler,
     getClass: () => class TestController {},
     switchToHttp: () => ({
-      getRequest: () => ({ method, headers: { 'x-user-role': role } }),
+      getRequest: () => ({
+        method,
+        headers: { 'x-user-role': role, 'x-role': legacyRole },
+      }),
     }),
   } as unknown as ExecutionContext;
 }
@@ -40,8 +48,17 @@ describe('RoleCapabilityGuard', () => {
     expect(() => guard.canActivate(createContext('POST', 'control', 'operator')))
       .toThrow(ForbiddenException);
     expect(guard.canActivate(createContext('POST', 'control', 'engineer'))).toBe(true);
+    expect(guard.canActivate(
+      createContext('POST', 'control', 'plant_manager', 'supervisor'),
+    )).toBe(true);
     expect(guard.canActivate(createContext('POST', 'admin', 'admin'))).toBe(true);
     expect(() => guard.canActivate(createContext('POST', 'admin', 'supervisor')))
       .toThrow(ForbiddenException);
+  });
+
+  it('rejects contradictory role headers', () => {
+    expect(() => guard.canActivate(
+      createContext('POST', 'write', 'admin', 'operator'),
+    )).toThrow(/ROLE_MISMATCH/);
   });
 });
