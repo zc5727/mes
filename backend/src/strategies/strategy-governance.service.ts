@@ -334,7 +334,7 @@ export class StrategyGovernanceService implements OnModuleInit {
       throw new ConflictException('CONFIRMATION_NOT_APPROVED: an approved confirmationId is required before execution');
     }
     if (this.lifecycleFor(tenantId, simulationId) !== 'approved') throw new ConflictException('STRATEGY_NOT_APPROVED: strategy must be approved before simulated execution');
-    return this.updateLifecycle(tenantId, simulationId, 'simulated_execution', actor, traceId, '仅执行仿真副本，不控制真实设备或修改工单', sessionId);
+    return this.updateLifecycle(tenantId, simulationId, 'simulated_execution', actor, traceId, '仅执行仿真副本，不控制真实设备或修改工单', sessionId, confirmation.id);
   }
 
   private createHighRiskApprovals(tenantId: string, result: StrategySimulationResult): string[] {
@@ -373,14 +373,14 @@ export class StrategyGovernanceService implements OnModuleInit {
     return 'approved';
   }
 
-  private updateLifecycle(tenantId: string, simulationId: string, status: StrategyLifecycleStatus, actor: string, traceId: string, reason: string, sessionId?: string): TrackedStrategySimulation {
+  private updateLifecycle(tenantId: string, simulationId: string, status: StrategyLifecycleStatus, actor: string, traceId: string, reason: string, sessionId?: string, confirmationId?: string): TrackedStrategySimulation {
     const tracked = this.getSimulation(tenantId, simulationId);
     this.auditService.record(tenantId, actor, {
       action: `STRATEGY_${status.toUpperCase()}`,
       resource: 'strategy-simulation', resourceId: simulationId, operator: actor,
       object: `strategy-simulation:${simulationId}`, before: { lifecycleStatus: tracked.audit.lifecycleStatus },
       after: { lifecycleStatus: status, executionAllowed: false }, reason, traceId, result: 'success',
-      details: { lifecycleStatus: status, executionAllowed: false, sessionId },
+      details: { lifecycleStatus: status, executionAllowed: false, sessionId, confirmationId },
     });
     const updated = { result: tracked.result, audit: { ...tracked.audit, lifecycleStatus: status } };
     this.simulations.set(this.key(tenantId, simulationId), updated);

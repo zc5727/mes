@@ -15,7 +15,7 @@
 
 ## 治理与结果追踪
 
-每次正式 API 调用都会记录租户、调用人、仿真 ID、快照时间、候选数量、推荐动作和审批边界。当前结果追踪表为进程内持久化实现，按租户隔离；后续可在不改变 API 契约的前提下替换为数据库仓储：
+每次正式 API 调用都会记录租户、调用人、仿真 ID、快照时间、候选数量、推荐动作和审批边界。结果追踪通过 `StrategyPersistenceService` 写入 PostgreSQL 的 `strategy_runs` 及候选表，治理投影保存审批、生命周期、审计和幂等指纹；数据库不可用时仅作为明确的开发态内存降级，不宣称具备重启恢复能力：
 
 ```text
 GET /api/v1/strategies/simulations/:simulationId
@@ -33,7 +33,7 @@ POST /api/v1/strategies/simulations/:simulationId/execute
 
 正式仿真请求建议携带 `Idempotency-Key`。同一租户、同一 key 和同一快照会重放原结果，不重复创建审计和审批；同一 key 复用但快照不同会返回冲突。回滚接口只丢弃仿真建议并保留结果与审计轨迹，不回写设备、工单或产线。
 
-审批状态通过仿真专属接口读取，返回该仿真产生的审批记录（`pending`、`approved` 或 `rejected`）。审批决定不会触发策略执行；策略模块没有设备控制或工单写回能力。
+审批状态通过仿真专属接口读取，返回该仿真产生的审批记录（`pending`、`approved`、`rejected` 或 `revoked`）。执行接口必须提交已审批的 `confirmationId`；审批决定不会触发策略执行，重复执行和未审批执行都会被拒绝。策略模块没有设备控制或工单写回能力。
 
 ## Agent 受控访问
 
@@ -65,7 +65,7 @@ ERPNext Work Order
 
 ## 审批与回滚语义
 
-候选方案生成后即标记 `requiresApproval=true`，API 层先完成身份、角色和资源范围校验，再记录仿真审计。`impactAssessment.rollbackPlan` 的语义是丢弃仿真副本并恢复 `workOrders`、`lines`、`devices` 的未变更状态；它不是设备反向控制，也不会向外部 MES 写回。
+候选方案生成后即标记 `requiresApproval=true`，API 层先完成身份、角色和资源范围校验，再记录仿真审计。`impactAssessment.rollbackPlan` 的语义是丢弃仿真副本并恢复 `workOrders`、`lines`、`devices` 的未变更状态；它不是设备反向控制，也不会向外部 MES 写回。结果同时保存 `inputSummary`、`outputSummary`、`strategyVersion` 和 `simulationId`，用于审计和确定性回放。
 
 ## M4 统一结果与权限边界
 

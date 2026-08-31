@@ -59,9 +59,18 @@ export class StrategyEngineService {
       ...this.delayCandidates(snapshot),
     ].sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
     const snapshotCopy = this.cloneSnapshot(snapshot);
+    const simulationId = `sim-${this.hash(JSON.stringify(snapshot))}`;
+    const impactAssessment = {
+      affectedOrders: this.unique(candidates.flatMap((candidate) => candidate.impactAssessment.affectedOrders)),
+      affectedLines: this.unique(candidates.flatMap((candidate) => candidate.impactAssessment.affectedLines)),
+      affectedDevices: this.unique(candidates.flatMap((candidate) => candidate.impactAssessment.affectedDevices)),
+      candidateCount: candidates.length,
+      highRiskCandidateCount: candidates.filter((candidate) => candidate.risk === 'high').length,
+      executionAllowed: false as const,
+    };
 
     return {
-      simulationId: `sim-${this.hash(JSON.stringify(snapshot))}`,
+      simulationId,
       strategyVersion: 'rules-v1',
       generatedAt: snapshot.timestamp,
       snapshot: snapshotCopy,
@@ -70,12 +79,20 @@ export class StrategyEngineService {
       recommended: candidates[0] ?? null,
       requiresApproval: true,
       executionAllowed: false,
-      impactAssessment: {
-        affectedOrders: this.unique(candidates.flatMap((candidate) => candidate.impactAssessment.affectedOrders)),
-        affectedLines: this.unique(candidates.flatMap((candidate) => candidate.impactAssessment.affectedLines)),
-        affectedDevices: this.unique(candidates.flatMap((candidate) => candidate.impactAssessment.affectedDevices)),
+      impactAssessment,
+      inputSummary: {
+        snapshotHash: this.hash(JSON.stringify(snapshotCopy)),
+        lineCount: snapshotCopy.lines.length,
+        deviceCount: snapshotCopy.devices.length,
+        workOrderCount: snapshotCopy.workOrders.length,
+        riskSignalCount: risks.length,
+      },
+      outputSummary: {
         candidateCount: candidates.length,
-        highRiskCandidateCount: candidates.filter((candidate) => candidate.risk === 'high').length,
+        recommendedAction: candidates[0]?.action ?? null,
+        highRiskCandidateCount: impactAssessment.highRiskCandidateCount,
+        affectedOrderCount: impactAssessment.affectedOrders.length,
+        affectedLineCount: impactAssessment.affectedLines.length,
         executionAllowed: false,
       },
     };

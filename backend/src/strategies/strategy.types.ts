@@ -128,6 +128,23 @@ export interface StrategyAggregateImpactAssessment {
   executionAllowed: false;
 }
 
+export interface StrategyInputSummary {
+  snapshotHash: string;
+  lineCount: number;
+  deviceCount: number;
+  workOrderCount: number;
+  riskSignalCount: number;
+}
+
+export interface StrategyOutputSummary {
+  candidateCount: number;
+  recommendedAction: StrategyAction | null;
+  highRiskCandidateCount: number;
+  affectedOrderCount: number;
+  affectedLineCount: number;
+  executionAllowed: false;
+}
+
 export interface StrategySimulationResult {
   simulationId: string;
   strategyVersion: string;
@@ -139,4 +156,6 @@ export interface StrategySimulationResult {
   requiresApproval: true;
   executionAllowed: false;
   impactAssessment: StrategyAggregateImpactAssessment;
+  inputSummary: StrategyInputSummary;
+  outputSummary: StrategyOutputSummary;
 }

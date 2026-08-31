@@ -60,13 +60,15 @@ describe('strategy governance boundary (e2e)', () => {
       .set(identity('supervisor', 'LINE-01,LINE-02')).send({ confirmationId: approvalId }).expect(200);
     expect(executed.body.data.audit.lifecycleStatus).toBe('simulated_execution');
     expect(executed.body.data.result.executionAllowed).toBe(false);
+    expect(executed.body.data.result.inputSummary).toEqual(expect.objectContaining({ snapshotHash: expect.any(String) }));
+    expect(executed.body.data.result.outputSummary).toEqual(expect.objectContaining({ executionAllowed: false }));
     const auditLogs = await request(server).get('/api/v1/audit/logs')
       .set(identity('supervisor', 'LINE-01,LINE-02')).expect(200);
     expect(auditLogs.body.data).toEqual(expect.arrayContaining([
       expect.objectContaining({
         action: 'STRATEGY_SIMULATED_EXECUTION',
         traceId: 'trace-supervisor',
-        details: expect.objectContaining({ sessionId: 'session-supervisor' }),
+        details: expect.objectContaining({ sessionId: 'session-supervisor', confirmationId: approvalId }),
       }),
     ]));
 
