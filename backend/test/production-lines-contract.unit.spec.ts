@@ -1,6 +1,7 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { FactoriesService } from '../src/factories/factories.service';
 import { ProductionLinesService } from '../src/production-lines/production-lines.service';
+import { AuditService } from '../src/audit/audit.service';
 
 describe('production line create contract', () => {
   it('creates a tenant-scoped line with safe defaults', () => {
@@ -37,5 +38,39 @@ describe('production line create contract', () => {
     service.updateStatus('tenant-demo', 'line-cnc', { status: 'inactive', reason: '产线改造' });
     expect(service.remove('tenant-demo', 'line-cnc')).toEqual({ id: 'line-cnc', deleted: true });
     expect(() => service.findOne('tenant-demo', 'line-cnc')).toThrow(NotFoundException);
+  });
+
+  it('persists maintenance state and audits line lifecycle changes', async () => {
+    const persistence = {
+      isEnabled: () => false,
+      restore: jest.fn(),
+      saveLine: jest.fn().mockResolvedValue(undefined),
+    };
+    const audit = new AuditService();
+    const factories = new FactoriesService();
+    const factory = factories.create('tenant-a', { code: 'F200', name: '审计工厂' });
+    const service = new ProductionLinesService(factories, persistence as never, audit);
+    const line = service.create('tenant-a', { factoryId: factory.id, code: 'L200', name: '装配线', type: '装配' });
+
+    service.updateStatus('tenant-a', line.id, { status: 'maintenance', reason: '计划保养' });
+
+    expect(persistence.saveLine).toHaveBeenLastCalledWith(expect.objectContaining({
+      active: false,
+      status: 'maintenance',
+      statusReason: '计划保养',
+    }));
+    expect(audit.list('tenant-a').map((entry) => entry.action)).toEqual(expect.arrayContaining([
+      'production_line.created', 'production_line.status',
+    ]));
+
+    const restored = new ProductionLinesService(factories, {
+      isEnabled: () => true,
+      restore: jest.fn().mockResolvedValue({
+        lines: [{ ...line, active: false, status: 'maintenance', statusReason: '计划保养' }],
+        workOrders: [],
+      }),
+    } as never);
+    await restored.onModuleInit();
+    expect(restored.findOne('tenant-a', line.id)).toEqual(expect.objectContaining({ status: 'maintenance', statusReason: '计划保养' }));
   });
 });

@@ -112,7 +112,13 @@ export class WorkOrdersService implements OnModuleInit {
     if (snapshot?.workOrders.length) {
       this.workOrders.clear();
       snapshot.workOrders.forEach((item) => this.workOrders.set(item.id, {
-        ...item, orderId: item.orderId ?? undefined, priority: item.priority as WorkOrderPriority, status: item.status as WorkOrderStatus,
+        ...item,
+        orderId: item.orderId ?? undefined,
+        externalId: item.externalId ?? undefined,
+        externalSystem: item.externalSystem ?? undefined,
+        bomId: item.bomId ?? undefined,
+        routingId: item.routingId ?? undefined,
+        priority: item.priority as WorkOrderPriority, status: item.status as WorkOrderStatus,
       }));
     }
     if (snapshot?.reports.length) {
@@ -225,6 +231,13 @@ export class WorkOrdersService implements OnModuleInit {
     this.workOrders.set(workOrder.id, workOrder);
     void this.persistence?.saveWorkOrder(workOrder);
     this.productionLinesService.registerWorkOrder(tenantId, workOrder.lineId);
+    this.auditService?.record(tenantId, 'system', {
+      action: 'work_order.created',
+      resource: 'work_order',
+      resourceId: workOrder.id,
+      after: workOrder as unknown as Record<string, unknown>,
+      details: { orderNo: workOrder.orderNo, lineId: workOrder.lineId, plannedQty: workOrder.plannedQty },
+    });
     return workOrder;
   }
 
@@ -259,6 +272,14 @@ export class WorkOrdersService implements OnModuleInit {
     }
     this.workOrders.set(id, updated);
     void this.persistence?.saveWorkOrder(updated);
+    this.auditService?.record(tenantId, 'system', {
+      action: 'work_order.updated',
+      resource: 'work_order',
+      resourceId: id,
+      before: current as unknown as Record<string, unknown>,
+      after: updated as unknown as Record<string, unknown>,
+      details: { orderNo: updated.orderNo, lineId: updated.lineId, plannedQty: updated.plannedQty },
+    });
     return updated;
   }
 
@@ -463,6 +484,13 @@ export class WorkOrdersService implements OnModuleInit {
     this.workOrders.delete(id);
     void this.persistence?.deleteWorkOrder(id);
     this.productionLinesService.unregisterWorkOrder(tenantId, workOrder.lineId);
+    this.auditService?.record(tenantId, 'system', {
+      action: 'work_order.deleted',
+      resource: 'work_order',
+      resourceId: id,
+      before: workOrder as unknown as Record<string, unknown>,
+      details: { orderNo: workOrder.orderNo, lineId: workOrder.lineId },
+    });
     return { id, deleted: true };
   }
 }

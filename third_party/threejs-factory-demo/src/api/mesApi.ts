@@ -153,6 +153,13 @@ interface ApiDashboardOverview {
   lines?: { averageTargetOee?: number };
   workOrders?: ApiWorkOrderOverview;
   production?: ProductionSummary;
+  productionMetrics?: {
+    plannedQty: number;
+    completedQty: number;
+    completionRate: number;
+    todayOutput?: number;
+    oee?: number | null;
+  };
   generatedAt?: string;
 }
 
@@ -209,6 +216,7 @@ export async function fetchFactorySnapshot(): Promise<FetchSnapshotResult> {
   const alarms = apiAlarms?.map(toAlarm) ?? deriveAlarms(apiDevices, devices);
   const lines = apiLines.map((line) => toLine(line, devices));
   const productionSummary = dashboard?.production
+    ?? (dashboard?.productionMetrics ? toProductionSummary(dashboard.productionMetrics) : undefined)
     ?? (dashboard?.workOrders ? toProductionSummary(dashboard.workOrders) : toProductionSummary(workOrderOverview));
 
   return {
@@ -537,7 +545,7 @@ function deduplicateAlarms(alarms: FactoryAlarm[]): FactoryAlarm[] {
   return [...new Map(alarms.map((alarm) => [alarm.id, alarm])).values()];
 }
 
-function toProductionSummary(overview: ApiWorkOrderOverview): ProductionSummary {
+function toProductionSummary(overview: Pick<ApiWorkOrderOverview, 'plannedQty' | 'completedQty' | 'completionRate'>): ProductionSummary {
   return {
     plannedQuantity: overview.plannedQty,
     completedQuantity: overview.completedQty,

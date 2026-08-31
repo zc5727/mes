@@ -94,6 +94,25 @@ describe('simulator MQTT ingestion', () => {
     expect(parseSimulatorMessage(topic('telemetry'), JSON.stringify({ ...telemetry, data: { ...telemetry.data, deviceId: 'other' } }))).toBeUndefined();
   });
 
+  it('accepts allow-listed protocol bridge topics and warning/offline statuses', () => {
+    const protocolTelemetry = {
+      ...telemetry,
+      data: { ...telemetry.data, status: 'WARNING', activeFaults: ['QUALITY_DRIFT'] },
+    };
+
+    expect(parseSimulatorMessage(
+      'mes/modbus/demo-tenant/lines/line-cnc/devices/cnc-01/telemetry',
+      JSON.stringify(protocolTelemetry),
+    )).toMatchObject({
+      kind: 'telemetry', tenantId: 'demo-tenant', lineId: 'line-cnc', deviceId: 'cnc-01',
+      data: { status: 'WARNING' },
+    });
+    expect(parseSimulatorMessage(
+      'mes/vendor/demo-tenant/lines/line-cnc/devices/cnc-01/telemetry',
+      JSON.stringify(telemetry),
+    )).toBeUndefined();
+  });
+
   it('caches the newest telemetry and ignores duplicate or late messages', () => {
     const cache = new DeviceTelemetryCache();
     const message = parseSimulatorMessage(topic('telemetry'), JSON.stringify(telemetry));
@@ -107,6 +126,17 @@ describe('simulator MQTT ingestion', () => {
     }, message.topic)).toMatchObject({ accepted: false, reason: 'duplicate' });
     expect(cache.upsert(message.tenantId, { ...message.data, totalCount: 1, timestamp: '2026-08-28T08:59:59.000Z' }, message.topic)).toMatchObject({ accepted: false, reason: 'stale' });
     expect(cache.get('demo-tenant', 'line-cnc', 'cnc-01')?.totalCount).toBe(3);
+  });
+
+  it('rejects telemetry with an invalid timestamp before it reaches the cache', () => {
+    const cache = new DeviceTelemetryCache();
+    const message = parseSimulatorMessage(topic('telemetry'), JSON.stringify(telemetry));
+    if (!message || message.kind !== 'telemetry') throw new Error('test fixture did not parse');
+
+    expect(() => cache.upsert('demo-tenant', {
+      ...message.data,
+      timestamp: 'not-a-timestamp',
+    }, message.topic)).toThrow(BadRequestException);
   });
 
   it('keeps telemetry and alarm projections isolated by tenant', () => {
@@ -202,6 +232,23 @@ describe('simulator MQTT ingestion', () => {
     })).toMatchObject({ accepted: false, duplicate: true });
   });
 
+  it('maps HTTP warning and offline statuses to the device state contract', () => {
+    const client = new FakeMqttClient();
+    const { service } = createService(client);
+
+    expect(service.ingestHttpEvent('demo-tenant', {
+      deviceId: 'cnc-01', lineId: 'line-cnc', eventType: 'telemetry',
+      eventTime: '2026-08-28T09:06:00.000Z', status: 'WARNING', payload: {},
+    })).toMatchObject({ accepted: true });
+    expect(service.getDevice('demo-tenant', 'line-cnc', 'cnc-01')?.status).toBe('WARNING');
+
+    expect(service.ingestHttpEvent('demo-tenant', {
+      deviceId: 'cnc-01', lineId: 'line-cnc', eventType: 'telemetry',
+      eventTime: '2026-08-28T09:07:00.000Z', status: 'OFFLINE', payload: {},
+    })).toMatchObject({ accepted: true });
+    expect(service.getDevice('demo-tenant', 'line-cnc', 'cnc-01')?.status).toBe('OFFLINE');
+  });
+
   it('binds HTTP telemetry to a running tenant-scoped connection and updates its heartbeat', async () => {
     const client = new FakeMqttClient();
     const probe = { probe: jest.fn().mockResolvedValue({ ok: true, latencyMs: 1 }) };
@@ -259,6 +306,27 @@ describe('simulator MQTT ingestion', () => {
       .rejects.toMatchObject({ status: 503, message: 'MQTT simulator control publish failed: socket closed' });
   });
 
+  it('surfaces asynchronous persistence failures through ingestion status without an unhandled rejection', async () => {
+    const client = new FakeMqttClient();
+    const persistence = { saveTelemetry: jest.fn().mockRejectedValue(new Error('database unavailable')) };
+    const service = new MqttIngestionService(
+      jest.fn(() => client),
+      { url: 'mqtt://broker', enabled: true },
+      new DeviceTelemetryCache(),
+      new AlarmDeduplicator(),
+      persistence as never,
+    );
+    service.start();
+    client.emit('connect');
+    client.emit('message', topic('telemetry'), JSON.stringify(telemetry));
+    await flushPromises();
+
+    expect(service.getStatus()).toEqual(expect.objectContaining({
+      lastErrorCode: 'MQTT_PERSISTENCE_FAILED',
+      lastError: 'MQTT telemetry persistence failed: database unavailable',
+    }));
+  });
+
   it('re-subscribes after reconnect without duplicating message handlers or clearing state', async () => {
     const client = new FakeMqttClient();
     const { factory, service } = createService(client);
@@ -266,7 +334,7 @@ describe('simulator MQTT ingestion', () => {
     await flushPromises();
     expect(factory).toHaveBeenCalledTimes(1);
     expect(client.subscriptions).toEqual([
-      'mes/simulator/+/lines/+/devices/+/telemetry',
+      'mes/+/+/lines/+/devices/+/telemetry',
       'mes/simulator/+/alarms',
     ]);
 
@@ -294,5 +362,25 @@ describe('simulator MQTT ingestion', () => {
     await flushPromises();
     expect(service.isConnected()).toBe(true);
     expect(service.listDevices()).toHaveLength(0);
+  });
+
+  it('rejects MQTT messages outside the configured tenant boundary', () => {
+    const client = new FakeMqttClient();
+    const factory = jest.fn(() => client);
+    const service = new MqttIngestionService(
+      factory,
+      { url: 'mqtt://broker', enabled: true, tenantId: 'tenant-allowed' },
+      new DeviceTelemetryCache(),
+      new AlarmDeduplicator(),
+    );
+    service.start();
+    client.emit('connect');
+    client.emit('message', topic('telemetry'), JSON.stringify(telemetry));
+
+    expect(service.listDevices()).toHaveLength(0);
+    expect(service.getStatus()).toEqual(expect.objectContaining({
+      lastErrorCode: 'MQTT_TENANT_MISMATCH',
+      messages: expect.objectContaining({ received: 1, rejected: 1, accepted: 0 }),
+    }));
   });
 });

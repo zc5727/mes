@@ -93,6 +93,12 @@ const runtimeSelfTest = spawnSync('bash', [runtimeScript, '--self-test'], {
   env: { ...process.env, MES_RUNTIME_DIR: join(rootDir, '.runtime', 'desktop-smoke'), MES_DESKTOP_NO_DIALOG: '1' },
 });
 record('runtime self-test', runtimeSelfTest.status === 0, runtimeSelfTest.status === 0 ? 'passed' : (runtimeSelfTest.stderr || runtimeSelfTest.stdout).trim());
+const runtimeSource = readFileSync(runtimeScript, 'utf8');
+record(
+  'desktop runtime does not orphan simulator UI',
+  runtimeSource.includes('--no-simulator-ui'),
+  'desktop-runtime delegates only backend and simulator services',
+);
 
 if (existsSync(packagePath)) {
   try {

@@ -29,7 +29,10 @@ export class OrdersService implements OnModuleInit {
     if (snapshot?.orders.length) {
       this.orders.clear();
       snapshot.orders.forEach((item) => this.orders.set(item.id, {
-        ...item, priority: item.priority as ProductionOrder['priority'], status: item.status as ProductionOrder['status'],
+        ...item,
+        externalId: item.externalId ?? undefined,
+        externalSystem: item.externalSystem ?? undefined,
+        priority: item.priority as ProductionOrder['priority'], status: item.status as ProductionOrder['status'],
       }));
     }
   }

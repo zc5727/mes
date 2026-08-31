@@ -99,6 +99,8 @@ model ProductionLine {
   name      String   @db.VarChar(120)
   type      String   @db.VarChar(60)
   active    Boolean  @default(true)
+  status    String   @default("active") @db.VarChar(20)
+  statusReason String? @map("status_reason") @db.VarChar(200)
   targetOee Decimal? @map("target_oee") @db.Decimal(5, 2)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

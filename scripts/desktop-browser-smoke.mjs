@@ -90,7 +90,11 @@ else pass('single-instance process count remains 1');
 if (closeAfter) {
   const quit = run('osascript', ['-e', 'tell application id "com.zc.mes.desktop" to quit']);
   if (quit.status !== 0) failed(`关闭 app 失败：${quit.stderr.trim()}`);
-  else if (!waitFor(() => processCount() === 0)) failed('关闭 app 后进程仍存在，无法证明桌面退出清理');
+  // The desktop exit hook waits for the supervised Backend/Simulator tree to
+  // receive SIGTERM and reap its children. A cold demo session can take
+  // longer than the launch window, so do not report a false cleanup failure
+  // after only the default 20-second GUI wait.
+  else if (!waitFor(() => processCount() === 0, 60_000)) failed('关闭 app 后进程仍存在，无法证明桌面退出清理');
   else pass('packaged app process exited');
 }
 

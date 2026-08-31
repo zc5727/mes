@@ -21,6 +21,16 @@ import {
   MqttIngestionStatus,
 } from './mqtt.types';
 
+/**
+ * Persistence is injected at runtime and may be a reduced test or desktop
+ * adapter. Keep every persistence operation optional at this boundary so a
+ * missing auxiliary method cannot break the MQTT lifecycle callbacks.
+ */
+type MqttPersistencePort = Partial<Pick<
+  MqttStatePersistenceService,
+  'restore' | 'saveTelemetry' | 'saveAlarm' | 'recordConnection'
+>>;
+
 @Injectable()
 export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MqttIngestionService.name);
@@ -33,7 +43,7 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
   private lastError: string | null = null;
   private lastErrorCode: string | null = null;
   private reconnectAttempts = 0;
-  private readonly messageCounters = { received: 0, telemetry: 0, alarms: 0, http: 0, accepted: 0, duplicate: 0, stale: 0, malformed: 0 };
+  private readonly messageCounters = { received: 0, telemetry: 0, alarms: 0, http: 0, accepted: 0, duplicate: 0, stale: 0, malformed: 0, rejected: 0 };
   private readonly projectionListeners = new Set<(tenantId: string) => void>();
 
   constructor(
@@ -41,13 +51,13 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     @Optional() @Inject(MQTT_INGESTION_OPTIONS) private readonly options: MqttIngestionOptions = {},
     private readonly deviceCache: DeviceTelemetryCache = new DeviceTelemetryCache(),
     private readonly alarmDeduplicator: AlarmDeduplicator = new AlarmDeduplicator(),
-    @Optional() private readonly persistence?: MqttStatePersistenceService,
+    @Optional() private readonly persistence?: MqttPersistencePort,
     @Optional() private readonly devicesService?: DevicesService,
     @Optional() private readonly connectionsService?: DeviceConnectionsService,
   ) {}
 
   async onModuleInit(): Promise<void> {
-    const restored = await this.persistence?.restore();
+    const restored = await this.persistence?.restore?.();
     if (restored) {
       this.deviceCache.restore(restored.telemetry);
       this.alarmDeduplicator.restore(restored.alarms);
@@ -195,7 +205,7 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     if (result.accepted) {
       this.projectDeviceTelemetry(tenantId, telemetry);
       this.messageCounters.http += 1; this.messageCounters.accepted += 1;
-      void this.persistence?.saveTelemetry(result.current);
+      this.persistSafely('telemetry', this.persistence?.saveTelemetry?.(result.current));
       this.notifyProjection(tenantId);
     }
     return {
@@ -234,7 +244,10 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     client.on('connect', () => {
       this.connected = true;
       this.state = 'connected'; this.lastHeartbeatAt = new Date().toISOString(); this.lastError = null; this.lastErrorCode = null;
-      void this.persistence?.recordConnection(this.connectionTenantId(), 'connected', { broker: this.resolveOptions().url ?? null, gatewayId: this.resolveOptions().gatewayId ?? null });
+      this.persistSafely(
+        'MQTT connected event',
+        this.persistence?.recordConnection?.(this.connectionTenantId(), 'connected', { broker: this.resolveOptions().url ?? null, gatewayId: this.resolveOptions().gatewayId ?? null }),
+      );
       const options = this.resolveOptions();
       this.logger.log(
         `MQTT broker connected at ${this.displayUrl(options.url)}; subscribing to telemetry and alarm topics`,
@@ -244,19 +257,19 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     client.on('reconnect', () => {
       this.connected = false;
       this.state = 'starting'; this.reconnectAttempts += 1;
-      void this.persistence?.recordConnection(this.connectionTenantId(), 'reconnecting', {});
+      this.persistSafely('MQTT reconnecting event', this.persistence?.recordConnection?.(this.connectionTenantId(), 'reconnecting', {}));
       this.logger.log('MQTT broker reconnecting');
     });
     client.on('close', () => {
       this.connected = false;
       this.state = 'disconnected';
-      void this.persistence?.recordConnection(this.connectionTenantId(), 'closed', {});
+      this.persistSafely('MQTT closed event', this.persistence?.recordConnection?.(this.connectionTenantId(), 'closed', {}));
       this.logger.warn('MQTT broker connection closed; cached state is retained and reconnect will be attempted');
     });
     client.on('offline', () => {
       this.connected = false;
       this.state = 'disconnected'; this.setError('MQTT broker is offline', 'MQTT_OFFLINE');
-      void this.persistence?.recordConnection(this.connectionTenantId(), 'offline', {});
+      this.persistSafely('MQTT offline event', this.persistence?.recordConnection?.(this.connectionTenantId(), 'offline', {}));
       this.logger.warn('MQTT broker is offline; check Mosquitto/process status and MQTT_URL');
     });
     client.on('error', (error) => {
@@ -304,13 +317,23 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    const configuredTenantId = this.resolveOptions().tenantId;
+    if (configuredTenantId && message.tenantId !== configuredTenantId) {
+      this.messageCounters.rejected += 1;
+      this.setError(`Rejected message for tenant ${message.tenantId}`, 'MQTT_TENANT_MISMATCH');
+      this.logger.warn(
+        `Rejected MQTT message on ${topic}: tenant ${message.tenantId} does not match configured tenant ${configuredTenantId}`,
+      );
+      return;
+    }
+
     if (message.kind === 'telemetry') {
       this.messageCounters.telemetry += 1; this.lastHeartbeatAt = new Date().toISOString();
       const result = this.deviceCache.upsert(message.tenantId, message.data, message.topic);
       if (result.accepted) {
         this.projectDeviceTelemetry(message.tenantId, message.data);
         this.messageCounters.accepted += 1;
-        void this.persistence?.saveTelemetry(result.current);
+        this.persistSafely('telemetry', this.persistence?.saveTelemetry?.(result.current));
         this.notifyProjection(message.tenantId);
       }
       else if (result.reason === 'duplicate') this.messageCounters.duplicate += 1;
@@ -321,7 +344,7 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     this.messageCounters.alarms += 1; this.lastHeartbeatAt = new Date().toISOString();
     const result = this.alarmDeduplicator.apply(message.tenantId, message.event, message.data);
     if (result.accepted) {
-      void this.persistence?.saveAlarm(result.state);
+      this.persistSafely('alarm', this.persistence?.saveAlarm?.(result.state));
       this.notifyProjection(message.tenantId);
     }
     else if (result.reason === 'duplicate') this.messageCounters.duplicate += 1;
@@ -335,7 +358,8 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
   private resolveOptions(): Required<Pick<MqttIngestionOptions, 'enabled'>> & MqttIngestionOptions {
     const url = this.options.url ?? process.env.MQTT_URL;
     const enabled = this.options.enabled ?? process.env.MQTT_ENABLED === 'true';
-    return { ...this.options, url, enabled };
+    const tenantId = this.options.tenantId ?? process.env.MES_TENANT_ID;
+    return { ...this.options, url, enabled, tenantId };
   }
 
   private errorMessage(error: unknown): string {
@@ -344,6 +368,15 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
 
   private setError(message: string, code: string): void {
     this.lastError = message; this.lastErrorCode = code;
+  }
+
+  private persistSafely(operation: string, promise?: Promise<void>): void {
+    if (!promise) return;
+    void promise.catch((error: unknown) => {
+      const detail = this.errorMessage(error);
+      this.setError(`MQTT ${operation} persistence failed: ${detail}`, 'MQTT_PERSISTENCE_FAILED');
+      this.logger.error(`MQTT ${operation} persistence failed: ${detail}`);
+    });
   }
 
   private displayUrl(url: string | undefined): string {
@@ -364,7 +397,8 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
 
   private normalizeStatus(value: unknown): SimulatorTelemetry['status'] {
     const normalized = String(value ?? 'IDLE').toUpperCase();
-    if (normalized === 'RUNNING' || normalized === 'IDLE' || normalized === 'STOPPED' || normalized === 'FAULT') return normalized;
+    if (normalized === 'RUNNING' || normalized === 'IDLE' || normalized === 'WARNING'
+      || normalized === 'STOPPED' || normalized === 'FAULT' || normalized === 'OFFLINE') return normalized;
     throw new BadRequestException(`Unsupported device status: ${normalized}`);
   }
 
@@ -383,9 +417,9 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
 
   private projectDeviceTelemetry(tenantId: string, telemetry: SimulatorTelemetry): void {
     if (!this.devicesService) return;
-    const status = telemetry.status === 'FAULT'
+    const status = telemetry.status === 'FAULT' || telemetry.status === 'WARNING'
       ? 'alarm'
-      : telemetry.status === 'STOPPED' ? 'offline' : 'online';
+      : telemetry.status === 'STOPPED' || telemetry.status === 'OFFLINE' ? 'offline' : 'online';
     this.devicesService.projectTelemetry(tenantId, telemetry.lineId, telemetry.deviceId, {
       timestamp: telemetry.timestamp,
       metrics: {

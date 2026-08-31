@@ -5,6 +5,7 @@ import { CreateProductionLineDto } from './dto/create-production-line.dto';
 import { UpdateLineStatusDto } from './dto/update-line-status.dto';
 import { UpdateProductionLineDto } from './dto/update-production-line.dto';
 import { FactoriesService } from '../factories/factories.service';
+import { AuditService } from '../audit/audit.service';
 
 export interface ProductionLine extends MockEntity {
   factoryId: string;
@@ -23,6 +24,7 @@ export class ProductionLinesService implements OnModuleInit {
   constructor(
     @Optional() private readonly factoriesService: FactoriesService = new FactoriesService(),
     @Optional() private readonly persistence?: CorePersistenceService,
+    @Optional() private readonly audit?: AuditService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -36,8 +38,8 @@ export class ProductionLinesService implements OnModuleInit {
       snapshot.lines.forEach((item) => this.lines.set(item.id, {
         ...item,
         targetOee: item.targetOee,
-        status: item.active ? 'active' : 'inactive',
-        statusReason: '',
+        status: normalizeLineStatus(item.status, item.active),
+        statusReason: item.statusReason ?? '',
       }));
     }
     snapshot?.workOrders.forEach((order) => {
@@ -104,6 +106,13 @@ export class ProductionLinesService implements OnModuleInit {
     };
     this.lines.set(line.id, line);
     void this.persistence?.saveLine(lineToPersistence(line));
+    this.audit?.record(tenantId, 'system', {
+      action: 'production_line.created',
+      resource: 'production_line',
+      resourceId: line.id,
+      after: line as unknown as Record<string, unknown>,
+      details: { code: line.code, factoryId: line.factoryId },
+    });
     return line;
   }
 
@@ -129,6 +138,14 @@ export class ProductionLinesService implements OnModuleInit {
     };
     this.lines.set(id, updated);
     void this.persistence?.saveLine(lineToPersistence(updated));
+    this.audit?.record(tenantId, 'system', {
+      action: 'production_line.updated',
+      resource: 'production_line',
+      resourceId: id,
+      before: current as unknown as Record<string, unknown>,
+      after: updated as unknown as Record<string, unknown>,
+      details: { code: updated.code, factoryId: updated.factoryId },
+    });
     return updated;
   }
 
@@ -145,6 +162,14 @@ export class ProductionLinesService implements OnModuleInit {
     };
     this.lines.set(id, updated);
     void this.persistence?.saveLine(lineToPersistence(updated));
+    this.audit?.record(tenantId, 'system', {
+      action: 'production_line.status',
+      resource: 'production_line',
+      resourceId: id,
+      before: current as unknown as Record<string, unknown>,
+      after: updated as unknown as Record<string, unknown>,
+      details: { from: current.status, to: updated.status, reason: updated.statusReason },
+    });
     return updated;
   }
 
@@ -158,6 +183,13 @@ export class ProductionLinesService implements OnModuleInit {
     }
     this.lines.delete(id);
     void this.persistence?.deleteLine(id);
+    this.audit?.record(tenantId, 'system', {
+      action: 'production_line.deleted',
+      resource: 'production_line',
+      resourceId: id,
+      before: line as unknown as Record<string, unknown>,
+      details: { code: line.code },
+    });
     return { id, deleted: true };
   }
 
@@ -207,5 +239,12 @@ function lineToPersistence(line: ProductionLine) {
   return {
     ...line,
     active: line.status === 'active',
+    status: line.status,
+    statusReason: line.statusReason,
   };
+}
+
+function normalizeLineStatus(status: string | undefined, active: boolean): ProductionLine['status'] {
+  if (status === 'maintenance' || status === 'inactive' || status === 'active') return status;
+  return active ? 'active' : 'inactive';
 }

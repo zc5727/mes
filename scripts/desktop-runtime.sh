@@ -253,7 +253,10 @@ write_state starting "服务编排" "正在启动本地演示服务" ""
 log INFO "stage_started" "stage=服务编排"
 service_command=("$SCRIPT_DIR/dev-up.sh")
 [[ "$START_INFRA" == true ]] && service_command+=(--infra --mqtt)
-service_command+=(--no-frontend)
+# The packaged Tauri window is the frontend. Do not start the standalone
+# simulator console here; desktop-runtime owns the services it starts and
+# must be able to tear all of them down on window exit.
+service_command+=(--no-frontend --no-simulator-ui)
 if ! MES_RUNTIME_DIR="$RUNTIME_DIR" "${service_command[@]}" >>"$SUPERVISOR_LOG" 2>&1; then
   fail_stage "服务编排" "Backend、Simulator 或本地依赖启动失败" \
     "查看桌面诊断日志和 backend.log、simulator.log，修复端口或依赖后重试。"

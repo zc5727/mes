@@ -67,6 +67,16 @@ test("HTTP endpoint restarts cleanly and does not hide a connection failure", as
   }
 });
 
+test("HTTP endpoint returns a bounded timeout for an incomplete request body", async () => {
+  const endpoint = new HttpTelemetryEndpoint({ protocol: "http", host: "127.0.0.1", port: 16104, timeoutMs: 100 });
+  await endpoint.start();
+  try {
+    assert.equal(await sendIncompleteBody(16104), 408);
+  } finally {
+    await endpoint.close();
+  }
+});
+
 function send(
   port: number,
   method: string,
@@ -83,5 +93,19 @@ function send(
     });
     client.once("error", reject);
     client.end(body);
+  });
+}
+
+function sendIncompleteBody(port: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const client = request({
+      host: "127.0.0.1", port, path: "/events", method: "POST",
+      headers: { "content-type": "application/json", "content-length": "32" },
+    }, (response) => {
+      response.resume();
+      response.once("end", () => { client.destroy(); resolve(response.statusCode ?? 0); });
+    });
+    client.once("error", reject);
+    client.write('{"event":"device.telemetry"');
   });
 }

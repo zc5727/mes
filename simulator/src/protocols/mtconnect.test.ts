@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { request } from "node:http";
+import { createServer, request } from "node:http";
 import { MtConnectTelemetrySimulator, MTCONNECT_SYNTHETIC_DATA_ITEMS, type MtConnectTelemetryValues } from "./mtconnect";
 import { ProtocolRunner, protocolRunnerForProfile } from "./protocol-runner";
 import { DEVICE_PROFILES } from "../config/device-profile";
@@ -49,6 +49,25 @@ test("MTConnect rejects control methods at its read-only HTTP boundary", async (
     assert.equal(response.headers.allow, "GET");
   } finally {
     await server.close();
+  }
+});
+
+test("MTConnect client enforces the configured read timeout", async () => {
+  const sockets = new Set<import("node:net").Socket>();
+  const delayed = createServer((_request, response) => {
+    setTimeout(() => response.end("<delayed />"), 300);
+  });
+  delayed.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  });
+  await new Promise<void>((resolve) => delayed.listen(16017, "127.0.0.1", resolve));
+  const client = new MtConnectTelemetrySimulator(identity, values, "127.0.0.1", 16017, 100);
+  try {
+    await assert.rejects(() => client.readTelemetry(), /timed out/);
+  } finally {
+    sockets.forEach((socket) => socket.destroy());
+    await new Promise<void>((resolve, reject) => delayed.close((error) => error ? reject(error) : resolve()));
   }
 });
 

@@ -91,6 +91,8 @@ describe('DashboardService', () => {
       payload: { temperatureCelsius: 99, totalCount: 20, goodCount: 18 },
     });
     expect(eventTypes).toEqual(['snapshot', 'updated']);
+    expect(service.getOverview('tenant-demo').devices.total).toBe(5);
+    expect(service.getOverview('tenant-demo').lineSummaries.find((line) => line.lineId === 'line-cnc')?.deviceCount).toBe(2);
     subscription.unsubscribe();
   });
 });

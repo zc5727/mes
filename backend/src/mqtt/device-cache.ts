@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { CachedDeviceTelemetry, SimulatorTelemetry } from './mqtt.types';
 
 export type DeviceCacheUpsertResult =
@@ -15,11 +15,15 @@ export class DeviceTelemetryCache {
     sourceTopic: string,
     receivedAt = new Date().toISOString(),
   ): DeviceCacheUpsertResult {
+    const nextTimestamp = Date.parse(telemetry.timestamp);
+    if (Number.isNaN(nextTimestamp)) {
+      throw new BadRequestException('telemetry.timestamp must be an ISO timestamp');
+    }
+
     const key = this.key(tenantId, telemetry.lineId, telemetry.deviceId);
     const current = this.records.get(key);
     const incomingIdentity = telemetry.eventId ?? telemetry.traceId;
     const currentIdentity = current?.eventId ?? current?.traceId;
-    const nextTimestamp = Date.parse(telemetry.timestamp);
     const currentTimestamp = current ? Date.parse(current.timestamp) : undefined;
 
     if (current && incomingIdentity && currentIdentity === incomingIdentity) {
@@ -57,7 +61,12 @@ export class DeviceTelemetryCache {
   }
 
   restore(records: CachedDeviceTelemetry[]): void {
-    for (const record of records) this.records.set(this.key(record.tenantId, record.lineId, record.deviceId), record);
+    for (const record of records) {
+      if (Number.isNaN(Date.parse(record.timestamp))) {
+        throw new Error(`Persisted telemetry for ${record.deviceId} has an invalid timestamp`);
+      }
+      this.records.set(this.key(record.tenantId, record.lineId, record.deviceId), record);
+    }
   }
 
   private key(tenantId: string, lineId: string, deviceId: string): string {

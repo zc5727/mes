@@ -4,6 +4,11 @@
 **更新日期：** 2026-08-31  
 **当前定位：** ERPNext 负责生产业务逻辑；ThingsBoard/Gateway 负责设备接入；现有 NestJS 负责集成、Agent、权限和策略；现有数字孪生前端保持不变。
 
+> **实施状态：迁移目标，尚未切换。** 当前仓库只实际支持
+> `MES_CORE=legacy`；ERPNext、ThingsBoard/Gateway、shadow 旁路和真实设备接入
+> 尚未接入运行时。设置未实现的迁移模式会 fail-closed，不能把 fixture、mock 或
+> synthetic 协议测试当作生产能力。
+
 ## 1. 架构决策
 
 ```text

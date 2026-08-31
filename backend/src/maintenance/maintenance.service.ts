@@ -35,6 +35,14 @@ export class MaintenanceService implements OnModuleInit {
     snapshot?.maintenance.forEach((item) => this.orders.set(item.id, item));
     const plans = await this.persistence?.restoreAux('preventive-plan'); plans?.forEach((item) => this.plans.set(item.id, item.payload as unknown as PreventivePlan));
     const parts = await this.persistence?.restoreAux('spare-part'); parts?.forEach((item) => this.parts.set(`${item.tenantId}:${(item.payload as unknown as SparePart).code}`, item.payload as unknown as SparePart));
+    const movements = await this.persistence?.restoreAux('maintenance-part-movement');
+    movements?.forEach((item) => {
+      const payload = item.payload as { kind?: string; operationId?: string; part?: SparePart };
+      if (!payload.operationId || !payload.part || (payload.kind !== 'consume' && payload.kind !== 'return')) return;
+      const key = `${item.tenantId}:${payload.operationId}`;
+      if (payload.kind === 'consume') this.partMovements.set(key, payload.part);
+      else this.partReturnMovements.set(key, payload.part);
+    });
   }
 
   list(tenantId: string): MaintenanceWorkOrder[] { return [...this.orders.values()].filter((item) => item.tenantId === tenantId); }
@@ -137,7 +145,10 @@ export class MaintenanceService implements OnModuleInit {
     const updated = { ...part, stock: part.stock - dto.quantity, updatedAt: timestamp() };
     this.parts.set(key, updated);
     void this.persistence?.saveAux({ id: updated.id, tenantId, domain: 'spare-part', payload: updated as unknown as Record<string, unknown>, createdAt: updated.updatedAt, updatedAt: updated.updatedAt });
-    if (dto.operationId) this.partMovements.set(`${tenantId}:${dto.operationId}`, updated);
+    if (dto.operationId) {
+      this.partMovements.set(`${tenantId}:${dto.operationId}`, updated);
+      this.saveMovement(tenantId, 'consume', dto.operationId, updated);
+    }
     this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'maintenance.spare_part_consumed', resource: 'spare_part', resourceId: updated.id, before: part as unknown as Record<string, unknown>, after: updated as unknown as Record<string, unknown>, details: { code: updated.code, quantity: dto.quantity, operationId: dto.operationId } });
     return updated;
   }
@@ -150,7 +161,10 @@ export class MaintenanceService implements OnModuleInit {
     const updated = { ...part, stock: part.stock + dto.quantity, updatedAt: timestamp() };
     this.parts.set(key, updated);
     void this.persistence?.saveAux({ id: updated.id, tenantId, domain: 'spare-part', payload: updated as unknown as Record<string, unknown>, createdAt: updated.updatedAt, updatedAt: updated.updatedAt });
-    if (dto.operationId) this.partReturnMovements.set(`${tenantId}:${dto.operationId}`, updated);
+    if (dto.operationId) {
+      this.partReturnMovements.set(`${tenantId}:${dto.operationId}`, updated);
+      this.saveMovement(tenantId, 'return', dto.operationId, updated);
+    }
     this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'maintenance.spare_part_returned', resource: 'spare_part', resourceId: updated.id, before: part as unknown as Record<string, unknown>, after: updated as unknown as Record<string, unknown>, details: { code: updated.code, quantity: dto.quantity, operationId: dto.operationId } });
     return updated;
   }
@@ -161,5 +175,17 @@ export class MaintenanceService implements OnModuleInit {
     const mttrMinutes = repairOrders.length ? Math.round((repairMinutes / repairOrders.length) * 10) / 10 : 0;
     const mtbfHours = repairOrders.length > 1 ? Math.round((repairOrders.reduce((total, item, index) => index === 0 ? total : total + (new Date(item.createdAt).getTime() - new Date(repairOrders[index - 1].createdAt).getTime()) / 3600000, 0) / (repairOrders.length - 1)) * 10) / 10 : 0;
     return { tenantId, deviceId: deviceId ?? null, repairCount: repairOrders.length, mttrMinutes, mtbfHours };
+  }
+
+  private saveMovement(tenantId: string, kind: 'consume' | 'return', operationId: string, part: SparePart): void {
+    const now = timestamp();
+    void this.persistence?.saveAux({
+      id: `maintenance-part-movement:${tenantId}:${kind}:${operationId}`,
+      tenantId,
+      domain: 'maintenance-part-movement',
+      payload: { kind, operationId, part } as unknown as Record<string, unknown>,
+      createdAt: now,
+      updatedAt: now,
+    });
   }
 }

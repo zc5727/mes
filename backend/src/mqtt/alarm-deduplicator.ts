@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { AlarmState, SimulatorAlarm } from './mqtt.types';
 
 export type AlarmDeduplicationResult =
@@ -15,9 +15,13 @@ export class AlarmDeduplicator {
     alarm: SimulatorAlarm,
     updatedAt = new Date().toISOString(),
   ): AlarmDeduplicationResult {
+    const eventTimestamp = Date.parse(event === 'alarm.created' ? alarm.startedAt : alarm.clearedAt ?? updatedAt);
+    if (Number.isNaN(eventTimestamp)) {
+      throw new BadRequestException('alarm event timestamp must be an ISO timestamp');
+    }
+
     const key = this.key(tenantId, alarm.id);
     const current = this.states.get(key);
-    const eventTimestamp = Date.parse(event === 'alarm.created' ? alarm.startedAt : alarm.clearedAt ?? updatedAt);
 
     if (event === 'alarm.created') {
       if (current?.active) return { accepted: false, reason: 'duplicate', state: current };
@@ -65,7 +69,15 @@ export class AlarmDeduplicator {
   }
 
   restore(states: AlarmState[]): void {
-    for (const state of states) this.states.set(this.key(state.tenantId, state.alarm.id), state);
+    for (const state of states) {
+      if (Number.isNaN(Date.parse(state.alarm.startedAt))) {
+        throw new Error(`Persisted alarm ${state.alarm.id} has an invalid start timestamp`);
+      }
+      if (state.alarm.clearedAt && Number.isNaN(Date.parse(state.alarm.clearedAt))) {
+        throw new Error(`Persisted alarm ${state.alarm.id} has an invalid clear timestamp`);
+      }
+      this.states.set(this.key(state.tenantId, state.alarm.id), state);
+    }
   }
 
   private latestTimestamp(state: AlarmState): number {

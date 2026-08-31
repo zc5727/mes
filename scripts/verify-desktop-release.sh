@@ -45,6 +45,19 @@ done
 if [[ -n "$APP_PATH" ]]; then [[ -d "$APP_PATH" ]] && passed "app exists: $APP_PATH" || blocked "app 不存在：$APP_PATH"; fi
 if [[ -n "$DMG_PATH" ]]; then [[ -f "$DMG_PATH" ]] && passed "dmg exists: $DMG_PATH" || blocked "dmg 不存在：$DMG_PATH"; fi
 
+# The demo build starts desktop-runtime.sh in demo mode by default. A source
+# checkout can resolve backend/ and simulator/ by walking up from the binary,
+# but an app copied out of the repository cannot. Do not let an artifact pass
+# release verification when it would open a window without its local services.
+if [[ -d "$APP_PATH" ]]; then
+  APP_RESOURCES="$APP_PATH/Contents/Resources"
+  if [[ ! -d "$APP_RESOURCES/backend" || ! -d "$APP_RESOURCES/simulator" ]]; then
+    blocked "app 未打包 backend 和 simulator；脱离源码仓库无法自动编排本地演示服务"
+  else
+    passed "bundled demo services: backend + simulator"
+  fi
+fi
+
 for tool in codesign spctl hdiutil; do
   command -v "$tool" >/dev/null 2>&1 && passed "tool available: $tool" || blocked "缺少工具：$tool"
 done

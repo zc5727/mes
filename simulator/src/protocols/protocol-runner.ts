@@ -36,14 +36,14 @@ export class ProtocolRunner {
       } finally { await server.close(); }
     }
     if (this.options.protocol === "opc-ua") {
-      const server = new OpcUaTelemetrySimulator(values, this.endpoint.port, this.endpoint.host);
+      const server = new OpcUaTelemetrySimulator(values, this.endpoint.port, this.endpoint.host, {}, this.endpoint.timeoutMs);
       try {
         await server.start();
         return await server.readTelemetry(2);
       }
       finally { await server.close(); }
     }
-    const server = new MtConnectTelemetrySimulator(identityOf(values), values, this.endpoint.host, this.endpoint.port);
+    const server = new MtConnectTelemetrySimulator(identityOf(values), values, this.endpoint.host, this.endpoint.port, this.endpoint.timeoutMs);
     try {
       await server.start();
       return await server.readTelemetry(2);

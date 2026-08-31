@@ -122,7 +122,11 @@ describe('production execution flow', () => {
       dueAt: '2026-08-29T18:00:00.000Z',
     });
     workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' });
-    expect(audit.list('tenant-demo').map((item) => item.action)).toEqual(expect.arrayContaining(['order.create', 'work_order.status']));
+    workOrders.update('tenant-demo', workOrder.id, { productName: '更新后的产品' });
+    workOrders.remove('tenant-demo', workOrder.id);
+    expect(audit.list('tenant-demo').map((item) => item.action)).toEqual(expect.arrayContaining([
+      'order.create', 'work_order.created', 'work_order.status', 'work_order.updated', 'work_order.deleted',
+    ]));
   });
 
   it('does not report against a device occupied by maintenance', () => {

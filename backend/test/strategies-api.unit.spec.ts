@@ -3,6 +3,7 @@ import { StrategyEngineService } from '../src/strategies/strategy-engine.service
 import { StrategySimulationDto } from '../src/strategies/strategy-simulation.dto';
 import { AuditService } from '../src/audit/audit.service';
 import { StrategyGovernanceService } from '../src/strategies/strategy-governance.service';
+import { ServiceUnavailableException } from '@nestjs/common';
 
 describe('StrategiesController', () => {
   it('returns a deterministic, approval-gated simulation without mutating the snapshot', () => {
@@ -77,5 +78,25 @@ describe('StrategiesController', () => {
     if (!rolledBack.data) throw new Error('rollback result is required');
     expect(rolledBack.data.audit.rollback.status).toBe('discarded');
     expect(rolledBack.data.result.executionAllowed).toBe(false);
+  });
+
+  it('fails closed for governed HTTP routes when governance is unavailable', () => {
+    const controller = new StrategiesController(new StrategyEngineService());
+    const dto: StrategySimulationDto = {
+      timestamp: '2026-08-28T08:00:00.000Z',
+      factoryId: 'FACTORY-01',
+      lines: [{ id: 'LINE-01', name: '装配线', capacityPerHour: 30, active: true }],
+      devices: [],
+      workOrders: [],
+    };
+    const identity = ['tenant-a', 'user-1', 'plant_manager', 'FACTORY-01', '*', 'session-1', 'trace-1'] as const;
+
+    expect(() => controller.simulate(...identity, dto)).toThrow(ServiceUnavailableException);
+    expect(() => controller.getSimulation(
+      'tenant-a', 'sim-missing', 'user-1', 'plant_manager', 'FACTORY-01', '*', 'session-1', 'trace-2',
+    )).toThrow(ServiceUnavailableException);
+    expect(() => controller.executeSimulation(
+      'tenant-a', 'sim-missing', {}, 'user-1', 'plant_manager', 'FACTORY-01', '*', 'session-1', 'trace-3',
+    )).toThrow(ServiceUnavailableException);
   });
 });

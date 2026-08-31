@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { IsObject, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class UploadDocumentDto {
   @IsString()
@@ -38,4 +38,13 @@ export class ConfirmDocumentAnalysisDto {
 
   @IsOptional()
   analysis?: Record<string, unknown>;
+}
+
+export class SaveDocumentAnalysisDraftDto {
+  @IsObject()
+  analysisDraft!: Record<string, unknown>;
+
+  @IsString()
+  @MinLength(2)
+  actorId!: string;
 }

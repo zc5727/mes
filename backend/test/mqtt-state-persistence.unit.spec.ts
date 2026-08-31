@@ -83,6 +83,62 @@ describe('MQTT state PostgreSQL persistence', () => {
     expect(prisma.alarm.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ status: 'open', level: 'critical' }) }));
   });
 
+  it('does not regress persisted current state when a late event is replayed', async () => {
+    const latest = new Date('2026-08-28T09:05:00.000Z');
+    const prisma = {
+      ensureConnection: jest.fn().mockResolvedValue(undefined), isReady: () => true,
+      mqttDeviceState: {
+        findUnique: jest.fn().mockResolvedValue({ eventTime: latest }),
+        upsert: jest.fn().mockResolvedValue(undefined),
+      },
+      currentState: {
+        findUnique: jest.fn().mockResolvedValue({ eventTime: latest }),
+        upsert: jest.fn().mockResolvedValue(undefined),
+      },
+      deviceEvent: { upsert: jest.fn().mockResolvedValue(undefined) },
+    } as unknown as PrismaService;
+
+    await new MqttStatePersistenceService(prisma).saveTelemetry({
+      tenantId: 'tenant-demo', lineId: 'line-cnc', deviceId: 'cnc-01', deviceName: 'CNC', status: 'RUNNING',
+      temperatureCelsius: 30, cycleTimeSeconds: 2, totalCount: 2, goodCount: 2, defectCount: 0, activeFaults: [],
+      timestamp: '2026-08-28T09:04:00.000Z', sourceTopic: 'mqtt', receivedAt: '2026-08-28T09:06:00.000Z',
+    });
+
+    expect(prisma.mqttDeviceState.upsert).not.toHaveBeenCalled();
+    expect(prisma.currentState.upsert).not.toHaveBeenCalled();
+    expect(prisma.deviceEvent.upsert).toHaveBeenCalled();
+  });
+
+  it('keeps an alarm occurrence time at startedAt while persisting its clear time', async () => {
+    const prisma = {
+      ensureConnection: jest.fn().mockResolvedValue(undefined), isReady: () => true,
+      mqttAlarmState: { upsert: jest.fn().mockResolvedValue(undefined) },
+      alarm: { upsert: jest.fn().mockResolvedValue(undefined) },
+      deviceEvent: { upsert: jest.fn().mockResolvedValue(undefined) },
+    } as unknown as PrismaService;
+    const persistence = new MqttStatePersistenceService(prisma);
+    const base = {
+      tenantId: 'tenant-demo',
+      alarm: { id: 'alarm-1', lineId: 'line-cnc', deviceId: 'device-cnc-01', type: 'OVERHEAT' as const, severity: 'CRITICAL' as const, message: 'overheat', startedAt: '2026-08-28T09:00:00.000Z' },
+      updatedAt: '2026-08-28T09:00:01.000Z',
+    };
+
+    await persistence.saveAlarm({ ...base, active: true, lastEvent: 'alarm.created' });
+    await persistence.saveAlarm({
+      ...base,
+      alarm: { ...base.alarm, clearedAt: '2026-08-28T09:03:00.000Z' },
+      active: false,
+      lastEvent: 'alarm.cleared',
+    });
+
+    expect(prisma.alarm.upsert).toHaveBeenLastCalledWith(expect.objectContaining({
+      update: expect.objectContaining({
+        occurredAt: new Date('2026-08-28T09:00:00.000Z'),
+        resolvedAt: new Date('2026-08-28T09:03:00.000Z'),
+      }),
+    }));
+  });
+
   it('keeps ingestion alive when a required database drops during projection', async () => {
     const prisma = {
       required: true,
@@ -96,6 +152,6 @@ describe('MQTT state PostgreSQL persistence', () => {
       tenantId: 'tenant-demo', lineId: 'line-cnc', deviceId: 'cnc-01', deviceName: 'CNC', status: 'RUNNING',
       temperatureCelsius: 40, cycleTimeSeconds: 2, totalCount: 1, goodCount: 1, defectCount: 0, activeFaults: [],
       timestamp: '2026-08-28T09:00:00.000Z', sourceTopic: 'mqtt', receivedAt: '2026-08-28T09:00:01.000Z',
-    })).resolves.toBeUndefined();
+    })).rejects.toThrow('PostgreSQL is required; persist MQTT telemetry cannot continue: server has closed the connection');
   });
 });

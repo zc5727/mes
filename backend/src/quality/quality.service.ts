@@ -103,7 +103,7 @@ export class QualityService implements OnModuleInit {
       workOrderId: dto.workOrderId?.trim() || current.workOrderId,
       deviceId: dto.deviceId?.trim() || current.deviceId,
       updatedAt: now,
-      trace: [...current.trace, { type: 'draft_updated' as const, at: now, actorId: current.operatorId, traceId: createId('trace') }],
+      trace: [...current.trace, { type: 'draft_updated' as const, at: now, actorId: actorId.trim() || current.operatorId, traceId: createId('trace') }],
     };
     this.validateReferences(tenantId, updated, false);
     const result = this.replace(updated);

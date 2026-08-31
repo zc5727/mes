@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { DevicesService } from '../src/devices/devices.service';
 import { ProductionLinesService } from '../src/production-lines/production-lines.service';
+import { AuditService } from '../src/audit/audit.service';
 
 describe('DevicesService line ownership', () => {
   it('does not retain demo devices when an enabled database restores an empty snapshot', async () => {
@@ -38,5 +39,20 @@ describe('DevicesService line ownership', () => {
     expect(() => devices.update('tenant-demo', created.id, {
       lineId: 'line-does-not-exist',
     })).toThrow(NotFoundException);
+  });
+
+  it('audits device lifecycle and status changes', () => {
+    const audit = new AuditService();
+    const lines = new ProductionLinesService();
+    const devices = new DevicesService(undefined, lines, audit);
+    const device = devices.create('tenant-demo', { lineId: 'line-cnc', code: 'AUDIT-001', name: '审计设备' });
+
+    devices.update('tenant-demo', device.id, { name: '审计设备-已更新' });
+    devices.updateStatus('tenant-demo', device.id, { status: 'alarm', reason: '测试告警' });
+    devices.remove('tenant-demo', device.id);
+
+    expect(audit.list('tenant-demo').map((entry) => entry.action)).toEqual(expect.arrayContaining([
+      'device.created', 'device.updated', 'device.status', 'device.deleted',
+    ]));
   });
 });

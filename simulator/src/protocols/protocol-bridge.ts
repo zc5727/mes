@@ -24,10 +24,17 @@ export interface OpcUaSecurityContract {
   authentication: "anonymous";
 }
 
-export type OpcUaSecurityInput = Partial<Record<keyof OpcUaSecurityContract, string>>;
+export interface OpcUaSecurityInput {
+  securityMode?: string;
+  securityPolicy?: string;
+  authentication?: string;
+  certificateFile?: string;
+  trustStorePath?: string;
+}
 
 /** The synthetic OPC UA endpoint has no certificate or authenticated write contract. */
 export function parseOpcUaSecurity(input: OpcUaSecurityInput = {}): OpcUaSecurityContract {
+  if (input.certificateFile !== undefined || input.trustStorePath !== undefined) throw new Error("synthetic OPC UA certificate configuration is not implemented");
   if (input.securityMode !== undefined && input.securityMode !== "None") throw new Error("synthetic OPC UA supports securityMode None only");
   if (input.securityPolicy !== undefined && input.securityPolicy !== "None") throw new Error("synthetic OPC UA supports securityPolicy None only");
   if (input.authentication !== undefined && input.authentication !== "anonymous") throw new Error("synthetic OPC UA supports anonymous authentication only");
@@ -191,8 +198,10 @@ export class OpcUaTelemetrySimulator implements ProtocolTelemetrySource {
     private readonly port = 4841,
     private readonly host = "127.0.0.1",
     security: OpcUaSecurityInput = {},
+    private readonly timeoutMs = 2_000,
   ) {
     parseOpcUaSecurity(security);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 30000) throw new Error("OPC UA timeoutMs must be from 100 to 30000");
     this.server = new OPCUAServer({ hostname: host, alternateHostname: [host], port, resourcePath: "/MES/SimulatedDevice", securityModes: [MessageSecurityMode.None], securityPolicies: [SecurityPolicy.None], allowAnonymous: true });
   }
 
@@ -206,7 +215,7 @@ export class OpcUaTelemetrySimulator implements ProtocolTelemetrySource {
   async readTelemetry(retries = 1): Promise<SimulationMessage> {
     let lastError: unknown;
     for (let attempt = 0; attempt < Math.max(1, retries); attempt += 1) {
-      try { return await this.readOnce(); } catch (error: unknown) { lastError = error; await this.resetClient(); }
+      try { return await withTimeout(this.readOnce(), this.timeoutMs, "OPC UA read timed out"); } catch (error: unknown) { lastError = error; await this.resetClient(); }
     }
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
@@ -269,5 +278,12 @@ function closeServer(server: Server): Promise<void> {
   if (!server.listening) return Promise.resolve();
   return new Promise<void>((resolve, reject) => {
     server.close((error) => error ? reject(error) : resolve());
+  });
+}
+
+function withTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    operation.then((value) => { clearTimeout(timer); resolve(value); }, (error: unknown) => { clearTimeout(timer); reject(error); });
   });
 }

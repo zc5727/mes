@@ -10,9 +10,9 @@ import {
   TelemetryMessage,
 } from './mqtt.types';
 
-const DEVICE_TOPIC = /^mes\/simulator\/([^/]+)\/lines\/([^/]+)\/devices\/([^/]+)\/telemetry$/;
+const DEVICE_TOPIC = /^mes\/(simulator|mqtt|http|modbus|opcua|mtconnect)\/([^/]+)\/lines\/([^/]+)\/devices\/([^/]+)\/telemetry$/;
 const ALARMS_TOPIC = /^mes\/simulator\/([^/]+)\/alarms$/;
-const DEVICE_STATUSES = new Set<SimulatorDeviceStatus>(['RUNNING', 'IDLE', 'STOPPED', 'FAULT']);
+const DEVICE_STATUSES = new Set<SimulatorDeviceStatus>(['RUNNING', 'IDLE', 'WARNING', 'STOPPED', 'FAULT', 'OFFLINE']);
 const FAULT_TYPES = new Set<SimulatorFaultType>([
   'OVERHEAT',
   'JAM',
@@ -44,13 +44,13 @@ function parseTelemetryMessage(
 ): TelemetryMessage | undefined {
   if (envelope.event !== 'device.telemetry') return undefined;
   const data = parseTelemetry(envelope.data);
-  if (!data || data.lineId !== match[2] || data.deviceId !== match[3]) return undefined;
+  if (!data || data.lineId !== match[3] || data.deviceId !== match[4]) return undefined;
 
   return {
     kind: 'telemetry',
-    tenantId: match[1],
-    lineId: match[2],
-    deviceId: match[3],
+    tenantId: match[2],
+    lineId: match[3],
+    deviceId: match[4],
     topic,
     data,
   };

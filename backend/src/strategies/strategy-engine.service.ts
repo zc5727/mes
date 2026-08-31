@@ -12,9 +12,20 @@ import {
 export class StrategyEngineService {
   preflight(snapshot: StrategySnapshot): { accepted: boolean; errors: string[] } {
     const errors: string[] = [];
+    if (!snapshot || typeof snapshot !== 'object') {
+      return { accepted: false, errors: ['snapshot is required'] };
+    }
+    if (!this.validDate(snapshot.timestamp)) errors.push('snapshot timestamp must be a valid ISO date');
+    if (!Array.isArray(snapshot.lines)) errors.push('snapshot lines must be an array');
+    if (!Array.isArray(snapshot.devices)) errors.push('snapshot devices must be an array');
+    if (!Array.isArray(snapshot.workOrders)) errors.push('snapshot work orders must be an array');
+    if (errors.length > 0) return { accepted: false, errors };
     const lineIds = new Set<string>();
 
     snapshot.lines.forEach((line) => {
+      if (!line.id?.trim()) errors.push('line id must not be empty');
+      if (!line.name?.trim()) errors.push(`line ${line.id || '<unknown>'} name must not be empty`);
+      if (!Number.isFinite(line.capacityPerHour)) errors.push(`line ${line.id || '<unknown>'} has invalid capacity`);
       if (lineIds.has(line.id)) errors.push(`duplicate line id: ${line.id}`);
       lineIds.add(line.id);
       if (line.capacityPerHour < 0) errors.push(`line ${line.id} has negative capacity`);
@@ -22,6 +33,12 @@ export class StrategyEngineService {
 
     const deviceIds = new Set<string>();
     snapshot.devices.forEach((device) => {
+      if (!device.id?.trim()) errors.push('device id must not be empty');
+      if (!device.lineId?.trim()) errors.push(`device ${device.id || '<unknown>'} line id must not be empty`);
+      if (!Number.isFinite(device.capacityPerHour)) errors.push(`device ${device.id || '<unknown>'} has invalid capacity`);
+      if (!['online', 'offline', 'maintenance', 'alarm'].includes(device.status)) {
+        errors.push(`device ${device.id || '<unknown>'} has invalid status`);
+      }
       if (deviceIds.has(device.id)) errors.push(`duplicate device id: ${device.id}`);
       deviceIds.add(device.id);
       if (!lineIds.has(device.lineId)) errors.push(`device ${device.id} references unknown line ${device.lineId}`);
@@ -29,6 +46,13 @@ export class StrategyEngineService {
 
     const orderIds = new Set<string>();
     snapshot.workOrders.forEach((order) => {
+      if (!order.id?.trim()) errors.push('work order id must not be empty');
+      if (!order.lineId?.trim()) errors.push(`work order ${order.id || '<unknown>'} line id must not be empty`);
+      if (!Number.isFinite(order.remainingQty)) errors.push(`work order ${order.id || '<unknown>'} has invalid remaining quantity`);
+      if (!this.validDate(order.dueAt)) errors.push(`work order ${order.id || '<unknown>'} has invalid due date`);
+      if (!['released', 'running', 'paused'].includes(order.status)) {
+        errors.push(`work order ${order.id || '<unknown>'} has invalid status`);
+      }
       if (orderIds.has(order.id)) errors.push(`duplicate work order id: ${order.id}`);
       orderIds.add(order.id);
       if (!lineIds.has(order.lineId)) errors.push(`work order ${order.id} references unknown line ${order.lineId}`);
@@ -38,7 +62,13 @@ export class StrategyEngineService {
 
     const knownOrderIds = new Set(snapshot.workOrders.map((order) => order.id));
     for (const shortage of snapshot.materialShortages ?? []) {
+      if (!shortage.materialCode?.trim()) errors.push('material shortage code must not be empty');
+      if (!Array.isArray(shortage.affectedWorkOrderIds)) {
+        errors.push(`material shortage ${shortage.materialCode || '<unknown>'} work order ids must be an array`);
+        continue;
+      }
       for (const orderId of shortage.affectedWorkOrderIds) {
+        if (!orderId?.trim()) errors.push(`material shortage ${shortage.materialCode || '<unknown>'} contains an empty work order id`);
         if (!knownOrderIds.has(orderId)) errors.push(`material shortage references unknown work order ${orderId}`);
       }
     }
@@ -343,6 +373,10 @@ export class StrategyEngineService {
     let hash = 2166136261;
     for (const char of value) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
     return (hash >>> 0).toString(16);
+  }
+
+  private validDate(value: unknown): value is string {
+    return typeof value === 'string' && Number.isFinite(Date.parse(value));
   }
 }
 

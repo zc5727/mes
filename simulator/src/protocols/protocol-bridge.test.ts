@@ -17,6 +17,8 @@ test("protocol endpoint validation rejects unsafe or incomplete configuration", 
   assert.deepEqual(parseOpcUaSecurity(), { securityMode: "None", securityPolicy: "None", authentication: "anonymous" });
   assert.throws(() => parseOpcUaSecurity({ securityPolicy: "Basic256Sha256" }), /securityPolicy None only/);
   assert.throws(() => parseOpcUaSecurity({ authentication: "username-password" }), /anonymous authentication only/);
+  assert.throws(() => parseOpcUaSecurity({ certificateFile: "/tmp/client.pem" }), /certificate configuration is not implemented/);
+  assert.throws(() => new OpcUaTelemetrySimulator(values, 4844, "127.0.0.1", {}, 99), /timeoutMs must be/);
 });
 
 test("Modbus TCP server/client reads deterministic telemetry and maps to canonical MQTT", async () => {
@@ -118,6 +120,21 @@ test("Modbus TCP reconnects after a remote disconnect without accepting stale da
   } finally {
     sockets.forEach((socket) => socket.destroy());
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("Modbus TCP fails with a bounded timeout when the endpoint never responds", async () => {
+  const sockets = new Set<import("node:net").Socket>();
+  const silent = createServer((socket) => sockets.add(socket));
+  await new Promise<void>((resolve) => silent.listen(16018, "127.0.0.1", resolve));
+  try {
+    await assert.rejects(
+      new ModbusTcpTelemetryClient({ tenantId: values.tenantId, lineId: values.lineId, deviceId: values.deviceId, timestamp: values.timestamp }, "127.0.0.1", 16018, 1, 100).readTelemetry(),
+      /timed out/,
+    );
+  } finally {
+    sockets.forEach((socket) => socket.destroy());
+    await new Promise<void>((resolve, reject) => silent.close((error) => error ? reject(error) : resolve()));
   }
 });
 

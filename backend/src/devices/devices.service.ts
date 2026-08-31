@@ -6,6 +6,7 @@ import { IngestTelemetryDto } from './dto/ingest-telemetry.dto';
 import { UpdateDeviceStatusDto } from './dto/update-device-status.dto';
 import { UpdateDeviceDto } from './dto/update-device.dto';
 import { ProductionLinesService } from '../production-lines/production-lines.service';
+import { AuditService } from '../audit/audit.service';
 
 export interface Device extends MockEntity {
   lineId: string;
@@ -27,6 +28,7 @@ export class DevicesService implements OnModuleInit {
   constructor(
     @Optional() private readonly persistence?: CorePersistenceService,
     @Optional() private readonly productionLines?: ProductionLinesService,
+    @Optional() private readonly audit?: AuditService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -107,6 +109,13 @@ export class DevicesService implements OnModuleInit {
     };
     this.devices.set(device.id, device);
     this.persist('save device', this.persistence?.saveDevice(device));
+    this.audit?.record(tenantId, 'system', {
+      action: 'device.created',
+      resource: 'device',
+      resourceId: device.id,
+      after: device as unknown as Record<string, unknown>,
+      details: { code: device.code, lineId: device.lineId },
+    });
     return device;
   }
 
@@ -125,6 +134,14 @@ export class DevicesService implements OnModuleInit {
     const updated: Device = { ...current, ...dto, updatedAt: timestamp() };
     this.devices.set(id, updated);
     this.persist('save device', this.persistence?.saveDevice(updated));
+    this.audit?.record(tenantId, 'system', {
+      action: 'device.updated',
+      resource: 'device',
+      resourceId: id,
+      before: current as unknown as Record<string, unknown>,
+      after: updated as unknown as Record<string, unknown>,
+      details: { code: updated.code, lineId: updated.lineId },
+    });
     return updated;
   }
 
@@ -138,6 +155,14 @@ export class DevicesService implements OnModuleInit {
     };
     this.devices.set(id, updated);
     this.persist('save device', this.persistence?.saveDevice(updated));
+    this.audit?.record(tenantId, 'system', {
+      action: 'device.status',
+      resource: 'device',
+      resourceId: id,
+      before: current as unknown as Record<string, unknown>,
+      after: updated as unknown as Record<string, unknown>,
+      details: { from: current.status, to: updated.status, reason: updated.statusReason },
+    });
     return updated;
   }
 
@@ -181,9 +206,16 @@ export class DevicesService implements OnModuleInit {
   }
 
   remove(tenantId: string, id: string): { id: string; deleted: true } {
-    this.findOne(tenantId, id);
+    const device = this.findOne(tenantId, id);
     this.devices.delete(id);
     this.persist('delete device', this.persistence?.deleteDevice(id));
+    this.audit?.record(tenantId, 'system', {
+      action: 'device.deleted',
+      resource: 'device',
+      resourceId: id,
+      before: device as unknown as Record<string, unknown>,
+      details: { code: device.code, lineId: device.lineId },
+    });
     return { id, deleted: true };
   }
 
@@ -238,6 +270,16 @@ export class DevicesService implements OnModuleInit {
     };
     this.devices.set(current.id, updated);
     this.persist('save device telemetry projection', this.persistence?.saveDevice(updated));
+    if (current.status !== updated.status) {
+      this.audit?.record(updated.tenantId, 'system', {
+        action: 'device.status',
+        resource: 'device',
+        resourceId: updated.id,
+        before: current as unknown as Record<string, unknown>,
+        after: updated as unknown as Record<string, unknown>,
+        details: { from: current.status, to: updated.status, reason: updated.statusReason, source: 'telemetry' },
+      });
+    }
     return updated;
   }
 

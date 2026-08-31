@@ -55,7 +55,7 @@ describe('core production loop smoke', () => {
     await flushAsyncWork();
 
     expect(mqttClient.subscriptions).toEqual([
-      'mes/simulator/+/lines/+/devices/+/telemetry',
+      'mes/+/+/lines/+/devices/+/telemetry',
       'mes/simulator/+/alarms',
     ]);
     expect(ingestion.isConnected()).toBe(true);

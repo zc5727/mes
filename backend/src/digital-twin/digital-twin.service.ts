@@ -206,7 +206,9 @@ export class DigitalTwinService {
       sourceId: identity.sourceId,
       lineId: device.lineId,
       name: device.deviceName,
-      status: device.status === 'FAULT' ? 'alarm' : device.status === 'STOPPED' ? 'offline' : 'online',
+      status: device.status === 'FAULT' || device.status === 'WARNING'
+        ? 'alarm'
+        : device.status === 'STOPPED' || device.status === 'OFFLINE' ? 'offline' : 'online',
       lastSeenAt: device.timestamp,
       observedAt: device.timestamp,
       metrics: {

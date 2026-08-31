@@ -33,6 +33,7 @@ export class MtConnectTelemetrySimulator implements ProtocolTelemetrySource {
     private values: MtConnectTelemetryValues,
     private readonly host = "127.0.0.1",
     private readonly port = 5000,
+    private readonly timeoutMs = 2_000,
   ) {
     this.server = createServer((requestMessage, response) => this.handleRequest(requestMessage, response));
   }
@@ -50,7 +51,7 @@ export class MtConnectTelemetrySimulator implements ProtocolTelemetrySource {
     let lastError: unknown;
     for (let attempt = 0; attempt < Math.max(1, retries); attempt += 1) {
       try {
-        const body = await readHttp(this.host, this.port, "/current");
+        const body = await readHttp(this.host, this.port, "/current", this.timeoutMs);
         return adaptMtConnectTelemetry(parseCurrent(body, this.identity));
       } catch (error: unknown) {
         lastError = error;
@@ -142,7 +143,7 @@ function statusFor(execution: string | undefined): DeviceStatus {
 }
 function sendXml(response: ServerResponse, body: string): void { response.statusCode = 200; response.setHeader("content-type", "application/xml"); response.end(body); }
 
-function readHttp(host: string, port: number, path: string): Promise<string> {
+function readHttp(host: string, port: number, path: string, timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const client = request({ host, port, path, method: "GET" }, (response) => {
       if (response.statusCode !== 200) { response.resume(); reject(new Error(`MTConnect HTTP status ${response.statusCode}`)); return; }
@@ -150,7 +151,7 @@ function readHttp(host: string, port: number, path: string): Promise<string> {
       response.on("data", (chunk: Buffer) => chunks.push(chunk));
       response.once("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     });
-    client.setTimeout(2_000, () => client.destroy(new Error("MTConnect HTTP request timed out")));
+    client.setTimeout(timeoutMs, () => client.destroy(new Error("MTConnect HTTP request timed out")));
     client.once("error", reject);
     client.end();
   });

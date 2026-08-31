@@ -1,5 +1,5 @@
 import { RequireCapability } from '../common/route-capability.decorator';
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, Post, ServiceUnavailableException } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { StrategyEngineService } from './strategy-engine.service';
 import { StrategyGovernanceService } from './strategy-governance.service';
@@ -38,6 +38,7 @@ export class StrategiesController {
     const tenantId = legacyCall ? 'tenant-demo' : tenantIdOrDto;
     const input = legacyCall ? tenantIdOrDto : dto;
     if (!input) throw new Error('strategy simulation snapshot is required');
+    const governance = legacyCall ? undefined : this.requireGovernance();
     // The engine receives a snapshot copy. It can only calculate suggestions;
     // this endpoint never writes devices, work orders, or production state.
     const snapshot: StrategySnapshot = {
@@ -68,22 +69,22 @@ export class StrategiesController {
     }
 
     const normalizedIdempotencyKey = idempotencyKey?.trim();
-    if (!legacyCall && normalizedIdempotencyKey && this.governance) {
-      const replay = this.governance.getIdempotent(
+    if (normalizedIdempotencyKey && governance) {
+      const replay = governance.getIdempotent(
         tenantId,
         normalizedIdempotencyKey,
-        this.governance.fingerprint(snapshot),
+        governance.fingerprint(snapshot),
       );
       if (replay) return replay;
     }
 
     const result = this.strategyEngine.simulate(snapshot);
     const requestedBy = context?.userId || userId?.trim() || 'api-user';
-    const audit = this.governance?.recordSimulation(tenantId, requestedBy, snapshot, result, context, normalizedIdempotencyKey);
+    const audit = governance?.recordSimulation(tenantId, requestedBy, snapshot, result, context, normalizedIdempotencyKey);
     if (audit) {
       const response = { data: result, audit, traceId: audit.traceId };
-      if (normalizedIdempotencyKey && this.governance) {
-        this.governance.rememberIdempotent(tenantId, normalizedIdempotencyKey, snapshot, response);
+      if (normalizedIdempotencyKey && governance) {
+        governance.rememberIdempotent(tenantId, normalizedIdempotencyKey, snapshot, response);
       }
       return response;
     }
@@ -102,13 +103,13 @@ export class StrategiesController {
     @Headers('x-session-id') sessionId?: string,
     @Headers('x-trace-id') traceId?: string,
   ) {
-    if (!this.governance) return { data: null, tenantId };
+    const governance = this.requireGovernance();
     const context = this.authorization.fromHeaders({ userId, role, factoryId, scope, sessionId, traceId });
     this.authorization.assertCanRollback(context);
-    const tracked = this.governance.getSimulation(tenantId, simulationId);
+    const tracked = governance.getSimulation(tenantId, simulationId);
     this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
     return {
-      data: this.governance.rollbackSimulation(tenantId, simulationId, context.userId, context.traceId), traceId: context.traceId,
+      data: governance.rollbackSimulation(tenantId, simulationId, context.userId, context.traceId), traceId: context.traceId,
       tenantId,
     };
   }
@@ -124,10 +125,10 @@ export class StrategiesController {
     @Headers('x-session-id') sessionId?: string,
     @Headers('x-trace-id') traceId?: string,
   ) {
-    if (!this.governance) return { data: null, tenantId };
+    const governance = this.requireGovernance();
     const context = this.authorization.fromHeaders({ userId, role, factoryId, scope, sessionId, traceId });
     this.authorization.assertCanRead(context);
-    const tracked = this.governance.getSimulation(tenantId, simulationId);
+    const tracked = governance.getSimulation(tenantId, simulationId);
     this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
     return { data: tracked, tenantId, traceId: context.traceId };
   }
@@ -142,9 +143,10 @@ export class StrategiesController {
     @Headers('x-session-id') sessionId?: string,
     @Headers('x-trace-id') traceId?: string,
   ) {
+    const governance = this.requireGovernance();
     const context = this.authorization.fromHeaders({ userId, role, factoryId, scope, sessionId, traceId });
     this.authorization.assertCanRead(context);
-    return { data: this.governance?.listCallsForContext(tenantId, context) ?? [], tenantId, traceId: context.traceId };
+    return { data: governance.listCallsForContext(tenantId, context), tenantId, traceId: context.traceId };
   }
 
   @Get('history')
@@ -155,7 +157,7 @@ export class StrategiesController {
   ) {
     const context = this.requestContext(userId, role, factoryId, scope, sessionId, traceId);
     this.authorization.assertCanRead(context);
-    return { data: this.governance?.listCallsForContext(tenantId, context) ?? [], tenantId, traceId: context.traceId };
+    return { data: this.requireGovernance().listCallsForContext(tenantId, context), tenantId, traceId: context.traceId };
   }
 
   @Get('simulations/:simulationId/approvals')
@@ -169,12 +171,12 @@ export class StrategiesController {
     @Headers('x-session-id') sessionId?: string,
     @Headers('x-trace-id') traceId?: string,
   ) {
-    if (!this.governance) return { data: [], tenantId };
+    const governance = this.requireGovernance();
     const context = this.authorization.fromHeaders({ userId, role, factoryId, scope, sessionId, traceId });
     this.authorization.assertCanRead(context);
-    const tracked = this.governance.getSimulation(tenantId, simulationId);
+    const tracked = governance.getSimulation(tenantId, simulationId);
     this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
-    return { data: this.governance.listApprovalsForSimulation(tenantId, simulationId), tenantId, traceId: context.traceId };
+    return { data: governance.listApprovalsForSimulation(tenantId, simulationId), tenantId, traceId: context.traceId };
   }
 
   @Post('simulations/:simulationId/approvals/:approvalId/approve')
@@ -186,10 +188,10 @@ export class StrategiesController {
   ) {
     const context = this.requestContext(userId, role, factoryId, scope, sessionId, traceId);
     this.authorization.assertCanApprove(context);
-    const tracked = this.governance?.getSimulation(tenantId, simulationId);
-    if (!tracked) return { data: null, tenantId };
+    const governance = this.requireGovernance();
+    const tracked = governance.getSimulation(tenantId, simulationId);
     this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
-    return { data: this.governance?.decideApproval(tenantId, simulationId, approvalId, 'approved', context.userId, context.traceId), tenantId, traceId: context.traceId };
+    return { data: governance.decideApproval(tenantId, simulationId, approvalId, 'approved', context.userId, context.traceId), tenantId, traceId: context.traceId };
   }
 
   @Post('simulations/:simulationId/approvals/:approvalId/reject')
@@ -201,10 +203,10 @@ export class StrategiesController {
   ) {
     const context = this.requestContext(userId, role, factoryId, scope, sessionId, traceId);
     this.authorization.assertCanApprove(context);
-    const tracked = this.governance?.getSimulation(tenantId, simulationId);
-    if (!tracked) return { data: null, tenantId };
+    const governance = this.requireGovernance();
+    const tracked = governance.getSimulation(tenantId, simulationId);
     this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
-    return { data: this.governance?.decideApproval(tenantId, simulationId, approvalId, 'rejected', context.userId, context.traceId), tenantId, traceId: context.traceId };
+    return { data: governance.decideApproval(tenantId, simulationId, approvalId, 'rejected', context.userId, context.traceId), tenantId, traceId: context.traceId };
   }
 
   @Post('simulations/:simulationId/revoke')
@@ -216,10 +218,10 @@ export class StrategiesController {
   ) {
     const context = this.requestContext(userId, role, factoryId, scope, sessionId, traceId);
     this.authorization.assertCanApprove(context);
-    const tracked = this.governance?.getSimulation(tenantId, simulationId);
-    if (!tracked) return { data: null, tenantId };
+    const governance = this.requireGovernance();
+    const tracked = governance.getSimulation(tenantId, simulationId);
     this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
-    return { data: this.governance?.revokeSimulation(tenantId, simulationId, context.userId, context.traceId), tenantId, traceId: context.traceId };
+    return { data: governance.revokeSimulation(tenantId, simulationId, context.userId, context.traceId), tenantId, traceId: context.traceId };
   }
 
   @Post('simulations/:simulationId/execute')
@@ -232,11 +234,11 @@ export class StrategiesController {
   ) {
     const context = this.requestContext(userId, role, factoryId, scope, sessionId, traceId);
     this.authorization.assertCanExecute(context);
-    const tracked = this.governance?.getSimulation(tenantId, simulationId);
-    if (!tracked) return { data: null, tenantId };
+    const governance = this.requireGovernance();
+    const tracked = governance.getSimulation(tenantId, simulationId);
     this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
     return {
-      data: this.governance?.executeSimulation(tenantId, simulationId, context.userId, context.traceId, body?.confirmationId, context.sessionId),
+      data: governance.executeSimulation(tenantId, simulationId, context.userId, context.traceId, body?.confirmationId, context.sessionId),
       tenantId,
       traceId: context.traceId,
     };
@@ -252,10 +254,10 @@ export class StrategiesController {
   ) {
     const context = this.requestContext(userId, role, factoryId, scope, sessionId, traceId);
     this.authorization.assertCanRead(context);
-    const tracked = this.governance?.getSimulation(tenantId, simulationId);
-    if (!tracked) return { data: null, tenantId };
+    const governance = this.requireGovernance();
+    const tracked = governance.getSimulation(tenantId, simulationId);
     this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
-    return { data: this.governance?.replaySimulation(tenantId, simulationId, context.userId, context.traceId), tenantId, traceId: context.traceId };
+    return { data: governance.replaySimulation(tenantId, simulationId, context.userId, context.traceId), tenantId, traceId: context.traceId };
   }
 
   @Post('preflight')
@@ -291,5 +293,14 @@ export class StrategiesController {
 
   private requestContext(userId?: string, role?: string, factoryId?: string, scope?: string, sessionId?: string, traceId?: string): StrategyRequestContext {
     return this.authorization.fromHeaders({ userId, role, factoryId, scope, sessionId, traceId });
+  }
+
+  private requireGovernance(): StrategyGovernanceService {
+    if (!this.governance) {
+      throw new ServiceUnavailableException(
+        'STRATEGY_GOVERNANCE_UNAVAILABLE: governed strategy API is disabled',
+      );
+    }
+    return this.governance;
   }
 }

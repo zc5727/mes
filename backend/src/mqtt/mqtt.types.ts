@@ -18,7 +18,8 @@ export interface MqttConnectOptions {
 
 export type MqttClientFactory = (url: string, options: MqttConnectOptions) => MqttClientLike;
 
-export type SimulatorDeviceStatus = 'RUNNING' | 'IDLE' | 'STOPPED' | 'FAULT';
+/** Status values emitted by the simulator and protocol bridges. */
+export type SimulatorDeviceStatus = 'RUNNING' | 'IDLE' | 'WARNING' | 'STOPPED' | 'FAULT' | 'OFFLINE';
 export type SimulatorFaultType =
   | 'OVERHEAT'
   | 'JAM'
@@ -114,7 +115,7 @@ export interface MqttIngestionStatus {
   lastError: string | null;
   lastErrorCode: string | null;
   reconnectAttempts: number;
-  messages: { received: number; telemetry: number; alarms: number; http: number; accepted: number; duplicate: number; stale: number; malformed: number };
+  messages: { received: number; telemetry: number; alarms: number; http: number; accepted: number; duplicate: number; stale: number; malformed: number; rejected: number };
 }
 
 export type SimulatorControlAction =
@@ -144,5 +145,10 @@ export interface SimulatorControlCommand {
 export const MQTT_CLIENT_FACTORY = Symbol('MQTT_CLIENT_FACTORY');
 export const MQTT_INGESTION_OPTIONS = Symbol('MQTT_INGESTION_OPTIONS');
 
-export const DEFAULT_TELEMETRY_TOPIC = 'mes/simulator/+/lines/+/devices/+/telemetry';
+/**
+ * Protocol bridges publish the same canonical envelope under a protocol
+ * namespace. The parser still allow-lists the namespace; this wildcard is
+ * not a claim that every MQTT publisher is a supported driver.
+ */
+export const DEFAULT_TELEMETRY_TOPIC = 'mes/+/+/lines/+/devices/+/telemetry';
 export const DEFAULT_ALARMS_TOPIC = 'mes/simulator/+/alarms';

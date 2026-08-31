@@ -53,21 +53,28 @@ export class AgentApiService {
     const traceId = this.normalizeTraceId(request.traceId);
     const args = this.normalizeArguments(request.arguments);
     const tenantId = typeof request.tenantId === 'string' && request.tenantId.trim() ? request.tenantId.trim() : 'unknown';
-    const audit = this.audit(tenantId, request.requestedBy, args, traceId, request.authorization?.sessionId);
+    const audit = this.audit(
+      tenantId,
+      request.authorization?.userId ?? request.requestedBy,
+      args,
+      traceId,
+      request.authorization?.sessionId,
+    );
 
     if (!isReadOnlyAgentTool(request.tool)) {
-      this.recordToolAudit(tenantId, request.requestedBy, String(request.tool ?? ''), traceId, 'denied', 'UNKNOWN_TOOL');
+      this.recordToolAudit(tenantId, request.authorization?.userId ?? request.requestedBy, String(request.tool ?? ''), traceId, 'denied', 'UNKNOWN_TOOL', request.authorization);
       return this.failure(String(request.tool ?? ''), traceId, 'UNKNOWN_TOOL', '工具不存在或不在只读工具白名单中', audit);
     }
     if (tenantId === 'unknown') {
-      this.recordToolAudit(tenantId, request.requestedBy, request.tool, traceId, 'denied', 'INVALID_REQUEST');
+      this.recordToolAudit(tenantId, request.authorization?.userId ?? request.requestedBy, request.tool, traceId, 'denied', 'INVALID_REQUEST', request.authorization);
       return this.failure(request.tool, traceId, 'INVALID_REQUEST', '参数 tenantId 不能为空', audit);
     }
 
+    let context: StrategyRequestContext | undefined;
     try {
-      const context = this.authorize(request.authorization, tenantId, traceId);
+      context = this.authorize(request.authorization, tenantId, traceId);
       const data = this.dispatch(request.tool, tenantId, args, context);
-      this.recordToolAudit(tenantId, context?.userId ?? request.requestedBy, request.tool, traceId, 'success');
+      this.recordToolAudit(tenantId, context?.userId ?? request.requestedBy, request.tool, traceId, 'success', undefined, context);
       return {
         ok: true,
         tool: request.tool,
@@ -77,7 +84,7 @@ export class AgentApiService {
         meta: this.toolMeta(request.tool, this.sourceTime(data, audit.calledAt), 'granted'),
       };
     } catch (error: unknown) {
-      this.recordToolAudit(tenantId, request.requestedBy, request.tool, traceId, 'denied', this.errorCode(error));
+      this.recordToolAudit(tenantId, context?.userId ?? request.authorization?.userId ?? request.requestedBy, request.tool, traceId, 'denied', this.errorCode(error), context ?? request.authorization);
       return this.failure(request.tool, traceId, this.errorCode(error), this.errorMessage(error), audit);
     }
   }
@@ -302,6 +309,7 @@ export class AgentApiService {
     const lineIds = new Set<string>();
     this.addString(lineIds, entry.details.lineId);
     this.addStrings(lineIds, entry.details.lineIds);
+    this.addScopeLines(lineIds, entry.details.scope);
     const before = this.recordValue(entry.details.before);
     const after = this.recordValue(entry.details.after);
     this.addStrings(lineIds, before?.lineIds);
@@ -354,6 +362,21 @@ export class AgentApiService {
 
   private addStrings(target: Set<string>, value: unknown): void {
     if (Array.isArray(value)) value.forEach((item) => this.addString(target, item));
+  }
+
+  private addScopeLines(target: Set<string>, value: unknown): void {
+    const scope = Array.isArray(value)
+      ? value
+      : typeof value === 'string'
+        ? value.split(',')
+        : [];
+    scope.forEach((item) => {
+      if (typeof item !== 'string') return;
+      const normalized = item.trim();
+      if (normalized && normalized !== '*' && !normalized.startsWith('factory:')) {
+        target.add(normalized.replace(/^line:/, ''));
+      }
+    });
   }
 
   private recordValue(value: unknown): Record<string, unknown> | undefined {
@@ -506,6 +529,7 @@ export class AgentApiService {
     traceId: string,
     result: 'success' | 'denied',
     errorCode?: string,
+    context?: Pick<StrategyRequestContext, 'factoryId' | 'scope' | 'sessionId'> | AgentAuthorizationContext,
   ): void {
     this.auditService?.record(tenantId, actor?.trim() || 'agent-gateway', {
       action: 'AGENT_TOOL_EXECUTE',
@@ -514,7 +538,14 @@ export class AgentApiService {
       traceId,
       result,
       reason: result === 'success' ? '受控只读工具调用' : `受控工具调用被拒绝: ${errorCode ?? 'TOOL_EXECUTION_ERROR'}`,
-      details: { tool, permission: result === 'success' ? 'granted' : 'denied', errorCode },
+      details: {
+        tool,
+        permission: result === 'success' ? 'granted' : 'denied',
+        errorCode,
+        factoryId: context?.factoryId,
+        scope: context?.scope,
+        sessionId: context?.sessionId,
+      },
     });
   }
 

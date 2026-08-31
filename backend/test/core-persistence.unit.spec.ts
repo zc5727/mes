@@ -35,6 +35,47 @@ describe('core PostgreSQL persistence repository', () => {
     }));
   });
 
+  it('persists line state and external production identifiers', async () => {
+    const productionLine = { upsert: jest.fn().mockResolvedValue(undefined) };
+    const productionOrder = { upsert: jest.fn().mockResolvedValue(undefined) };
+    const workOrder = { upsert: jest.fn().mockResolvedValue(undefined) };
+    const prisma = {
+      ensureConnection: jest.fn().mockResolvedValue(undefined),
+      isReady: () => true,
+      productionLine,
+      productionOrder,
+      workOrder,
+    } as unknown as PrismaService;
+    const service = new CorePersistenceService(prisma);
+
+    await service.saveLine({
+      id: 'line-1', tenantId: 'tenant-demo', factoryId: 'factory-1', code: 'L001', name: '焊接线', type: '焊接',
+      active: false, status: 'maintenance', statusReason: '计划保养', targetOee: 85,
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    await service.saveOrder({
+      id: 'order-1', tenantId: 'tenant-demo', orderNo: 'PO-1', productCode: 'P-1', productName: '产品',
+      plannedQty: 1, completedQty: 0, dueAt: '2026-09-01T00:00:00.000Z', priority: 'normal', status: 'planned',
+      externalId: 'ERP-PO-1', externalSystem: 'ERPNext', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    await service.saveWorkOrder({
+      id: 'wo-1', tenantId: 'tenant-demo', orderId: null, orderNo: 'WO-1', productCode: 'P-1', productName: '产品',
+      lineId: 'line-1', plannedQty: 1, completedQty: 0, dueAt: '2026-09-01T00:00:00.000Z', priority: 'normal',
+      status: 'draft', statusReason: '', externalId: 'ERP-WO-1', externalSystem: 'ERPNext', bomId: 'bom-1', routingId: 'routing-1',
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(productionLine.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ status: 'maintenance', statusReason: '计划保养' }),
+    }));
+    expect(productionOrder.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ externalId: 'ERP-PO-1', externalSystem: 'ERPNext' }),
+    }));
+    expect(workOrder.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ externalId: 'ERP-WO-1', bomId: 'bom-1', routingId: 'routing-1' }),
+    }));
+  });
+
   it('persists report traceability fields for restore and audit correlation', async () => {
     const report = { upsert: jest.fn().mockResolvedValue(undefined) };
     const prisma = {

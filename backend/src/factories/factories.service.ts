@@ -3,6 +3,7 @@ import { CorePersistenceService } from '../database/core-persistence.service';
 import { createId, MockEntity, timestamp } from '../common/mock.types';
 import { CreateFactoryDto } from './dto/create-factory.dto';
 import { UpdateFactoryDto } from './dto/update-factory.dto';
+import { AuditService } from '../audit/audit.service';
 
 export interface Factory extends MockEntity {
   code: string;
@@ -15,10 +16,14 @@ export interface Factory extends MockEntity {
 
 @Injectable()
 export class FactoriesService implements OnModuleInit {
-  constructor(@Optional() private readonly persistence?: CorePersistenceService) {}
+  constructor(
+    @Optional() private readonly persistence?: CorePersistenceService,
+    @Optional() private readonly audit?: AuditService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     const snapshot = await this.persistence?.restore();
+    if (this.persistence?.isEnabled?.()) this.factories.clear();
     if (snapshot?.factories.length) {
       this.factories.clear();
       snapshot.factories.forEach((item) => this.factories.set(item.id, { ...item, address: '', manager: '', timezone: 'Asia/Shanghai', status: 'active' }));
@@ -76,6 +81,13 @@ export class FactoriesService implements OnModuleInit {
     };
     this.factories.set(factory.id, factory);
     void this.persistence?.saveFactory(factory);
+    this.audit?.record(tenantId, 'system', {
+      action: 'factory.created',
+      resource: 'factory',
+      resourceId: factory.id,
+      after: factory as unknown as Record<string, unknown>,
+      details: { code: factory.code },
+    });
     return factory;
   }
 
@@ -91,13 +103,28 @@ export class FactoriesService implements OnModuleInit {
     const updated: Factory = { ...current, ...dto, updatedAt: timestamp() };
     this.factories.set(id, updated);
     void this.persistence?.saveFactory(updated);
+    this.audit?.record(tenantId, 'system', {
+      action: 'factory.updated',
+      resource: 'factory',
+      resourceId: id,
+      before: current as unknown as Record<string, unknown>,
+      after: updated as unknown as Record<string, unknown>,
+      details: { code: updated.code },
+    });
     return updated;
   }
 
   remove(tenantId: string, id: string): { id: string; deleted: true } {
-    this.findOne(tenantId, id);
+    const factory = this.findOne(tenantId, id);
     this.factories.delete(id);
     void this.persistence?.deleteFactory(id);
+    this.audit?.record(tenantId, 'system', {
+      action: 'factory.deleted',
+      resource: 'factory',
+      resourceId: id,
+      before: factory as unknown as Record<string, unknown>,
+      details: { code: factory.code },
+    });
     return { id, deleted: true };
   }
 }

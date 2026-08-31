@@ -19,4 +19,22 @@ describe('StrategyEngineService', () => {
     expect(first.recommended?.requiresApproval).toBe(true);
     expect(snapshot.workOrders[0].lineId).toBe('LINE-03');
   });
+
+  it('rejects malformed direct inputs before risk or candidate evaluation', () => {
+    const malformed = {
+      ...snapshot,
+      timestamp: 'not-a-date',
+      lines: [{ ...snapshot.lines[0], capacityPerHour: Number.NaN }],
+      devices: [{ ...snapshot.devices[0], lineId: 'LINE-MISSING' }],
+      workOrders: [{ ...snapshot.workOrders[0], dueAt: 'not-a-date' }],
+    } as StrategySnapshot;
+    const engine = new StrategyEngineService();
+
+    const validation = engine.preflight(malformed);
+    expect(validation.accepted).toBe(false);
+    expect(validation.errors).toEqual(expect.arrayContaining([
+      'snapshot timestamp must be a valid ISO date',
+    ]));
+    expect(() => engine.simulate(malformed)).toThrow('invalid strategy snapshot');
+  });
 });

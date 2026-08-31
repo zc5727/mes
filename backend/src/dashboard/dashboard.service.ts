@@ -7,6 +7,7 @@ import { ProductionLine, ProductionLinesService } from '../production-lines/prod
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { MqttIngestionService } from '../mqtt/mqtt-ingestion.service';
 import type { CachedDeviceTelemetry } from '../mqtt/mqtt.types';
+import { resolveSimulatorIdentity } from '../digital-twin/device-identity';
 
 type DashboardDataSource = 'simulator' | 'mqtt' | 'database' | 'mock';
 type Position = { x: number; y: number; z: number } | null;
@@ -493,18 +494,24 @@ export class DashboardService {
     const liveDevices = this.mqttIngestionService?.listDevices(tenantId) ?? [];
     if (!liveDevices.length) return baseDevices;
 
-    const liveLines = new Set(liveDevices.map((device) => device.lineId));
+    // MQTT telemetry can be partial; replace only the devices represented by
+    // the live snapshot instead of dropping every base device on that line.
+    const liveCanonicalIds = new Set(liveDevices.map((device) => this.canonicalDeviceId(
+      device.tenantId,
+      device.lineId,
+      device.deviceId,
+    )));
     return [
-      ...baseDevices.filter((device) => !liveLines.has(device.lineId)),
+      ...baseDevices.filter((device) => !liveCanonicalIds.has(device.id)),
       ...liveDevices.map((device) => this.toDevice(device, snapshotVersion)),
     ];
   }
 
   private toDevice(device: CachedDeviceTelemetry, snapshotVersion: string): DashboardDevice {
     const canonicalId = this.canonicalDeviceId(device.tenantId, device.lineId, device.deviceId);
-    const status: Device['status'] = device.status === 'FAULT'
+    const status: Device['status'] = device.status === 'FAULT' || device.status === 'WARNING'
       ? 'alarm'
-      : device.status === 'STOPPED'
+      : device.status === 'STOPPED' || device.status === 'OFFLINE'
         ? 'offline'
         : 'online';
     return {
@@ -561,7 +568,7 @@ export class DashboardService {
     const known = this.devicesService.findAll(tenantId).find((device) => device.lineId === lineId
       && (device.id === sourceId || device.code === sourceId));
     if (known) return known.id;
-    return `sim-${lineId.replace(/[^a-z0-9-]+/gi, '-')}-${sourceId.replace(/[^a-z0-9-]+/gi, '-')}`;
+    return resolveSimulatorIdentity(lineId, sourceId).canonicalId;
   }
 
   private summarizeDevices(devices: Device[]): DashboardOverview['devices'] {

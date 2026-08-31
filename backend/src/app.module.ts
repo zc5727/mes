@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { parseMesCoreMode } from './common/mes-core-mode';
 import { DevicesModule } from './devices/devices.module';
 import { FactoriesModule } from './factories/factories.module';
 import { HealthController } from './health.controller';
@@ -32,7 +33,13 @@ import { RoleCapabilityGuard } from './common/role-capability.guard';
 @Module({
   controllers: [HealthController],
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validate: (config) => ({
+        ...config,
+        MES_CORE: parseMesCoreMode(config.MES_CORE),
+      }),
+    }),
     TenantsModule,
     FactoriesModule,
     ProductionLinesModule,
