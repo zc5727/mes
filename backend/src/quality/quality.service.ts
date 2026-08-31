@@ -119,7 +119,9 @@ export class QualityService implements OnModuleInit {
 
   canCompleteWorkOrder(tenantId: string, workOrderId: string): boolean {
     const linked = this.list(tenantId).filter((record) => record.workOrderId === workOrderId);
-    return linked.length === 0 || linked.every((record) => record.status === 'confirmed');
+    if (linked.length > 0 && !linked.every((record) => record.status === 'confirmed')) return false;
+    const recordIds = new Set(linked.map((record) => record.id));
+    return this.listIssues(tenantId).filter((issue) => recordIds.has(issue.qualityRecordId)).every((issue) => issue.status === 'closed');
   }
 
   canReportWorkOrder(tenantId: string, workOrderId: string, qualityRecordId: string): boolean {

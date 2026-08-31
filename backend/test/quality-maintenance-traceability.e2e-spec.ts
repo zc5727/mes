@@ -48,6 +48,23 @@ describe('quality, maintenance and traceability contracts (e2e)', () => {
   });
 
   it('enforces maintenance transitions and requires a completion reason', async () => {
+    const plan = await request(app.getHttpServer())
+      .post('/api/v1/maintenance/work-orders/preventive-plans')
+      .set('x-tenant-id', 'tenant-demo')
+      .send({ deviceId: 'device-cnc-01', title: '到期 PM E2E', nextDueAt: '2026-01-01T09:00:00.000Z' })
+      .expect(201);
+    const triggered = await request(app.getHttpServer())
+      .post('/api/v1/maintenance/work-orders/preventive-plans/trigger-due')
+      .set('x-tenant-id', 'tenant-demo')
+      .expect(201);
+    expect(triggered.body.data).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'preventive', description: `preventive-plan:${plan.body.data.id}` })]));
+    const retriggered = await request(app.getHttpServer())
+      .post('/api/v1/maintenance/work-orders/preventive-plans/trigger-due')
+      .set('x-tenant-id', 'tenant-demo')
+      .expect(201);
+    expect(retriggered.body.data.find((item: { description: string }) => item.description === `preventive-plan:${plan.body.data.id}`).id)
+      .toBe(triggered.body.data.find((item: { description: string }) => item.description === `preventive-plan:${plan.body.data.id}`).id);
+
     const created = await request(app.getHttpServer())
       .post('/api/v1/maintenance/work-orders')
       .set('x-tenant-id', 'tenant-demo')

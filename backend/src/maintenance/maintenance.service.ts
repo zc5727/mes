@@ -99,6 +99,15 @@ export class MaintenanceService implements OnModuleInit {
   duePreventivePlans(tenantId: string, at = new Date()): PreventivePlan[] {
     return this.listPreventivePlans(tenantId).filter((plan) => plan.active && new Date(plan.nextDueAt).getTime() <= at.getTime());
   }
+  triggerDuePreventivePlans(tenantId: string, at = new Date()): MaintenanceWorkOrder[] {
+    return this.duePreventivePlans(tenantId, at).flatMap((plan) => {
+      const marker = `preventive-plan:${plan.id}`;
+      const existing = this.list(tenantId).find((item) => item.type === 'preventive' && item.description === marker && item.status !== 'cancelled');
+      if (existing) return [existing];
+      const device = this.devices.findOne(tenantId, plan.deviceId);
+      return [this.create(tenantId, { lineId: device.lineId, deviceId: plan.deviceId, type: 'preventive', title: plan.title, description: marker, plannedAt: plan.nextDueAt })];
+    });
+  }
   createSparePart(tenantId: string, dto: CreateSparePartDto): SparePart {
     const key = `${tenantId}:${dto.code.trim()}`;
     if (this.parts.has(key)) throw new ConflictException(`Spare part ${dto.code} already exists`);

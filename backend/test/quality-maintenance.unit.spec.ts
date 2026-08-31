@@ -13,14 +13,22 @@ describe('quality and maintenance minimum loops', () => {
     quality.submit('tenant-demo', record.id, { actorId: 'inspector' });
     expect(quality.confirm('tenant-demo', record.id, { actorId: 'quality-manager' }).status).toBe('confirmed');
     const issue = quality.createIssue('tenant-demo', { qualityRecordId: record.id, code: 'NCR-001', description: '硬度偏差' });
+    expect(quality.canCompleteWorkOrder('tenant-demo', 'wo-demo-001')).toBe(false);
     expect(() => quality.updateIssue('tenant-demo', issue.id, { status: 'closed' })).toThrow(ConflictException);
     expect(quality.updateIssue('tenant-demo', issue.id, { status: 'closed', capa: '调整热处理参数并复检' }).status).toBe('closed');
+    expect(quality.canCompleteWorkOrder('tenant-demo', 'wo-demo-001')).toBe(true);
   });
 
   it('creates preventive maintenance and prevents spare-part stock underflow', () => {
     const maintenance = new MaintenanceService(new DevicesService(), new ProductionLinesService());
     const plan = maintenance.createPreventivePlan('tenant-demo', { deviceId: 'device-cnc-01', title: '主轴保养', nextDueAt: '2026-09-10T09:00:00.000Z' });
     expect(maintenance.listPreventivePlans('tenant-demo')).toContainEqual(plan);
+    expect(maintenance.triggerDuePreventivePlans('tenant-demo', new Date('2026-09-01T00:00:00.000Z'))).toEqual([]);
+    const duePlan = maintenance.createPreventivePlan('tenant-demo', { deviceId: 'device-cnc-01', title: '已到期保养', nextDueAt: '2026-08-01T09:00:00.000Z' });
+    const triggered = maintenance.triggerDuePreventivePlans('tenant-demo', new Date('2026-09-01T00:00:00.000Z'));
+    expect(triggered).toHaveLength(1);
+    expect(maintenance.triggerDuePreventivePlans('tenant-demo', new Date('2026-09-01T00:00:00.000Z'))[0].id).toBe(triggered[0].id);
+    expect(duePlan.active).toBe(true);
     maintenance.createSparePart('tenant-demo', { code: 'SP-001', name: '润滑脂', stock: 2, minimumStock: 1 });
     expect(maintenance.consumeSparePart('tenant-demo', { code: 'SP-001', quantity: 2 }).stock).toBe(0);
     expect(() => maintenance.consumeSparePart('tenant-demo', { code: 'SP-001', quantity: 1 })).toThrow(ConflictException);
