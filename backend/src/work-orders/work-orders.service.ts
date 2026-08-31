@@ -311,7 +311,7 @@ export class WorkOrdersService implements OnModuleInit {
       void this.persistence?.saveReport(report);
       void this.persistence?.saveWorkOrder(workOrder);
     }
-    if (workOrder.orderId) this.ordersService.recordProgress(tenantId, workOrder.orderId, completedQty);
+    if (workOrder.orderId) this.syncOrderProgress(tenantId, workOrder.orderId);
     this.auditService?.record(tenantId, dto.operatorId ?? 'system', {
       action: 'work_order.report', resource: 'work_order', resourceId: id,
       details: { reportId: report.id, quantity: report.quantity, sourceTraceId: report.sourceTraceId, operationCode: report.operationCode, batchNo: report.batchNo },
@@ -408,6 +408,13 @@ export class WorkOrdersService implements OnModuleInit {
     return updated;
   }
 
+  private syncOrderProgress(tenantId: string, orderId: string): void {
+    const completedQty = this.findAll(tenantId)
+      .filter((item) => item.orderId === orderId)
+      .reduce((total, item) => total + item.completedQty, 0);
+    this.ordersService.recordProgress(tenantId, orderId, completedQty);
+  }
+
   updateStatus(tenantId: string, id: string, dto: UpdateWorkOrderStatusDto): WorkOrder {
     const current = this.findOne(tenantId, id);
     if (!allowedTransitions[current.status].includes(dto.status)) {
@@ -442,6 +449,9 @@ export class WorkOrdersService implements OnModuleInit {
     const workOrder = this.findOne(tenantId, id);
     if (workOrder.status === 'in_progress') {
       throw new ConflictException('In-progress work orders cannot be deleted');
+    }
+    if (this.reports.some((report) => report.tenantId === tenantId && report.workOrderId === id)) {
+      throw new ConflictException('Work orders with production reports cannot be deleted');
     }
 
     this.workOrders.delete(id);

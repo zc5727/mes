@@ -172,6 +172,28 @@ describe('production execution flow', () => {
     expect(() => workOrders.findReports('tenant-b', workOrder.id)).toThrow();
   });
 
+  it('keeps order progress equal to the sum of all linked work orders', () => {
+    const orders = new OrdersService();
+    const workOrders = new WorkOrdersService(orders, new ProductionLinesService());
+    const order = orders.create('tenant-demo', { orderNo: 'PO-MULTI-WO', productCode: 'P', productName: '产品', plannedQty: 5, dueAt: '2026-08-31T18:00:00.000Z', priority: 'normal' });
+    const first = workOrders.create('tenant-demo', { orderId: order.id, orderNo: 'WO-MULTI-01', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 2, dueAt: '2026-08-31T18:00:00.000Z' });
+    const second = workOrders.create('tenant-demo', { orderId: order.id, orderNo: 'WO-MULTI-02', productCode: 'P', productName: '产品', lineId: 'line-assembly', plannedQty: 3, dueAt: '2026-08-31T18:00:00.000Z' });
+    for (const item of [first, second]) { workOrders.updateStatus('tenant-demo', item.id, { status: 'released' }); workOrders.updateStatus('tenant-demo', item.id, { status: 'in_progress' }); }
+    workOrders.report('tenant-demo', first.id, { quantity: 2, sourceTraceId: 'multi-wo-01' });
+    expect(orders.findOne('tenant-demo', order.id).completedQty).toBe(2);
+    workOrders.report('tenant-demo', second.id, { quantity: 3, sourceTraceId: 'multi-wo-02' });
+    expect(orders.findOne('tenant-demo', order.id)).toEqual(expect.objectContaining({ completedQty: 5, status: 'completed' }));
+  });
+
+  it('does not delete a work order after production has been reported', () => {
+    const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService());
+    const workOrder = workOrders.create('tenant-demo', { orderNo: 'WO-DELETE-GUARD', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 2, dueAt: '2026-08-31T18:00:00.000Z' });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'in_progress' });
+    workOrders.report('tenant-demo', workOrder.id, { quantity: 1, sourceTraceId: 'delete-guard' });
+    expect(() => workOrders.remove('tenant-demo', workOrder.id)).toThrow(ConflictException);
+  });
+
   it('keeps batch and serial traceability on reports', () => {
     const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService(), new DevicesService());
     const workOrder = workOrders.create('tenant-demo', {
