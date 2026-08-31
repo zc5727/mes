@@ -124,9 +124,10 @@ export class QualityService implements OnModuleInit {
     return this.listIssues(tenantId).filter((issue) => recordIds.has(issue.qualityRecordId)).every((issue) => issue.status === 'closed');
   }
 
-  canReportWorkOrder(tenantId: string, workOrderId: string, qualityRecordId: string): boolean {
+  canReportWorkOrder(tenantId: string, workOrderId: string, qualityRecordId: string, traceId?: string): boolean {
     const record = this.findOne(tenantId, qualityRecordId);
     if (record.workOrderId !== workOrderId) throw new ConflictException('Quality record must belong to work order');
+    if (traceId && record.traceId !== traceId) throw new ConflictException('Quality record and production report must share traceId');
     return record.status === 'confirmed';
   }
 

@@ -52,10 +52,10 @@ describe('quality and maintenance minimum loops', () => {
     const order = workOrders.create('tenant-demo', { orderNo: 'WO-QGATE', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1, dueAt: '2026-09-01T09:00:00.000Z' });
     workOrders.updateStatus('tenant-demo', order.id, { status: 'released' });
     workOrders.updateStatus('tenant-demo', order.id, { status: 'in_progress' });
-    const record = quality.create('tenant-demo', { workOrderId: order.id, batchNo: 'B-QGATE', lineId: 'line-cnc', operatorId: 'inspector', values: {} });
+    const record = quality.create('tenant-demo', { workOrderId: order.id, batchNo: 'B-QGATE', lineId: 'line-cnc', operatorId: 'inspector', values: {}, traceId: 'trace-qgate' });
     expect(() => workOrders.report('tenant-demo', order.id, { quantity: 1, qualityRecordId: record.id })).toThrow(ConflictException);
     quality.submit('tenant-demo', record.id, { actorId: 'inspector' });
     quality.confirm('tenant-demo', record.id, { actorId: 'manager' });
-    expect(workOrders.report('tenant-demo', order.id, { quantity: 1, qualityRecordId: record.id }).workOrder.status).toBe('completed');
+    expect(workOrders.report('tenant-demo', order.id, { quantity: 1, qualityRecordId: record.id, sourceTraceId: 'trace-qgate' }).workOrder.status).toBe('completed');
   });
 });

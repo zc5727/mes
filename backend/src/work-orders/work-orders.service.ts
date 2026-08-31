@@ -255,12 +255,13 @@ export class WorkOrdersService implements OnModuleInit {
   report(tenantId: string, id: string, dto: ReportWorkOrderDto): { workOrder: WorkOrder; report: WorkOrderReport } {
     const current = this.findOne(tenantId, id);
     if (current.status !== 'in_progress') throw new ConflictException('Only in-progress work orders can report production');
-    if (dto.qualityRecordId && this.qualityService && !this.qualityService.canReportWorkOrder(tenantId, id, dto.qualityRecordId)) {
+    const reportTraceId = dto.sourceTraceId?.trim() || createId('trace');
+    if (dto.qualityRecordId && this.qualityService && !this.qualityService.canReportWorkOrder(tenantId, id, dto.qualityRecordId, reportTraceId)) {
       throw new ConflictException('Quality release is required before reporting production');
     }
     if (current.completedQty + dto.quantity > current.plannedQty) throw new ConflictException('Report quantity exceeds planned quantity');
-    if (dto.sourceTraceId && this.reports.some((item) => item.tenantId === tenantId && item.sourceTraceId === dto.sourceTraceId)) {
-      throw new ConflictException(`Report trace ${dto.sourceTraceId} already exists`);
+    if (this.reports.some((item) => item.tenantId === tenantId && item.sourceTraceId === reportTraceId)) {
+      throw new ConflictException(`Report trace ${reportTraceId} already exists`);
     }
     if (dto.deviceId && this.devicesService) {
       const device = this.devicesService.findOne(tenantId, dto.deviceId);
@@ -286,11 +287,11 @@ export class WorkOrdersService implements OnModuleInit {
     if (completedQty === current.plannedQty && this.qualityService && !this.qualityService.canCompleteWorkOrder(tenantId, id)) {
       throw new ConflictException('Quality release is required before work order completion');
     }
-    if (this.masterDataService) this.masterDataService.consumeBatches(tenantId, materialConsumptions, dto.sourceTraceId);
+    if (this.masterDataService) this.masterDataService.consumeBatches(tenantId, materialConsumptions, reportTraceId);
     const report: WorkOrderReport = {
       id: createId('report'), workOrderId: id, tenantId, quantity: dto.quantity,
       goodQty, defectQty, deviceId: dto.deviceId ?? null,
-      sourceTraceId: dto.sourceTraceId ?? createId('trace'), reportedAt: timestamp(),
+      sourceTraceId: reportTraceId, reportedAt: timestamp(),
       batchNo: dto.batchNo?.trim() || null, serialNumbers,
       operationCode: dto.operationCode?.trim() || null,
       operatorId: dto.operatorId?.trim() || null,
