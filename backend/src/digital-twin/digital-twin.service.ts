@@ -278,7 +278,7 @@ export class DigitalTwinService {
     const goodCount = this.sumMetric(lineDevices, 'goodCount');
     const defectCount = this.sumMetric(lineDevices, 'defectCount');
     const availability = lineDevices.length
-      ? this.roundPercent(lineDevices.filter((device) => device.status !== 'offline' && device.status !== 'alarm').length / lineDevices.length)
+      ? this.roundPercent(lineDevices.filter((device) => device.status === 'online').length / lineDevices.length)
       : 0;
     const cycleTimes = lineDevices
       .map((device) => this.numberMetric(device.metrics.cycleTimeSeconds ?? device.metrics.cycleTime))

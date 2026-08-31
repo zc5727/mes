@@ -271,6 +271,7 @@ export class WorkOrdersService implements OnModuleInit {
     if (dto.deviceId && this.devicesService) {
       const device = this.devicesService.findOne(tenantId, dto.deviceId);
       if (device.lineId !== current.lineId) throw new ConflictException('Report device must belong to work order line');
+      if (device.status !== 'online') throw new ConflictException('Report device must be online');
       if (this.maintenanceService?.isDeviceOccupied(tenantId, dto.deviceId)) throw new ConflictException('Report device is occupied by maintenance work');
     }
     const goodQty = dto.goodQty ?? dto.quantity;

@@ -120,6 +120,16 @@ describe('production execution flow', () => {
     expect(() => workOrders.report('tenant-demo', workOrder.id, { quantity: 1, deviceId: 'device-cnc-01' })).toThrow(ConflictException);
   });
 
+  it('does not report against an alarmed or offline device', () => {
+    const devices = new DevicesService();
+    devices.updateStatus('tenant-demo', 'device-cnc-01', { status: 'alarm', reason: '过热' });
+    const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService(), devices);
+    const workOrder = workOrders.create('tenant-demo', { orderNo: 'WO-DEVICE-STATE-LOCK', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1, dueAt: '2026-08-31T18:00:00.000Z' });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'in_progress' });
+    expect(() => workOrders.report('tenant-demo', workOrder.id, { quantity: 1, deviceId: 'device-cnc-01' })).toThrow(ConflictException);
+  });
+
   it('rejects duplicate report traces and devices from another line', () => {
     const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService());
     const workOrder = workOrders.create('tenant-demo', {

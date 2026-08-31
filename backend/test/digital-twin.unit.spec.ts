@@ -64,6 +64,18 @@ describe('digital twin current-state projection', () => {
         },
       }),
     );
+    client.emit(
+      'message',
+      'mes/simulator/tenant-demo/lines/line-cnc/devices/cnc-02/telemetry',
+      JSON.stringify({
+        event: 'device.telemetry',
+        data: {
+          deviceId: 'cnc-02', deviceName: 'CNC-02 加工中心', lineId: 'line-cnc', status: 'STOPPED',
+          temperatureCelsius: 42, cycleTimeSeconds: 42, totalCount: 0, goodCount: 0, defectCount: 0,
+          activeFaults: [], timestamp: eventTime,
+        },
+      }),
+    );
 
     const devices = new DevicesService();
     const alarms = new AlarmsService(devices, ingestion);
@@ -89,6 +101,10 @@ describe('digital twin current-state projection', () => {
       source: 'mqtt',
     }));
     expect(snapshot.devices.filter((item) => item.canonicalId === 'device-cnc-01')).toHaveLength(1);
+    expect(snapshot.devices.find((item) => item.canonicalId === 'device-cnc-02')).toEqual(expect.objectContaining({
+      status: 'offline',
+      source: 'mqtt',
+    }));
     expect(snapshot.alarms).toEqual([expect.objectContaining({
       canonicalDeviceId: 'device-cnc-01',
       sourceId: 'cnc-01',
@@ -98,10 +114,11 @@ describe('digital twin current-state projection', () => {
       status: 'fault',
       deviceIds: expect.arrayContaining(['device-cnc-01']),
       activeAlarmCount: 1,
+      oee: expect.objectContaining({ availability: 0 }),
     }));
     expect(snapshot.connectivity).toEqual(expect.objectContaining({
       mqtt: 'connected',
-      telemetryDevices: 1,
+      telemetryDevices: 2,
       activeAlarms: 1,
     }));
   });
