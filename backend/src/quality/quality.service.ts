@@ -6,6 +6,7 @@ import { WorkOrdersService } from '../work-orders/work-orders.service';
 import type { CreateQualityIssueDto, CreateQualityRecordDto, CreateQualityRuleDto, QualityTransitionDto, UpdateQualityDraftDto, UpdateQualityIssueDto } from './dto/quality-record.dto';
 import type { InspectionType, QualityIssue, QualityRecord, QualityRecordStatus, QualityRule, QualityTraceEvent } from './quality.types';
 import { FoundationPersistenceService } from '../database/foundation-persistence.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class QualityService implements OnModuleInit {
@@ -18,6 +19,7 @@ export class QualityService implements OnModuleInit {
     @Optional() private readonly lines?: ProductionLinesService,
     @Optional() private readonly devices?: DevicesService,
     @Optional() private readonly persistence?: FoundationPersistenceService,
+    @Optional() private readonly auditService?: AuditService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -110,6 +112,11 @@ export class QualityService implements OnModuleInit {
     return this.transition(tenantId, id, 'rejected', dto.actorId);
   }
 
+  canCompleteWorkOrder(tenantId: string, workOrderId: string): boolean {
+    const linked = this.list(tenantId).filter((record) => record.workOrderId === workOrderId);
+    return linked.length === 0 || linked.every((record) => record.status === 'confirmed');
+  }
+
   private transition(tenantId: string, id: string, next: QualityRecordStatus, actorId: string): QualityRecord {
     const current = this.findOne(tenantId, id);
     const allowed: Record<QualityRecordStatus, QualityRecordStatus[]> = { draft: ['submitted'], submitted: ['confirmed', 'rejected'], confirmed: [], rejected: ['draft'] };
@@ -117,7 +124,9 @@ export class QualityService implements OnModuleInit {
     if (next === 'submitted' || next === 'confirmed') { this.validateReferences(tenantId, current, true); this.validateRule(current); }
     const now = timestamp();
     const type = next === 'submitted' ? 'submitted' : next === 'confirmed' ? 'confirmed' : 'rejected';
-    return this.replace({ ...current, status: next, updatedAt: now, trace: [...current.trace, { type, at: now, actorId: actorId.trim(), traceId: createId('trace') }] });
+    const updated = this.replace({ ...current, status: next, updatedAt: now, trace: [...current.trace, { type, at: now, actorId: actorId.trim(), traceId: createId('trace') }] });
+    this.auditService?.record(tenantId, actorId.trim(), { action: `quality.${type}`, resource: 'quality_record', resourceId: id, details: { status: next }, traceId: updated.trace.at(-1)?.traceId });
+    return updated;
   }
 
   private validateRule(record: Pick<QualityRecord, 'tenantId' | 'ruleKey' | 'values' | 'inspectionType'>): void {

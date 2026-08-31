@@ -51,8 +51,8 @@ export class FoundationPersistenceService {
   async saveMaintenance(item: MaintenanceWorkOrder): Promise<void> {
     await this.write('maintenance work order', () => this.prisma.maintenanceWorkOrder.upsert({
       where: { id: item.id },
-      create: { id: item.id, tenantId: item.tenantId, lineId: item.lineId, deviceId: item.deviceId, type: item.type, title: item.title, description: item.description, status: item.status, plannedAt: new Date(item.plannedAt), completedAt: item.completedAt ? new Date(item.completedAt) : null, createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) },
-      update: { lineId: item.lineId, deviceId: item.deviceId, type: item.type, title: item.title, description: item.description, status: item.status, plannedAt: new Date(item.plannedAt), completedAt: item.completedAt ? new Date(item.completedAt) : null, updatedAt: new Date(item.updatedAt) },
+      create: { id: item.id, tenantId: item.tenantId, lineId: item.lineId, deviceId: item.deviceId, alarmId: item.alarmId, type: item.type, title: item.title, description: item.description, status: item.status, plannedAt: new Date(item.plannedAt), completedAt: item.completedAt ? new Date(item.completedAt) : null, createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) },
+      update: { lineId: item.lineId, deviceId: item.deviceId, alarmId: item.alarmId, type: item.type, title: item.title, description: item.description, status: item.status, plannedAt: new Date(item.plannedAt), completedAt: item.completedAt ? new Date(item.completedAt) : null, updatedAt: new Date(item.updatedAt) },
     }));
   }
 

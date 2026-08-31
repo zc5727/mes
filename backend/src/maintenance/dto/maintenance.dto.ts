@@ -1,6 +1,7 @@
 import { IsDateString, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class CreateMaintenanceDto {
+  @IsOptional() @IsString() @MaxLength(80) alarmId?: string;
   @IsString() @MinLength(2) @MaxLength(40) lineId!: string;
   @IsString() @MinLength(2) @MaxLength(40) deviceId!: string;
   @IsIn(['inspection', 'preventive', 'repair']) type!: 'inspection' | 'preventive' | 'repair';

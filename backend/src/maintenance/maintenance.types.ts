@@ -5,6 +5,7 @@ export interface MaintenanceWorkOrder {
   tenantId: string;
   lineId: string;
   deviceId: string;
+  alarmId: string | null;
   type: 'inspection' | 'preventive' | 'repair';
   title: string;
   description: string;

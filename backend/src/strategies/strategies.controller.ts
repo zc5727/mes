@@ -221,6 +221,21 @@ export class StrategiesController {
     return { data: this.governance?.executeSimulation(tenantId, simulationId, context.userId, context.traceId), tenantId };
   }
 
+  @Post('simulations/:simulationId/replay')
+  @HttpCode(HttpStatus.OK)
+  replay(
+    @TenantId() tenantId: string, @Param('simulationId') simulationId: string,
+    @Headers('x-user-id') userId?: string, @Headers('x-role') role?: string, @Headers('x-factory-id') factoryId?: string,
+    @Headers('x-scope') scope?: string, @Headers('x-session-id') sessionId?: string, @Headers('x-trace-id') traceId?: string,
+  ) {
+    const context = this.requestContext(userId, role, factoryId, scope, sessionId, traceId);
+    this.authorization.assertCanRead(context);
+    const tracked = this.governance?.getSimulation(tenantId, simulationId);
+    if (!tracked) return { data: null, tenantId };
+    this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
+    return { data: this.governance?.replaySimulation(tenantId, simulationId, context.userId, context.traceId), tenantId };
+  }
+
   @Post('preflight')
   preflight(@Body() dto: StrategySimulationDto) {
     return { data: this.strategyEngine.preflight(this.toSnapshot(dto)) };

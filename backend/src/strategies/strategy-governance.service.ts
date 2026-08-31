@@ -47,6 +47,15 @@ export interface TrackedStrategySimulation {
   audit: StrategyCallRecord;
 }
 
+export interface StrategyReplayResult {
+  replayId: string;
+  sourceSimulationId: string;
+  strategyVersion: string;
+  deterministic: true;
+  sourceTimestamp: string;
+  result: StrategySimulationResult;
+}
+
 @Injectable()
 export class StrategyGovernanceService implements OnModuleInit {
   private readonly simulations = new Map<string, TrackedStrategySimulation>();
@@ -234,6 +243,26 @@ export class StrategyGovernanceService implements OnModuleInit {
     const tracked = this.simulations.get(this.key(tenantId, simulationId));
     if (!tracked) throw new NotFoundException(`Simulation ${simulationId} not found`);
     return tracked;
+  }
+
+  replaySimulation(tenantId: string, simulationId: string, actor: string, traceId: string): StrategyReplayResult {
+    const tracked = this.getSimulation(tenantId, simulationId);
+    const replayId = `${simulationId}:replay`;
+    this.auditService.record(tenantId, actor, {
+      action: 'STRATEGY_REPLAY', resource: 'strategy-simulation', resourceId: simulationId,
+      operator: actor, object: `strategy-simulation:${simulationId}`, before: {},
+      after: { replayId, strategyVersion: tracked.result.strategyVersion, executionAllowed: false },
+      reason: '按原始快照和策略版本重放仿真，不写入生产状态', traceId, result: 'success',
+      details: { replayId, deterministic: true, strategyVersion: tracked.result.strategyVersion, executionAllowed: false },
+    });
+    return {
+      replayId,
+      sourceSimulationId: simulationId,
+      strategyVersion: tracked.result.strategyVersion,
+      deterministic: true,
+      sourceTimestamp: tracked.result.snapshot.timestamp,
+      result: tracked.result,
+    };
   }
 
   listCalls(tenantId: string): StrategyCallRecord[] {

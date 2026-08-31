@@ -84,4 +84,24 @@ describe('StrategyGovernanceService', () => {
     ]));
     expect(governance.rollbackSimulation('tenant-a', result.simulationId, 'user-1', 'trace-rollback')).toEqual(discarded);
   });
+
+  it('replays a persisted result deterministically and records the replay audit', () => {
+    const audit = new AuditService();
+    const governance = new StrategyGovernanceService(audit);
+    const result = new StrategyEngineService().simulate(snapshot);
+    governance.recordSimulation('tenant-a', 'user-1', snapshot, result);
+
+    const replay = governance.replaySimulation('tenant-a', result.simulationId, 'user-1', 'trace-replay');
+
+    expect(replay).toEqual(expect.objectContaining({
+      replayId: `${result.simulationId}:replay`,
+      sourceSimulationId: result.simulationId,
+      strategyVersion: 'rules-v1',
+      deterministic: true,
+      sourceTimestamp: snapshot.timestamp,
+    }));
+    expect(audit.list('tenant-a')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: 'STRATEGY_REPLAY', resourceId: result.simulationId }),
+    ]));
+  });
 });

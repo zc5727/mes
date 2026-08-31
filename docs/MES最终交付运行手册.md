@@ -93,6 +93,17 @@ node scripts/desktop-smoke.mjs --app-dir=desktop
 bash scripts/desktop.sh rebuild
 ```
 
+真实 macOS 安装包验收：
+
+```bash
+scripts/verify-desktop-release.sh \
+  --app=/path/to/MES.app \
+  --dmg=/path/to/MES.dmg \
+  --notary-profile=YOUR_KEYCHAIN_PROFILE
+```
+
+缺少 `.app/.dmg`、Apple 工具或公证凭据时必须记录 `BLOCKED`；不得用 desktop smoke、单元测试或本地开发窗口替代签名、公证、双击、三维交互和退出清理验收。
+
 人工验收必须确认：四条产线切换不串线、设备故障高亮、告警清除、按钮成功/失败反馈、数字孪生拖拽缩放、后端不可用时明确报错。
 
 ## 5. 故障演练

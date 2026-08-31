@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 /** Optional PostgreSQL client. Memory mode remains the default for demos/tests. */
 @Injectable()
@@ -9,6 +9,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   private connecting?: Promise<void>;
   readonly enabled = process.env.DATABASE_ENABLED === 'true';
   readonly required = process.env.DATABASE_REQUIRED === 'true';
+  private readonly requiredTables = [
+    'factories', 'production_lines', 'devices', 'production_orders', 'work_orders',
+    'work_order_reports', 'alarms', 'device_events', 'current_states', 'connection_events',
+    'quality_records', 'maintenance_work_orders', 'document_records',
+  ];
 
   async onModuleInit(): Promise<void> {
     if (!this.enabled) {
@@ -38,8 +43,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     if (!this.enabled) return { enabled: false, status: 'disabled' };
     if (!this.connected) return { enabled: true, status: 'unavailable' };
     try {
-      const rows = await this.$queryRaw<Array<{ table_name: string }>>`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('factories', 'production_lines', 'devices', 'alarms', 'quality_records', 'maintenance_work_orders', 'document_records')`;
-      return { enabled: true, status: rows.length === 7 ? 'ready' : 'unavailable' };
+      const rows = await this.$queryRaw<Array<{ table_name: string }>>`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN (${Prisma.join(this.requiredTables)})`;
+      const actual = new Set(rows.map((row) => row.table_name));
+      return { enabled: true, status: this.requiredTables.every((table) => actual.has(table)) ? 'ready' : 'unavailable' };
     } catch {
       return { enabled: true, status: 'unavailable' };
     }

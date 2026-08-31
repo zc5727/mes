@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { ConflictException, forwardRef, Inject, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { createId, MockEntity, timestamp } from '../common/mock.types';
 import { CreateWorkOrderDto } from './dto/create-work-order.dto';
 import { UpdateWorkOrderStatusDto } from './dto/update-work-order-status.dto';
@@ -10,6 +10,7 @@ import { DevicesService } from '../devices/devices.service';
 import { MasterDataService } from '../master-data/master-data.service';
 import { AuditService } from '../audit/audit.service';
 import { CorePersistenceService } from '../database/core-persistence.service';
+import { QualityService } from '../quality/quality.service';
 
 type WorkOrderStatus = 'draft' | 'released' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
 type WorkOrderPriority = 'low' | 'normal' | 'high' | 'urgent';
@@ -97,6 +98,7 @@ export class WorkOrdersService implements OnModuleInit {
     @Optional() private readonly masterDataService?: MasterDataService,
     @Optional() private readonly auditService?: AuditService,
     @Optional() private readonly persistence?: CorePersistenceService,
+    @Optional() @Inject(forwardRef(() => QualityService)) private readonly qualityService?: QualityService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -291,6 +293,9 @@ export class WorkOrdersService implements OnModuleInit {
     this.reports.push(report);
     void this.persistence?.saveReport(report);
     const completedQty = current.completedQty + dto.quantity;
+    if (completedQty === current.plannedQty && this.qualityService && !this.qualityService.canCompleteWorkOrder(tenantId, id)) {
+      throw new ConflictException('Quality release is required before work order completion');
+    }
     const workOrder = this.updateProgress(current, completedQty);
     if (workOrder.orderId) this.ordersService.recordProgress(tenantId, workOrder.orderId, completedQty);
     this.auditService?.record(tenantId, dto.operatorId ?? 'system', {
@@ -399,6 +404,9 @@ export class WorkOrdersService implements OnModuleInit {
     }
     if (dto.status === 'completed' && current.completedQty !== current.plannedQty) {
       throw new ConflictException('Work order can be completed only after planned quantity is reported');
+    }
+    if (dto.status === 'completed' && this.qualityService && !this.qualityService.canCompleteWorkOrder(tenantId, id)) {
+      throw new ConflictException('Quality release is required before work order completion');
     }
 
     const updated: WorkOrder = {

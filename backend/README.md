@@ -50,7 +50,9 @@ curl -i http://localhost:3000/api/v1/health
 ## 启动本地依赖
 
 ```bash
-docker compose up -d
+docker compose --profile infra up -d
+# MinIO/S3-compatible object storage is optional:
+docker compose --profile object-storage up -d minio
 ```
 
 ## PostgreSQL 持久化
@@ -72,7 +74,7 @@ DATABASE_ENABLED=true npm run start:dev
 Mosquitto 与 PostgreSQL 可通过 `backend/docker-compose.yml` 启动。MQTT telemetry/alarm 被投影到统一状态后，数字孪生 SSE 接口会推送完整快照：
 
 ```bash
-docker compose up -d postgres mqtt
+docker compose --profile infra up -d postgres mqtt
 MQTT_ENABLED=true MQTT_URL=mqtt://localhost:1883 npm run start:dev
 curl -N -H 'Authorization: Bearer dev-key' -H 'x-tenant-id: tenant-demo' \
   http://localhost:3000/api/v1/digital-twin/stream

@@ -1,5 +1,6 @@
 services:
   postgres:
+    profiles: ["infra"]
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: mes
@@ -15,6 +16,7 @@ services:
       timeout: 3s
       retries: 10
   mqtt:
+    profiles: ["infra"]
     image: eclipse-mosquitto:2
     ports:
       - "1883:1883"
@@ -27,6 +29,7 @@ services:
       timeout: 3s
       retries: 10
   minio:
+    profiles: ["object-storage"]
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
@@ -37,6 +40,11 @@ services:
       - "9002:9001"
     volumes:
       - mes_minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 volumes:
   mes_postgres:
   mes_minio:

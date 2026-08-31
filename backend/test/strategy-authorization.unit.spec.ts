@@ -47,4 +47,16 @@ describe('StrategyAuthorizationService', () => {
     const supervisor = service.fromHeaders(headers({ role: 'production_supervisor', scope: '*' }));
     expect(() => service.assertCanSimulate(supervisor, snapshot)).toThrow(/RESOURCE_SCOPE_DENIED/);
   });
+
+  it('enforces the documented viewer/operator/engineer/supervisor/admin matrix', () => {
+    const service = new StrategyAuthorizationService();
+    const context = (role: string) => service.fromHeaders(headers({ role, scope: '*' }));
+    expect(context('viewer').role).toBe('auditor');
+    expect(context('engineer').role).toBe('equipment_supervisor');
+    expect(context('supervisor').role).toBe('production_supervisor');
+    expect(context('admin').role).toBe('system_admin');
+    expect(() => service.assertCanSimulate(context('operator'), snapshot)).toThrow(/ROLE_FORBIDDEN/);
+    expect(() => service.assertCanApprove(context('engineer'))).not.toThrow();
+    expect(() => service.assertCanExecute(context('engineer'))).toThrow(/ROLE_FORBIDDEN/);
+  });
 });

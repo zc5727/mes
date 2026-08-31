@@ -21,7 +21,9 @@
 GET /api/v1/strategies/simulations/:simulationId
 GET /api/v1/strategies/audit-records
 GET /api/v1/strategies/simulations/:simulationId/approvals
+POST /api/v1/strategies/simulations/:simulationId/replay
 POST /api/v1/strategies/simulations/:simulationId/rollback
+POST /api/v1/strategies/simulations/:simulationId/execute
 ```
 
 记录明确标记 `requiresApproval=true` 和 `executionAllowed=false`。这些接口只能读取仿真结果与调用记录，不提供设备控制或工单修改能力。

@@ -6,6 +6,8 @@ import { ProductionLinesService } from '../production-lines/production-lines.ser
 import { BadRequestException } from '@nestjs/common';
 import { CreateMaintenanceDto, CreatePreventivePlanDto, CreateSparePartDto, ConsumeSparePartDto, UpdateMaintenanceStatusDto } from './dto/maintenance.dto';
 import { MaintenanceStatus, MaintenanceWorkOrder, PreventivePlan, SparePart } from './maintenance.types';
+import { AlarmsService } from '../alarms/alarms.service';
+import { AuditService } from '../audit/audit.service';
 
 const transitions: Record<MaintenanceStatus, MaintenanceStatus[]> = {
   draft: ['assigned', 'cancelled'], assigned: ['in_progress', 'cancelled'],
@@ -22,6 +24,8 @@ export class MaintenanceService implements OnModuleInit {
     private readonly devices: DevicesService,
     private readonly lines: ProductionLinesService,
     @Optional() private readonly persistence?: FoundationPersistenceService,
+    @Optional() private readonly alarms?: AlarmsService,
+    @Optional() private readonly audit?: AuditService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -41,8 +45,12 @@ export class MaintenanceService implements OnModuleInit {
     const device = this.devices.findOne(tenantId, dto.deviceId);
     this.lines.findOne(tenantId, dto.lineId);
     if (device.lineId !== dto.lineId) throw new ConflictException('Maintenance device must belong to line');
+    if (dto.alarmId && this.alarms) {
+      const alarm = this.alarms.findOne(tenantId, dto.alarmId);
+      if (alarm.lineId !== dto.lineId || alarm.sourceId !== dto.deviceId) throw new ConflictException('Maintenance alarm must belong to device and line');
+    }
     const now = timestamp();
-    const item: MaintenanceWorkOrder = { id: createId('maintenance'), tenantId, lineId: dto.lineId, deviceId: dto.deviceId, type: dto.type, title: dto.title, description: dto.description ?? '', status: 'draft', plannedAt: dto.plannedAt, completedAt: null, createdAt: now, updatedAt: now };
+    const item: MaintenanceWorkOrder = { id: createId('maintenance'), tenantId, lineId: dto.lineId, deviceId: dto.deviceId, alarmId: dto.alarmId?.trim() || null, type: dto.type, title: dto.title, description: dto.description ?? '', status: 'draft', plannedAt: dto.plannedAt, completedAt: null, createdAt: now, updatedAt: now };
     this.orders.set(item.id, item);
     void this.persistence?.saveMaintenance(item);
     return item;
@@ -54,6 +62,7 @@ export class MaintenanceService implements OnModuleInit {
     if ((dto.status === 'cancelled' || dto.status === 'completed') && !dto.reason?.trim()) throw new ConflictException('A reason is required for maintenance completion or cancellation');
     const updated = { ...current, status: dto.status, completedAt: dto.status === 'completed' ? timestamp() : current.completedAt, updatedAt: timestamp() };
     this.orders.set(id, updated);
+    this.audit?.record(tenantId, 'system', { action: `maintenance.${dto.status}`, resource: 'maintenance_work_order', resourceId: id, details: { from: current.status, to: dto.status, reason: dto.reason ?? '', alarmId: current.alarmId } });
     void this.persistence?.saveMaintenance(updated);
     return updated;
   }

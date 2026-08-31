@@ -9,15 +9,18 @@ const ROLE_ALIASES: Record<string, StrategyRole> = {
   system_admin: 'system_admin',
   'system-admin': 'system_admin',
   系统管理员: 'system_admin',
+  admin: 'system_admin',
   plant_manager: 'plant_manager',
   'plant-manager': 'plant_manager',
   厂长: 'plant_manager',
   production_supervisor: 'production_supervisor',
   'production-supervisor': 'production_supervisor',
   生产主管: 'production_supervisor',
+  supervisor: 'production_supervisor',
   equipment_supervisor: 'equipment_supervisor',
   'equipment-supervisor': 'equipment_supervisor',
   设备主管: 'equipment_supervisor',
+  engineer: 'equipment_supervisor',
   quality_supervisor: 'quality_supervisor',
   'quality-supervisor': 'quality_supervisor',
   质量主管: 'quality_supervisor',
@@ -29,6 +32,7 @@ const ROLE_ALIASES: Record<string, StrategyRole> = {
   auditor: 'auditor',
   审计员: 'auditor',
   观察员: 'auditor',
+  viewer: 'auditor',
 };
 
 const SIMULATION_ROLES = new Set<StrategyRole>([
