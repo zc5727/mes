@@ -23,6 +23,9 @@ export class OrdersService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     const snapshot = await this.persistence?.restore();
+    if (this.persistence?.isEnabled?.()) {
+      this.orders.clear();
+    }
     if (snapshot?.orders.length) {
       this.orders.clear();
       snapshot.orders.forEach((item) => this.orders.set(item.id, {

@@ -10,6 +10,11 @@ export class InventoryPersistenceService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Returns whether the application selected the PostgreSQL adapter. */
+  isEnabled(): boolean {
+    return this.prisma.enabled;
+  }
+
   async restore(): Promise<BatchInventory[]> {
     await this.prisma.ensureConnection();
     if (!this.prisma.isReady()) {

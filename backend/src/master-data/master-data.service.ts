@@ -15,9 +15,11 @@ export class MasterDataService implements OnModuleInit {
   constructor(@Optional() private readonly inventoryPersistence?: InventoryPersistenceService, @Optional() private readonly foundationPersistence?: FoundationPersistenceService) {}
 
   async onModuleInit(): Promise<void> {
+    if (this.inventoryPersistence?.isEnabled?.()) this.batches.clear();
     const batches = await this.inventoryPersistence?.restore();
     batches?.forEach((batch) => this.batches.set(this.batchKey(batch.tenantId, batch.materialCode, batch.batchNo), batch));
     const domains: MasterDataRecord['type'][] = ['product', 'process', 'shift', 'calendar', 'operation', 'bom', 'routing'];
+    if (this.foundationPersistence?.isEnabled?.()) this.records.clear();
     const records = await Promise.all(domains.map((type) => this.foundationPersistence?.restoreAux(`master-data:${type}`)));
     records.flatMap((items) => items ?? []).forEach((item) => {
       const record = item.payload as unknown as MasterDataRecord;

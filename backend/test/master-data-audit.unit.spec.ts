@@ -77,6 +77,27 @@ describe('business foundation APIs', () => {
     expect(service.list('tenant-b', 'routing')).toHaveLength(0);
   });
 
+  it('replaces local master-data projections with an enabled database snapshot on restart', async () => {
+    const inventoryPersistence = {
+      isEnabled: () => true,
+      restore: jest.fn().mockResolvedValue([]),
+      save: jest.fn().mockResolvedValue(undefined),
+    };
+    const foundationPersistence = {
+      isEnabled: () => true,
+      restoreAux: jest.fn().mockResolvedValue([]),
+      saveAux: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new MasterDataService(inventoryPersistence as never, foundationPersistence as never);
+    service.create('tenant-a', 'product', { code: 'P-RESTART', name: '临时产品' });
+    service.createBatch('tenant-a', { materialCode: 'RAW-RESTART', batchNo: 'B-RESTART', quantity: 1 });
+
+    await service.onModuleInit();
+
+    expect(service.list('tenant-a', 'product')).toHaveLength(0);
+    expect(service.listBatches('tenant-a')).toHaveLength(0);
+  });
+
   it('keeps batch inventory tenant-scoped and consumes atomically', () => {
     const service = new MasterDataService();
     service.createBatch('tenant-a', { materialCode: 'RAW-01', batchNo: 'B-01', quantity: 5 });

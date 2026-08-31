@@ -19,6 +19,11 @@ export class FoundationPersistenceService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Returns whether the application selected the PostgreSQL adapter. */
+  isEnabled(): boolean {
+    return this.prisma.enabled;
+  }
+
   async restore(): Promise<FoundationPersistenceSnapshot> {
     await this.prisma.ensureConnection();
     if (!this.prisma.isReady()) {

@@ -8,6 +8,22 @@ import { AuditService } from '../src/audit/audit.service';
 import { MaintenanceService } from '../src/maintenance/maintenance.service';
 
 describe('production execution flow', () => {
+  it('does not retain demo seeds when the enabled database restores an empty snapshot', async () => {
+    const persistence = {
+      isEnabled: () => true,
+      restore: jest.fn().mockResolvedValue({ factories: [], lines: [], devices: [], orders: [], workOrders: [], reports: [] }),
+    };
+    const orders = new OrdersService(persistence as never);
+    const lines = new ProductionLinesService(undefined, persistence as never);
+    const workOrders = new WorkOrdersService(orders, lines, undefined, undefined, undefined, persistence as never);
+
+    await Promise.all([orders.onModuleInit(), lines.onModuleInit(), workOrders.onModuleInit()]);
+
+    expect(orders.findAll('tenant-demo')).toHaveLength(0);
+    expect(lines.findAll('tenant-demo')).toHaveLength(0);
+    expect(workOrders.findAll('tenant-demo')).toHaveLength(0);
+  });
+
   it('creates an order, runs a work order, reports production and completes it', () => {
     const orders = new OrdersService();
     const workOrders = new WorkOrdersService(orders, new ProductionLinesService());

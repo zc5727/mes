@@ -105,6 +105,10 @@ export class WorkOrdersService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     const snapshot = await this.persistence?.restore();
+    if (this.persistence?.isEnabled?.()) {
+      this.workOrders.clear();
+      this.reports.length = 0;
+    }
     if (snapshot?.workOrders.length) {
       this.workOrders.clear();
       snapshot.workOrders.forEach((item) => this.workOrders.set(item.id, {
@@ -112,6 +116,7 @@ export class WorkOrdersService implements OnModuleInit {
       }));
     }
     if (snapshot?.reports.length) {
+      this.reports.length = 0;
       this.reports.push(...snapshot.reports.map((item) => ({
         ...item,
         batchNo: item.batchNo ?? null,

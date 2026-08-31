@@ -27,6 +27,10 @@ export class ProductionLinesService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     const snapshot = await this.persistence?.restore();
+    if (this.persistence?.isEnabled?.()) {
+      this.lines.clear();
+      this.workOrderReferences.clear();
+    }
     if (snapshot?.lines.length) {
       this.lines.clear();
       snapshot.lines.forEach((item) => this.lines.set(item.id, {
