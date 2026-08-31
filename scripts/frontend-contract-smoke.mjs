@@ -16,7 +16,7 @@ const contracts = [
     '@submit.prevent="submit"', 'apiEnabled', 'qualityRecords', 'maintenanceOrders',
     '新建工单', '新增设备', '图纸登记', '质量记录', '策略评估', 'type="file"',
   ]],
-  ['scene/FactoryScene.ts', ['OrbitControls', 'pointermove', 'click', 'enableRotate', 'enableZoom']],
+  ['scene/FactoryScene.ts', ['OrbitControls', 'enableDamping', 'minDistance', 'maxDistance']],
 ];
 
 for (const [relativePath, requiredFragments] of contracts) {
