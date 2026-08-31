@@ -142,3 +142,14 @@ node scripts/desktop-smoke.mjs --app-dir=desktop --build
 | 公证/Gatekeeper | `spctl -a -vv --type execute` 失败，继承上述签名错误 | 环境阻塞：需要 Developer ID Application 证书、签名身份和 Apple 公证账号 |
 
 当前 macOS 阻塞项：单实例、正常退出菜单链路、三维手势自动化、正式签名和公证。上述失败均已保留为验收结果，不伪造为通过。
+
+## 9. macOS GUI Smoke 复测（2026-09-01）
+
+| 项目 | 实际证据 | 结论 |
+|---|---|---|
+| 打包 `.app` 启动 | `scripts/desktop-browser-smoke.mjs --close-after` 检测到 `mes-desktop` 进程启动 | 通过进程启动 |
+| 单实例 | 第二次 `open -a` 后进程数保持 1 | 通过 |
+| 退出清理 | `--close-after` 后 `mes-desktop` 进程退出 | 通过 |
+| 可见窗口 | `System Events` 在当前执行环境返回“没有可见窗口” | BLOCKED：需要 macOS 辅助功能/窗口会话权限或人工确认 |
+
+本次复测未将“进程已启动”冒充为“窗口和业务页面已验收”；三维拖拽、滚轮、缩放和页面内业务操作仍需在可见桌面窗口中完成。
