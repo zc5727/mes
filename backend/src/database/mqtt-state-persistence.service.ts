@@ -38,7 +38,9 @@ export class MqttStatePersistenceService {
   async saveTelemetry(record: CachedDeviceTelemetry): Promise<void> {
     await this.prisma.ensureConnection();
     if (!this.prisma.isReady()) {
-      this.failIfRequired('persist telemetry');
+      // Ingestion is an always-on projection. A transient database outage must
+      // not crash NestJS; the in-memory projection remains authoritative until
+      // the next event/reconnect and the failure is surfaced in logs/readiness.
       return;
     }
     try {
@@ -73,14 +75,12 @@ export class MqttStatePersistenceService {
       await this.transaction(operations);
     } catch (error: unknown) {
       this.logFailure('persist telemetry', error);
-      this.failIfRequired('persist telemetry', error);
     }
   }
 
   async saveAlarm(state: AlarmState): Promise<void> {
     await this.prisma.ensureConnection();
     if (!this.prisma.isReady()) {
-      this.failIfRequired('persist alarm');
       return;
     }
     try {
@@ -115,14 +115,12 @@ export class MqttStatePersistenceService {
       await this.transaction(operations);
     } catch (error: unknown) {
       this.logFailure('persist alarm', error);
-      this.failIfRequired('persist alarm', error);
     }
   }
 
   async recordConnection(tenantId: string, status: string, details: Record<string, unknown>): Promise<void> {
     await this.prisma.ensureConnection();
     if (!this.prisma.isReady()) {
-      this.failIfRequired('persist connection event');
       return;
     }
     try {
@@ -132,7 +130,6 @@ export class MqttStatePersistenceService {
       });
     } catch (error: unknown) {
       this.logFailure('persist connection event', error);
-      this.failIfRequired('persist connection event', error);
     }
   }
 
