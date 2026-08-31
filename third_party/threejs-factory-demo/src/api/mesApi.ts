@@ -30,9 +30,13 @@ const ROLE_ALIASES: Record<string, string> = {
   supervisor: 'supervisor',
   plant_manager: 'supervisor',
   'plant-manager': 'supervisor',
+  production_supervisor: 'supervisor',
+  'production-supervisor': 'supervisor',
   engineer: 'engineer',
   equipment_supervisor: 'engineer',
   'equipment-supervisor': 'engineer',
+  quality_supervisor: 'engineer',
+  'quality-supervisor': 'engineer',
   operator: 'operator',
 };
 
