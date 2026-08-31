@@ -1,4 +1,5 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
+import { DeviceProfileQueryDto } from './dto/device-profile-query.dto';
 import { DeviceProfilesService } from './device-profiles.service';
 
 @Controller('device-profiles')
@@ -6,8 +7,8 @@ export class DeviceProfilesController {
   constructor(private readonly service: DeviceProfilesService) {}
 
   @Get()
-  list(): { data: ReturnType<DeviceProfilesService['list']> } {
-    return { data: this.service.list() };
+  list(@Query() query: DeviceProfileQueryDto): { data: ReturnType<DeviceProfilesService['list']> } {
+    return { data: this.service.list(query.protocol) };
   }
 
   @Get(':key')

@@ -60,6 +60,16 @@ export class DeviceConnectionPersistenceService {
     }
   }
 
+  async delete(id: string): Promise<void> {
+    if (!(await this.ensureDatabase())) return;
+
+    try {
+      await this.prisma.deviceConnection.delete({ where: { id } });
+    } catch (error: unknown) {
+      throw this.databaseError(`delete device connection ${id}`, error);
+    }
+  }
+
   private async ensureDatabase(): Promise<boolean> {
     await this.prisma.ensureConnection();
     if (!this.prisma.enabled) return false;

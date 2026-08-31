@@ -86,4 +86,18 @@ describe('device connection PostgreSQL persistence', () => {
     expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'device-connection-1' } }));
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'running' }) }));
   });
+
+  it('deletes a persisted connection only after PostgreSQL is available', async () => {
+    const deleteRecord = jest.fn().mockResolvedValue(undefined);
+    const prisma = {
+      enabled: true,
+      ensureConnection: jest.fn().mockResolvedValue(undefined),
+      isReady: jest.fn().mockReturnValue(true),
+      deviceConnection: { delete: deleteRecord },
+    } as unknown as PrismaService;
+
+    await new DeviceConnectionPersistenceService(prisma).delete('device-connection-1');
+
+    expect(deleteRecord).toHaveBeenCalledWith({ where: { id: 'device-connection-1' } });
+  });
 });

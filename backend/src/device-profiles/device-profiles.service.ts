@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import type { DeviceProfile } from './device-profile.types';
+import type { DeviceProfileProtocol } from './device-profile.types';
 import { DeviceProfilePersistenceService } from './device-profile-persistence.service';
 
 /** Versioned, declarative machine profiles. `verified=false` means no vendor compatibility claim. */
@@ -22,8 +23,10 @@ export class DeviceProfilesService implements OnModuleInit {
   }
 
   /** Return defensive copies of all supported device profiles. */
-  list(): DeviceProfile[] {
-    return this.profiles.map((profile) => this.clone(profile));
+  list(protocol?: DeviceProfileProtocol): DeviceProfile[] {
+    return this.profiles
+      .filter((profile) => !protocol || profile.protocol === protocol)
+      .map((profile) => this.clone(profile));
   }
 
   /** Find one profile by its stable catalog key. */

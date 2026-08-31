@@ -33,4 +33,11 @@ describe('device profile catalog', () => {
     expect(second.controlMethods).toContain('EmergencyStop');
     expect(() => service.findOne('missing-profile')).toThrow(NotFoundException);
   });
+
+  it('supports protocol-filtered read-only catalog queries', () => {
+    expect(new DeviceProfilesService().list('opcua')).toHaveLength(2);
+    expect(new DeviceProfilesService().list('mtconnect')[0]).toEqual(
+      expect.objectContaining({ key: 'fanuc-cnc-mtconnect', verified: false }),
+    );
+  });
 });

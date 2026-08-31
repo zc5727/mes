@@ -143,4 +143,25 @@ describe('device connections', () => {
       status: 'error', lastErrorCode: 'INVALID_CONNECTION_CONFIG', startedAt: null,
     }));
   });
+
+  it('validates configuration, exposes capabilities and deletes a connection', async () => {
+    const service = createService({ probe: jest.fn() });
+    await expect(service.create('tenant-a', {
+      deviceId: 'device-06', name: '非法配置', type: 'mqtt', endpoint: 'mqtt://localhost:1883',
+      config: { timeoutMs: 0 },
+    })).rejects.toThrow(BadRequestException);
+
+    const connection = await service.create('tenant-a', {
+      deviceId: 'device-06', name: 'Modbus连接', type: 'modbus-tcp',
+      profileKey: 'generic-cnc-modbus', endpoint: 'modbus-tcp://localhost:502',
+      capabilities: ['telemetry', 'alarm'],
+    });
+    expect(service.capabilities('tenant-a', connection.id)).toEqual(expect.objectContaining({
+      protocol: 'modbus-tcp', profileKey: 'generic-cnc-modbus',
+      declared: ['telemetry', 'alarm'], profileDataPoints: expect.arrayContaining(['status']),
+    }));
+
+    await service.delete('tenant-a', connection.id);
+    expect(() => service.findOne('tenant-a', connection.id)).toThrow(NotFoundException);
+  });
 });

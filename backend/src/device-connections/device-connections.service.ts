@@ -51,6 +51,7 @@ export class DeviceConnectionsService implements OnModuleInit {
 
   async create(tenantId: string, dto: CreateDeviceConnectionDto): Promise<DeviceConnection> {
     this.validateEndpoint(dto.type, dto.endpoint);
+    this.validateConfig(dto.config);
     this.validateProfile(dto.type, dto.profileKey);
     const duplicate = this.list(tenantId).some((item) => item.deviceId === dto.deviceId.trim() && item.type === dto.type);
     if (duplicate) throw new ConflictException(`A ${dto.type} connection already exists for device ${dto.deviceId}`);
@@ -78,6 +79,7 @@ export class DeviceConnectionsService implements OnModuleInit {
     const current = this.findOne(tenantId, id);
     const type = current.type;
     if (dto.endpoint) this.validateEndpoint(type, dto.endpoint);
+    this.validateConfig(dto.config);
     const profileKey = dto.profileKey?.trim() ?? current.profileKey;
     this.validateProfile(type, profileKey ?? undefined);
     const updated = {
@@ -140,6 +142,40 @@ export class DeviceConnectionsService implements OnModuleInit {
     this.replace(updated);
     this.appendStatusEvent(stoppedEvent);
     return updated;
+  }
+
+  async delete(tenantId: string, id: string): Promise<void> {
+    const connection = this.findOne(tenantId, id);
+    await this.persistence?.delete(connection.id);
+    this.connections.set(tenantId, this.list(tenantId).filter((item) => item.id !== id));
+    this.statusEvents.delete(this.eventKey(tenantId, id));
+    this.events.delete(this.eventKey(tenantId, id));
+  }
+
+  capabilities(tenantId: string, id: string): {
+    connectionId: string;
+    deviceId: string;
+    protocol: DeviceConnection['type'];
+    driverVerification: DeviceConnection['driverVerification'];
+    declared: string[];
+    profileKey: string | null;
+    profileDataPoints: string[];
+    profileControlMethods: string[];
+  } {
+    const connection = this.findOne(tenantId, id);
+    const profile = connection.profileKey && this.profiles
+      ? this.profiles.findOne(connection.profileKey)
+      : undefined;
+    return {
+      connectionId: connection.id,
+      deviceId: connection.deviceId,
+      protocol: connection.type,
+      driverVerification: connection.driverVerification,
+      declared: [...connection.capabilities],
+      profileKey: connection.profileKey,
+      profileDataPoints: profile?.dataPoints.map((point) => point.key) ?? [],
+      profileControlMethods: profile?.controlMethods ?? [],
+    };
   }
 
   health(tenantId: string, id: string): ConnectionHealth {
@@ -248,6 +284,16 @@ export class DeviceConnectionsService implements OnModuleInit {
     const values = (capabilities ?? []).map((item) => item.trim()).filter(Boolean);
     if (values.some((item) => item.length > 80)) throw new BadRequestException('Connection capability is too long');
     return [...new Set(values)];
+  }
+
+  private validateConfig(config: Record<string, unknown> | undefined): void {
+    if (!config) return;
+    for (const key of ['timeoutMs', 'reconnectPeriodMs']) {
+      const value = config[key];
+      if (value !== undefined && (!Number.isInteger(value) || Number(value) <= 0 || Number(value) > 30_000)) {
+        throw new BadRequestException(`${key} must be an integer between 1 and 30000`);
+      }
+    }
   }
 
   private validateProfile(type: DeviceConnection['type'], profileKey?: string): void {

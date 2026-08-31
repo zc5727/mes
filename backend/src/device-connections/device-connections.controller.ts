@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { CreateDeviceConnectionDto, CreateUnifiedDeviceEventDto, UpdateDeviceConnectionDto } from './dto/device-connection.dto';
 import { DeviceConnectionsService } from './device-connections.service';
@@ -28,8 +28,15 @@ export class DeviceConnectionsController {
   @Post(':id/stop')
   async stop(@TenantId() tenantId: string, @Param('id') id: string) { return { data: await this.service.stop(tenantId, id), tenantId }; }
 
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async delete(@TenantId() tenantId: string, @Param('id') id: string): Promise<void> { await this.service.delete(tenantId, id); }
+
   @Get(':id/health')
   health(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.health(tenantId, id), tenantId }; }
+
+  @Get(':id/capabilities')
+  capabilities(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.capabilities(tenantId, id), tenantId }; }
 
   @Get(':id/profile')
   profile(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.profile(tenantId, id), tenantId }; }
