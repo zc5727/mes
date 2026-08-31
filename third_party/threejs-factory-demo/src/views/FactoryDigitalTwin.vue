@@ -47,6 +47,7 @@
       @select-device="handleListSelect"
       :production-lines="lineSummaries"
       :selected-line-id="selectedLineId"
+      :line-busy="lineSubmitting"
       @select-line="handleLineSelect"
       :can-manage-lines="controlMode === 'api'"
       @add-line="openLineDialog"

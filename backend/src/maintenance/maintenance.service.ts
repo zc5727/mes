@@ -42,6 +42,12 @@ export class MaintenanceService implements OnModuleInit {
     return item;
   }
 
+  createFromAlarm(tenantId: string, alarm: { id: string; lineId: string; sourceId: string; message: string }): MaintenanceWorkOrder {
+    const existing = this.list(tenantId).find((item) => item.alarmId === alarm.id);
+    if (existing) return existing;
+    return this.create(tenantId, { alarmId: alarm.id, lineId: alarm.lineId, deviceId: alarm.sourceId, type: 'repair', title: `告警维修：${alarm.message}`, description: `由告警 ${alarm.id} 自动创建`, plannedAt: timestamp() });
+  }
+
   create(tenantId: string, dto: CreateMaintenanceDto): MaintenanceWorkOrder {
     const device = this.devices.findOne(tenantId, dto.deviceId);
     this.lines.findOne(tenantId, dto.lineId);

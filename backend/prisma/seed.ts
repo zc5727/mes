@@ -44,6 +44,18 @@ async function main(): Promise<void> {
       });
     }
   }
+
+  const batches = [
+    ['RAW-AL-6061', 'BATCH-20260831-A', 120, 'kg'],
+    ['RAW-STEEL-304', 'BATCH-20260831-B', 80, 'kg'],
+  ] as const;
+  for (const [materialCode, batchNo, quantity, unit] of batches) {
+    await prisma.batchInventory.upsert({
+      where: { tenantId_materialCode_batchNo: { tenantId: 'tenant-demo', materialCode, batchNo } },
+      update: { quantity, unit },
+      create: { id: `batch-${materialCode.toLowerCase()}-${batchNo.toLowerCase()}`, tenantId: 'tenant-demo', materialCode, batchNo, quantity, unit },
+    });
+  }
 }
 
 main().finally(() => prisma.$disconnect());

@@ -248,8 +248,20 @@ export class StrategiesController {
   }
 
   @Post('preflight')
-  preflight(@Body() dto: StrategySimulationDto) {
-    return { data: this.strategyEngine.preflight(this.toSnapshot(dto)) };
+  preflight(
+    @TenantId() tenantId: string,
+    @Body() dto: StrategySimulationDto,
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-role') role?: string,
+    @Headers('x-factory-id') factoryId?: string,
+    @Headers('x-scope') scope?: string,
+    @Headers('x-session-id') sessionId?: string,
+    @Headers('x-trace-id') traceId?: string,
+  ) {
+    const context = this.requestContext(userId, role, factoryId, scope, sessionId, traceId);
+    const snapshot = this.toSnapshot(dto);
+    this.authorization.assertCanSimulate(context, snapshot);
+    return { data: this.strategyEngine.preflight(snapshot), tenantId };
   }
 
   private toSnapshot(input: StrategySimulationDto): StrategySnapshot {

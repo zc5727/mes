@@ -128,6 +128,7 @@ restart() {
   if [[ "$OBJECT_STORAGE" == true ]]; then compose --profile object-storage restart minio; fi
   "$ROOT_DIR/scripts/dev-down.sh"
   npm --prefix "$ROOT_DIR/backend" run db:init
+  DATABASE_URL="${DATABASE_URL:-postgresql://mes:mes_dev@localhost:5432/mes}" npm --prefix "$ROOT_DIR/backend" run db:verify-runtime
   DATABASE_ENABLED=true DATABASE_REQUIRED=true MQTT_ENABLED=true MES_OBJECT_STORAGE="$OBJECT_STORAGE" "$ROOT_DIR/scripts/dev-up.sh" --mqtt
   ready
 }

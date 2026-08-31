@@ -105,4 +105,20 @@ describe('quality, maintenance and traceability contracts (e2e)', () => {
     await request(app.getHttpServer()).post('/api/v1/master-data/batches/return').set(headers).send({ materialCode: 'RAW-E2E', batchNo: 'B-E2E-001', quantity: 5, idempotencyKey: 'return-e2e-001' }).expect(201);
     expect((await request(app.getHttpServer()).get('/api/v1/master-data/batches').set(headers)).body.data.find((item: { batchNo: string }) => item.batchNo === 'B-E2E-001').quantity).toBe(10);
   });
+
+  it('creates one repair work order per alarm and closes it only after point inspection', async () => {
+    const headers = { 'x-tenant-id': 'tenant-demo' };
+    const alarms = await request(app.getHttpServer()).get('/api/v1/alarms?deviceId=device-welding-01').set(headers).expect(200);
+    const alarm = alarms.body.data[0];
+    expect(alarm).toEqual(expect.objectContaining({ sourceId: 'device-welding-01' }));
+    const first = await request(app.getHttpServer()).post(`/api/v1/alarms/${alarm.id}/maintenance-work-order`).set(headers).expect(201);
+    const second = await request(app.getHttpServer()).post(`/api/v1/alarms/${alarm.id}/maintenance-work-order`).set(headers).expect(201);
+    expect(second.body.data.id).toBe(first.body.data.id);
+    const maintenanceId = first.body.data.id;
+    await request(app.getHttpServer()).patch(`/api/v1/maintenance/work-orders/${maintenanceId}/status`).set(headers).send({ status: 'assigned' }).expect(200);
+    await request(app.getHttpServer()).patch(`/api/v1/maintenance/work-orders/${maintenanceId}/status`).set(headers).send({ status: 'in_progress' }).expect(200);
+    await request(app.getHttpServer()).patch(`/api/v1/maintenance/work-orders/${maintenanceId}/status`).set(headers).send({ status: 'completed', reason: '维修完成' }).expect(409);
+    await request(app.getHttpServer()).post(`/api/v1/maintenance/work-orders/${maintenanceId}/inspection`).set(headers).send({ result: 'passed', remark: '点检通过' }).expect(201);
+    await request(app.getHttpServer()).patch(`/api/v1/maintenance/work-orders/${maintenanceId}/status`).set(headers).send({ status: 'completed', reason: '维修完成并放行' }).expect(200);
+  });
 });

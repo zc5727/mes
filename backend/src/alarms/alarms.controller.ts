@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Patch, Query } from '@nestjs/common';
+import { Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { AlarmLevel, AlarmsService } from './alarms.service';
 
@@ -30,5 +30,10 @@ export class AlarmsController {
   @Patch(':id/close')
   close(@TenantId() tenantId: string, @Param('id') id: string) {
     return { data: this.alarmsService.close(tenantId, id), tenantId };
+  }
+
+  @Post(':id/maintenance-work-order')
+  createMaintenance(@TenantId() tenantId: string, @Param('id') id: string) {
+    return { data: this.alarmsService.createMaintenanceWorkOrder(tenantId, id), tenantId };
   }
 }

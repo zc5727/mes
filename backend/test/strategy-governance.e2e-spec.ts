@@ -33,6 +33,7 @@ describe('strategy governance boundary (e2e)', () => {
     const server = app.getHttpServer();
     await request(server).post('/api/v1/strategies/simulate').send(snapshot).expect(401);
     await request(server).post('/api/v1/strategies/simulate').set(identity('operator')).send(snapshot).expect(403);
+    await request(server).post('/api/v1/strategies/preflight').set(identity('operator')).send(snapshot).expect(403);
   });
 
   it('rejects cross-scope simulation and execution before approval', async () => {
@@ -103,5 +104,20 @@ describe('strategy governance boundary (e2e)', () => {
       .set(headers).expect(409);
     await request(server).post(`/api/v1/strategies/simulations/${first.body.data.simulationId}/revoke`)
       .set(headers).expect(409);
+  });
+
+  it('enforces tenant and role boundaries for governed APIs', async () => {
+    const server = app.getHttpServer();
+    const simulated = await request(server).post('/api/v1/strategies/simulate')
+      .set(identity('supervisor', 'LINE-01,LINE-02')).send(snapshot).expect(200);
+    const simulationId = simulated.body.data.simulationId;
+    const approvalId = simulated.body.audit.approvalIds[0];
+
+    await request(server).get(`/api/v1/strategies/simulations/${simulationId}`)
+      .set({ ...identity('viewer'), 'x-tenant-id': 'tenant-other' }).expect(404);
+    await request(server).post(`/api/v1/strategies/simulations/${simulationId}/approvals/${approvalId}/approve`)
+      .set(identity('viewer')).expect(403);
+    await request(server).post(`/api/v1/strategies/simulations/${simulationId}/execute`)
+      .set(identity('engineer', 'LINE-01,LINE-02')).expect(403);
   });
 });

@@ -8,6 +8,17 @@ if (( $# == 0 )); then
 fi
 
 COMPOSE=("$@")
+if [[ "${COMPOSE[0]}" == "docker" && "${COMPOSE[1]:-}" == "compose" ]]; then
+  if ! docker compose version >/dev/null 2>&1; then
+    echo "BLOCKED: Docker Compose 不可用，无法执行真实迁移回滚演练。" >&2
+    exit 2
+  fi
+elif [[ "${COMPOSE[0]}" == "docker-compose" ]]; then
+  command -v docker-compose >/dev/null 2>&1 || { echo "BLOCKED: docker-compose 不可用，无法执行真实迁移回滚演练。" >&2; exit 2; }
+else
+  echo "BLOCKED: 未识别的 Compose 命令，无法执行真实迁移回滚演练。" >&2
+  exit 2
+fi
 DATABASE_NAME="mes_rollback_${RANDOM}_$$"
 cleanup() {
   "${COMPOSE[@]}" exec -T postgres psql -U mes -d postgres -v ON_ERROR_STOP=1 \

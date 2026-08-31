@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { Device, DevicesService } from '../devices/devices.service';
 import { MqttIngestionService } from '../mqtt/mqtt-ingestion.service';
+import { MaintenanceService } from '../maintenance/maintenance.service';
 
 export type AlarmLevel = 'info' | 'warning' | 'critical';
 
@@ -32,6 +33,7 @@ export class AlarmsService {
   constructor(
     private readonly devicesService: DevicesService,
     private readonly mqttIngestionService?: MqttIngestionService,
+    @Optional() @Inject(forwardRef(() => MaintenanceService)) private readonly maintenanceService?: MaintenanceService,
   ) {}
 
   findAll(tenantId: string, filters: AlarmFilters = {}): Alarm[] {
@@ -65,6 +67,13 @@ export class AlarmsService {
     this.findOne(tenantId, id);
     this.lifecycle.set(id, { status: 'closed', closedAt: new Date().toISOString() });
     return this.findOne(tenantId, id);
+  }
+
+  /** Opens a deterministic repair work order for an alarm; repeated calls return the same order. */
+  createMaintenanceWorkOrder(tenantId: string, id: string) {
+    const alarm = this.findOne(tenantId, id);
+    if (!this.maintenanceService) throw new NotFoundException('Maintenance service is unavailable');
+    return this.maintenanceService.createFromAlarm(tenantId, alarm);
   }
 
   private isAlarmSource(device: Device): boolean {

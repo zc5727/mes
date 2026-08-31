@@ -10,7 +10,7 @@
       </div>
       <div class="flow-title line-overview-title">
         <span>生产线总览</span>
-        <button type="button" class="add-line-button" :disabled="!canManageLines" @click="$emit('add-line')">＋ 新增产线</button>
+        <button type="button" class="add-line-button" :disabled="!canManageLines || lineBusy" :title="lineBusy ? '产线请求处理中' : !canManageLines ? '当前模式不允许修改产线' : '新增产线'" @click="$emit('add-line')">＋ 新增产线</button>
       </div>
       <div class="line-list">
         <div v-for="line in productionLines" :key="line.id" class="line-row">
@@ -20,8 +20,8 @@
             <span class="line-rate">{{ line.completionRate }}%</span>
           </button>
           <span v-if="canManageLines" class="line-actions">
-            <button type="button" title="编辑产线" @click="$emit('edit-line', line.id)">编辑</button>
-            <button type="button" title="删除产线" @click="$emit('delete-line', line.id)">删除</button>
+            <button type="button" :disabled="lineBusy" :title="lineBusy ? '产线请求处理中' : '编辑产线'" @click="$emit('edit-line', line.id)">编辑</button>
+            <button type="button" :disabled="lineBusy" :title="lineBusy ? '产线请求处理中' : '删除产线'" @click="$emit('delete-line', line.id)">删除</button>
           </span>
         </div>
         <div v-if="!productionLines.length" class="empty-state">暂无产线数据，请检查 MES API 或数据权限。</div>
@@ -76,6 +76,7 @@ const props = defineProps<{
   selectedLineId: string;
   selectedLine?: ProductionLineTelemetry;
   canManageLines: boolean;
+  lineBusy: boolean;
 }>();
 
 const deviceCount = (lineId: string) => props.devices.filter((device) => device.lineId === lineId).length;
