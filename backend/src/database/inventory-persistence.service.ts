@@ -37,7 +37,7 @@ export class InventoryPersistenceService {
   }
 
   async save(batch: BatchInventory): Promise<void> {
-    this.writeChain = this.writeChain.then(async () => {
+    return this.enqueue(async () => {
       await this.prisma.ensureConnection();
       if (!this.prisma.isReady()) {
         this.failIfRequired('persist batch inventory');
@@ -48,12 +48,12 @@ export class InventoryPersistenceService {
         create: this.data(batch),
         update: { materialCode: batch.materialCode, batchNo: batch.batchNo, quantity: new Prisma.Decimal(batch.quantity), unit: batch.unit, updatedAt: new Date(batch.updatedAt) },
       });
-    }).catch((error: unknown) => { this.pendingError ??= this.toError(error); });
+    });
   }
 
   async saveMany(batches: BatchInventory[]): Promise<void> {
     if (batches.length === 0) return;
-    this.writeChain = this.writeChain.then(async () => {
+    return this.enqueue(async () => {
       await this.prisma.ensureConnection();
       if (!this.prisma.isReady()) {
         this.failIfRequired('persist batch inventory transaction');
@@ -65,7 +65,7 @@ export class InventoryPersistenceService {
         update: { materialCode: batch.materialCode, batchNo: batch.batchNo, quantity: new Prisma.Decimal(batch.quantity), unit: batch.unit, updatedAt: new Date(batch.updatedAt) },
       }));
       await this.prisma.$transaction(writes);
-    }).catch((error: unknown) => { this.pendingError ??= this.toError(error); });
+    });
   }
 
   /** Flush queued writes and fail closed when PostgreSQL is required. */
@@ -88,6 +88,17 @@ export class InventoryPersistenceService {
       id: batch.id, tenantId: batch.tenantId, materialCode: batch.materialCode, batchNo: batch.batchNo,
       quantity: new Prisma.Decimal(batch.quantity), unit: batch.unit, updatedAt: new Date(batch.updatedAt),
     };
+  }
+
+  private enqueue(operation: () => Promise<void>): Promise<void> {
+    const result = this.writeChain.then(operation);
+    this.writeChain = result.catch((error: unknown) => {
+      this.pendingError ??= this.toError(error);
+    });
+    return result.catch((error: unknown) => {
+      if (this.prisma.required) this.failIfRequired('persist batch inventory', error);
+      this.failure('persist batch inventory', error);
+    });
   }
 
   private failIfRequired(operation: string, error?: unknown): void {
