@@ -284,6 +284,20 @@ export function createWorkOrder(input: CreateWorkOrderInput) {
   return post<Record<string, unknown>>('/work-orders', input);
 }
 
+export interface ReportWorkOrderInput {
+  quantity: number;
+  goodQty?: number;
+  defectQty?: number;
+  deviceId?: string;
+  batchNo?: string;
+  operatorId: string;
+  sourceTraceId?: string;
+}
+
+export function reportWorkOrder(id: string, input: ReportWorkOrderInput) {
+  return post<Record<string, unknown>>(`/work-orders/${encodeURIComponent(id)}/report`, input);
+}
+
 export interface WorkOrderRecord {
   id: string;
   orderNo?: string;

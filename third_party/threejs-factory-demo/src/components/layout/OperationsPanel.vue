@@ -3,6 +3,7 @@
     <div class="operations__head"><strong>生产业务</strong><span>仅提交正式 MES API</span></div>
     <div class="operations__actions">
       <button type="button" :disabled="!apiEnabled || !canWrite" :title="!canWrite ? writeDisabledReason : '新建工单'" @click="active = 'work-order'">新建工单</button>
+      <button type="button" :disabled="!apiEnabled || !canWrite || !reportableWorkOrders.length" :title="!canWrite ? writeDisabledReason : !reportableWorkOrders.length ? '暂无进行中的工单' : '登记生产报工'" @click="openReport">生产报工</button>
       <button type="button" :disabled="!apiEnabled || !canWrite" :title="!canWrite ? writeDisabledReason : '新增设备'" @click="openDeviceCreate">新增设备</button>
       <button type="button" :disabled="!apiEnabled || !canWrite || !selectedDevice" :title="!canWrite ? writeDisabledReason : !selectedDevice ? '请先选择设备' : '编辑设备'" @click="openDeviceEdit">编辑设备</button>
       <button type="button" :disabled="!apiEnabled || !canControl || !selectedDevice" :title="!canControl ? controlDisabledReason : !selectedDevice ? '请先选择设备' : '删除设备'" @click="removeDevice">删除设备</button>
@@ -44,6 +45,13 @@
           <label>计划数量<input v-model.number="workOrder.plannedQty" type="number" min="1" required /></label>
           <label>交期<input v-model="workOrder.dueAt" type="datetime-local" required /></label>
         </template>
+        <template v-else-if="active === 'report'">
+          <label>进行中工单<select v-model="report.workOrderId" required><option v-for="order in reportableWorkOrders" :key="order.id" :value="order.id">{{ order.orderNo ?? order.id }} · {{ order.productName ?? '未命名产品' }}</option></select></label>
+          <label>报工数量<input v-model.number="report.quantity" type="number" min="1" required /></label>
+          <label>合格数量<input v-model.number="report.goodQty" type="number" min="0" /></label>
+          <label>不合格数量<input v-model.number="report.defectQty" type="number" min="0" /></label>
+          <label>批次号<input v-model.trim="report.batchNo" minlength="2" /></label>
+        </template>
         <template v-else-if="active === 'device'">
           <label>设备编码<input v-model.trim="device.code" required minlength="2" /></label>
           <label>设备名称<input v-model.trim="device.name" required minlength="2" /></label>
@@ -82,11 +90,11 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { analyzeDocument, confirmDocumentAnalysis, confirmQualityRecord, controlSimulator, createDevice, deleteDevice, createMaintenance, createQualityRecord, createWorkOrder, documentContentUrl, updateDevice, updateDeviceStatus, listDocuments, listMaintenanceWorkOrders, listQualityRecords, rejectQualityRecord, submitQualityRecord, simulateStrategy, updateDocumentStatus, updateMaintenanceStatus, uploadDocument } from '@/api/mesApi';
+import { analyzeDocument, confirmDocumentAnalysis, confirmQualityRecord, controlSimulator, createDevice, deleteDevice, createMaintenance, createQualityRecord, createWorkOrder, documentContentUrl, reportWorkOrder, updateDevice, updateDeviceStatus, listDocuments, listMaintenanceWorkOrders, listQualityRecords, listWorkOrders, rejectQualityRecord, submitQualityRecord, simulateStrategy, updateDocumentStatus, updateMaintenanceStatus, uploadDocument } from '@/api/mesApi';
 import { toBackendDeviceId, toBackendLineId } from '@/api/identityMap';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
 
-type Operation = 'work-order' | 'device' | 'maintenance' | 'document' | 'quality' | 'strategy';
+type Operation = 'work-order' | 'report' | 'device' | 'maintenance' | 'document' | 'quality' | 'strategy';
 type FaultType = NonNullable<import('@/api/mesApi').SimulatorControlCommand['faultType']>;
 const props = defineProps<{
   selectedLine: ProductionLineTelemetry;
@@ -113,6 +121,7 @@ const pendingDocumentId = ref<string | null>(null);
 const recordsLoading = ref(true);
 const recordsError = ref(false);
 const documents = ref<Array<Record<string, unknown> & { id: string }>>([]);
+const workOrders = ref<Array<import('@/api/mesApi').WorkOrderRecord>>([]);
 const qualityRecords = ref<Array<Record<string, unknown> & { id: string }>>([]);
 const maintenanceOrders = ref<Array<Record<string, unknown> & { id: string }>>([]);
 const workOrder = ref({ orderNo: '', productCode: '', productName: '', plannedQty: 1, dueAt: '' });
@@ -120,6 +129,7 @@ const device = ref({ code: '', name: '', model: '', protocol: 'simulator' as con
 const editingDeviceId = ref<string | null>(null);
 const maintenance = ref({ type: 'repair' as const, title: '', plannedAt: '', description: '' });
 const quality = ref({ batchNo: '', result: 'pass', remark: '' });
+const report = ref({ workOrderId: '', quantity: 1, goodQty: 1, defectQty: 0, batchNo: '' });
 const strategy = ref({ comment: '' });
 const faultType = ref<FaultType>('OVERHEAT');
 const faultOptions: Array<{ value: FaultType; label: string }> = [
@@ -131,7 +141,8 @@ const faultOptions: Array<{ value: FaultType; label: string }> = [
   { value: 'MATERIAL_SHORTAGE', label: '物料短缺' },
   { value: 'QUALITY_ANOMALY', label: '质量异常' },
 ];
-const title = computed(() => ({ 'work-order': '新建生产工单', device: editingDeviceId.value ? '编辑设备' : '新增设备', maintenance: '新建维修工单', document: '登记图纸', quality: '填报质量记录', strategy: '策略仿真评估' }[active.value ?? 'work-order']));
+const reportableWorkOrders = computed(() => workOrders.value.filter((order) => order.status === 'in_progress'));
+const title = computed(() => ({ 'work-order': '新建生产工单', report: '生产报工', device: editingDeviceId.value ? '编辑设备' : '新增设备', maintenance: '新建维修工单', document: '登记图纸', quality: '填报质量记录', strategy: '策略仿真评估' }[active.value ?? 'work-order']));
 const selectedDeviceName = computed(() => props.selectedDevice?.name ?? '未选择设备');
 
 const loadRecords = async () => {
@@ -146,10 +157,11 @@ const loadRecords = async () => {
   recordsLoading.value = true;
   recordsError.value = false;
   try {
-    const [documentItems, qualityItems, maintenanceItems] = await Promise.all([listDocuments(), listQualityRecords(), listMaintenanceWorkOrders()]);
+    const [documentItems, qualityItems, maintenanceItems, workOrderItems] = await Promise.all([listDocuments(), listQualityRecords(), listMaintenanceWorkOrders(), listWorkOrders()]);
     documents.value = documentItems as typeof documents.value;
     qualityRecords.value = qualityItems as typeof qualityRecords.value;
     maintenanceOrders.value = maintenanceItems as typeof maintenanceOrders.value;
+    workOrders.value = workOrderItems;
   } catch {
     recordsError.value = true;
   } finally {
@@ -191,6 +203,13 @@ const recoverDevice = async () => {
 };
 
 const openDeviceCreate = () => { if (!props.apiEnabled || !props.canWrite) { error.value = props.writeDisabledReason; return; } editingDeviceId.value = null; device.value = { code: '', name: '', model: '', protocol: 'simulator' }; active.value = 'device'; };
+const openReport = () => {
+  if (!props.apiEnabled || !props.canWrite) { error.value = props.writeDisabledReason; return; }
+  const first = reportableWorkOrders.value[0];
+  if (!first) { error.value = '暂无进行中的工单，请先开工'; return; }
+  report.value = { workOrderId: first.id, quantity: 1, goodQty: 1, defectQty: 0, batchNo: '' };
+  active.value = 'report';
+};
 const openDeviceEdit = () => { if (!props.selectedDevice) return; if (!props.canWrite) { error.value = props.writeDisabledReason; return; } editingDeviceId.value = props.selectedDevice.id; device.value = { code: props.selectedDevice.code ?? props.selectedDevice.id, name: props.selectedDevice.name, model: '', protocol: 'simulator' }; active.value = 'device'; };
 const setDeviceStatus = async (status: 'online' | 'maintenance') => { if (!props.selectedDevice || !props.canWrite) { error.value = props.writeDisabledReason; return; } try { await updateDeviceStatus(toBackendDeviceId(props.selectedDevice.id), status, status === 'maintenance' ? '前端工作台手动维护标记' : '前端工作台手动恢复上线'); emit('data-changed'); notice.value = status === 'maintenance' ? '设备已标记为维护' : '设备已恢复上线'; } catch { error.value = '设备状态更新失败，请检查后端服务'; } };
 
@@ -208,6 +227,10 @@ const submit = async () => {
   try {
     if (active.value === 'work-order') {
       await createWorkOrder({ ...workOrder.value, lineId: toBackendLineId(props.selectedLine.id), dueAt: new Date(workOrder.value.dueAt).toISOString() });
+    } else if (active.value === 'report') {
+      if (!report.value.workOrderId) throw new Error('请选择进行中的工单');
+      if (report.value.goodQty + report.value.defectQty !== report.value.quantity) throw new Error('合格数量与不合格数量之和必须等于报工数量');
+      await reportWorkOrder(report.value.workOrderId, { quantity: report.value.quantity, goodQty: report.value.goodQty, defectQty: report.value.defectQty, batchNo: report.value.batchNo || undefined, deviceId: props.selectedDevice?.id, operatorId: 'digital-twin-ui', sourceTraceId: `ui-report-${Date.now()}` });
     } else if (active.value === 'device') {
       if (editingDeviceId.value) await updateDevice(toBackendDeviceId(editingDeviceId.value), { ...device.value, lineId: toBackendLineId(props.selectedLine.id) });
       else await createDevice({ ...device.value, lineId: toBackendLineId(props.selectedLine.id) });
