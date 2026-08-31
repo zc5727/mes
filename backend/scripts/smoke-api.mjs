@@ -4,7 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
 const port = Number(process.env.SMOKE_PORT ?? 3199);
-const baseUrl = process.env.SMOKE_BASE_URL ?? `http://127.0.0.1:${port}/api/v1`;
+const configuredBaseUrl = process.env.SMOKE_BASE_URL ?? process.env.MES_BASE_URL;
+const baseUrl = configuredBaseUrl
+  ? `${configuredBaseUrl.replace(/\/$/, '')}${configuredBaseUrl.replace(/\/$/, '').endsWith('/api/v1') ? '' : '/api/v1'}`
+  : `http://127.0.0.1:${port}/api/v1`;
 const shouldStart = !process.argv.includes('--no-start');
 const apiKey = process.env.MES_API_KEY?.trim();
 const tenantId = process.env.MES_TENANT_ID?.trim() || 'tenant-demo';

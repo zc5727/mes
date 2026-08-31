@@ -4,10 +4,11 @@ import mqtt from 'mqtt';
 
 const config = {
   mqtt: process.env.MQTT_URL ?? 'mqtt://localhost:1883',
-  api: (process.env.API_URL ?? 'http://localhost:3000/api/v1').replace(/\/$/, ''),
+  api: normalizeApiUrl(process.env.API_URL ?? process.env.MES_BASE_URL ?? 'http://localhost:3000/api/v1'),
+  apiKey: process.env.MES_API_KEY?.trim(),
   tenant: process.env.MES_TENANT_ID ?? 'tenant-demo',
   line: process.env.MES_LINE_ID ?? 'line-cnc',
-  device: process.env.MES_DEVICE_ID ?? 'drill-device-1',
+  device: process.env.MES_DEVICE_ID ?? 'device-cnc-01',
   timeout: Number(process.env.SMOKE_TIMEOUT_MS ?? 8000),
 };
 const alarmId = `drill-${Date.now()}`;
@@ -111,12 +112,18 @@ async function request(path, init = {}) {
       'x-scope': '*',
       'x-session-id': `fault-drill-${process.pid}`,
       'x-trace-id': `fault-drill-trace-${Date.now()}`,
+      ...(config.apiKey ? { authorization: `Bearer ${config.apiKey}` } : {}),
       ...(init.headers ?? {}),
     },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
   });
   if (!response.ok) throw new Error(`${path} HTTP ${response.status}: ${await response.text()}`);
   return response.json();
+}
+
+function normalizeApiUrl(url) {
+  const normalized = url.replace(/\/$/, '');
+  return normalized.endsWith('/api/v1') ? normalized : `${normalized}/api/v1`;
 }
 
 function connect() {

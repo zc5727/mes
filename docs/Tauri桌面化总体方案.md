@@ -1,11 +1,11 @@
 # MES Tauri 桌面化总体方案
 
-## 实施状态（2026-08-29）
+## 实施状态（2026-08-31）
 
 仓库现已创建可构建的 Tauri wrapper，第二阶段进入“演示包产品验收”阶段，但尚未完成双击运行闭环。因此目前状态为：
 
 - Vue/Three.js Web 端：已有，可作为 Tauri WebView 的前置基线。
-- 本地服务编排：已有 `scripts/dev-up.sh`、`dev-down.sh`、`dev-status.sh` 和 `desktop-smoke.mjs`，但启动脚本尚未完成 readiness 等待和桌面子进程监管。
+- 本地服务编排：已有 `scripts/dev-up.sh`、`dev-down.sh`、`dev-status.sh`、`desktop-runtime.sh` 和 `desktop-smoke.mjs`；readiness 等待、单实例注册、逆序清理和运行时自检已有代码级证据，但桌面实机联动仍待验收。
 - Tauri 客户端：T0 wrapper 已创建，结构 smoke 和 macOS release build 已通过。
 - 演示桌面包：已生成 macOS `.app` 和 `.dmg`，尚未完成人工双击、安装、卸载和服务联动验收。
 - 生产桌面包：未开始，不能进入签名、更新和部署验收。
@@ -21,7 +21,7 @@ node scripts/desktop-smoke.mjs --app-dir=desktop
 
 当前已验证：Web 前端构建、Tauri macOS release build、桌面结构 smoke、入口/API smoke、Web 交互代码基线和本地服务脚本语法。
 
-当前未验证：人工双击安装包、Tauri WebView 交互、Rust command、自动拉起/清理服务、单实例、签名更新和生产部署。
+当前未验证：人工双击安装包、Tauri WebView 交互、Rust command 的实机调用、签名更新和生产部署。自动拉起/清理服务、单实例已有结构 smoke 和自检证据，但尚无完整 GUI 实机记录。
 
 ## 最终验收记录（六项完成标准）
 
@@ -30,28 +30,28 @@ node scripts/desktop-smoke.mjs --app-dir=desktop
 | 编号 | 完成标准 | 当前状态 | 证据/结论 |
 |---|---|---|---|
 | F01 | 用户双击即可启动 | 待现场验收 | macOS `.app/.dmg` 已生成；尚未人工双击验证窗口启动和首次加载 |
-| F02 | 启动过程中显示 backend、simulator、MQTT/数据库服务状态 | 待补项 | `dev-status.sh` 只能检查已有进程/端口，尚无桌面启动页和阶段化状态组件 |
+| F02 | 启动过程中显示 backend、simulator、MQTT/数据库服务状态 | 待现场验收 | 运行时脚本已有 readiness/status 检查；桌面启动页和阶段化状态组件尚无实机验收记录 |
 | F03 | 服务就绪后进入数字孪生页面 | 待现场验收 | Tauri `frontendDist` 已指向 Web 构建产物；尚未验证服务就绪后的页面进入 |
 | F04 | 服务异常时给出明确提示 | 部分通过 | Web 版已有 API 错误、空数据和 polling 状态提示；桌面服务失败阶段和修复建议尚未实现 |
 | F05 | 演示版与生产版边界安全 | 待补项 | 文档边界已定义；尚无演示安装包、生产地址扫描和凭据扫描证据 |
-| F06 | 关闭窗口后资源清理 | 待补项 | 当前 Tauri 壳只有窗口生命周期，尚无子进程监管、单实例、PID/端口清理实现 |
+| F06 | 关闭窗口后资源清理 | 部分通过 | `desktop-runtime.sh`、Rust 退出钩子和 SIGTERM 逆序清理已有代码级 smoke；关闭窗口后的真实端口/PID/容器清理仍待实机 |
 
 ### 本轮已实际验证
 
 - Web 前端 `npm run build` 通过。
 - Web 入口/API smoke 与基础交互代码基线可继续作为桌面 WebView 前置验收。
 - 本地服务脚本可进行 shell 语法检查和进程/端口状态检查。
-- Tauri 结构 smoke 明确确认当前没有桌面工程，结果为阻塞而非通过。
+- Tauri 结构 smoke 已确认桌面工程、Rust manifest、资源配置、单实例注册、运行时监督和逆序清理钩子完整，结果为代码级通过；不替代 GUI 实机验收。
 
 ### 本轮失败或未验证
 
 - 没有可安装、可双击运行的 Tauri 演示包。
-- 没有桌面启动页、服务状态面板和错误阶段提示。
+- 没有桌面启动页、服务状态面板和错误阶段提示的实机证据；脚本级 readiness/失败返回已具备。
 - 没有 Tauri WebView 下的三维拖拽、滚轮、设备点击和产线切换证据。
-- 没有桌面关闭后的子进程、端口和容器清理证据。
+- 没有桌面关闭后的子进程、端口和容器清理实机证据；代码级逆序清理 smoke 已通过。
 - 没有签名、更新、回滚和生产凭据隔离证据。
 
-因此当前总判定为：**Tauri wrapper 和 macOS 打包通过；演示版产品验收未完成，仍不能宣称“双击即用”。**
+因此当前总判定为：**Tauri wrapper、结构 smoke 和运行时辅助能力通过；演示版产品验收未完成，仍不能宣称“双击即用”。**
 
 ## 第二阶段：开发演示版产品验收设计
 

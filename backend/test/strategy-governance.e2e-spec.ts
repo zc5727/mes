@@ -43,6 +43,7 @@ describe('strategy governance boundary (e2e)', () => {
 
     const simulated = await request(server).post('/api/v1/strategies/simulate')
       .set(identity('supervisor', 'LINE-01,LINE-02')).set('idempotency-key', 'governance-e2e-1').send(snapshot).expect(200);
+    expect(simulated.body.traceId).toBe('trace-supervisor');
     const { simulationId } = simulated.body.data;
     await request(server).post(`/api/v1/strategies/simulations/${simulationId}/execute`)
       .set(identity('supervisor', 'LINE-01,LINE-02')).expect(409);
@@ -93,6 +94,9 @@ describe('strategy governance boundary (e2e)', () => {
       .set(headers).set('idempotency-key', 'governance-e2e-duplicate').send(snapshot).expect(200);
     expect(second.body.data.simulationId).toBe(first.body.data.simulationId);
     expect(second.body.audit.callId).toBe(first.body.audit.callId);
+    await request(server).post('/api/v1/strategies/simulate')
+      .set(headers).set('idempotency-key', 'governance-e2e-duplicate')
+      .send({ ...snapshot, timestamp: '2026-08-31T08:01:00.000Z' }).expect(409);
 
     const approvalId = first.body.audit.approvalIds[0];
     await request(server).post(`/api/v1/strategies/simulations/${first.body.data.simulationId}/revoke`)
@@ -121,5 +125,25 @@ describe('strategy governance boundary (e2e)', () => {
       .set(identity('viewer')).expect(403);
     await request(server).post(`/api/v1/strategies/simulations/${simulationId}/execute`)
       .set(identity('engineer', 'LINE-01,LINE-02')).expect(403);
+  });
+
+  it('rejects a declined recommendation and preserves the trace contract', async () => {
+    const server = app.getHttpServer();
+    const simulated = await request(server).post('/api/v1/strategies/simulate')
+      .set({ ...identity('supervisor', 'LINE-01,LINE-02'), 'x-trace-id': 'trace-reject-e2e' })
+      .send(snapshot).expect(200);
+    const simulationId = simulated.body.data.simulationId;
+    const approvalId = simulated.body.audit.approvalIds[0];
+
+    const rejected = await request(server)
+      .post(`/api/v1/strategies/simulations/${simulationId}/approvals/${approvalId}/reject`)
+      .set({ ...identity('supervisor', 'LINE-01,LINE-02'), 'x-trace-id': 'trace-reject-e2e' })
+      .expect(200);
+    expect(rejected.body.traceId).toBe('trace-reject-e2e');
+    expect(rejected.body.data.audit.lifecycleStatus).toBe('rejected');
+    await request(server).post(`/api/v1/strategies/simulations/${simulationId}/execute`)
+      .set(identity('supervisor', 'LINE-01,LINE-02')).expect(409);
+    await request(server).post(`/api/v1/strategies/simulations/${simulationId}/approvals/${approvalId}/approve`)
+      .set(identity('supervisor', 'LINE-01,LINE-02')).expect(409);
   });
 });

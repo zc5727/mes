@@ -5,6 +5,7 @@ import mqtt from 'mqtt';
 const options = parseArgs(process.argv.slice(2));
 const apiBase = options.api.replace(/\/$/, '');
 const tenantId = options.tenant;
+const apiKey = process.env.MES_API_KEY?.trim();
 const lineId = options.line;
 const deviceId = options.device;
 const alarmId = `smoke-${Date.now()}`;
@@ -92,7 +93,7 @@ function parseArgs(args) {
     api: process.env.API_URL ?? 'http://localhost:3000/api/v1',
     tenant: process.env.MES_TENANT_ID ?? 'tenant-demo',
     line: process.env.MES_LINE_ID ?? 'line-cnc',
-    device: process.env.MES_DEVICE_ID ?? 'device-1',
+    device: process.env.MES_DEVICE_ID ?? 'device-cnc-01',
     timeout: Number(process.env.SMOKE_TIMEOUT_MS ?? 8000),
   };
 
@@ -111,7 +112,7 @@ function parseArgs(args) {
 }
 
 async function assertHttp(url, label) {
-  const response = await fetch(url, { headers: { 'x-tenant-id': tenantId } });
+  const response = await fetch(url, { headers: httpHeaders() });
   if (!response.ok) throw new Error(`${label}失败: HTTP ${response.status} ${await response.text()}`);
   checks.push(`PASS ${label}: HTTP ${response.status}`);
 }
@@ -120,13 +121,19 @@ async function pollJson(url, predicate, label) {
   const deadline = Date.now() + options.timeout;
   let lastBody;
   while (Date.now() < deadline) {
-    const response = await fetch(url, { headers: { 'x-tenant-id': tenantId } });
+    const response = await fetch(url, { headers: httpHeaders() });
     if (!response.ok) throw new Error(`${label}失败: HTTP ${response.status} ${await response.text()}`);
     lastBody = await response.json();
     if (predicate(lastBody)) return lastBody;
     await sleep(150);
   }
   throw new Error(`${label}超时 ${options.timeout}ms，最后响应: ${JSON.stringify(lastBody)}`);
+}
+
+function httpHeaders() {
+  const headers = { 'x-tenant-id': tenantId };
+  if (apiKey) headers.authorization = `Bearer ${apiKey}`;
+  return headers;
 }
 
 function connectMqtt(url) {

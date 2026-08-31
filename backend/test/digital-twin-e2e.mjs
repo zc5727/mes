@@ -2,7 +2,8 @@
 
 import mqtt from 'mqtt';
 
-const api = (process.env.API_URL ?? 'http://localhost:3000/api/v1').replace(/\/$/, '');
+const api = normalizeApiUrl(process.env.API_URL ?? process.env.MES_BASE_URL ?? 'http://localhost:3000/api/v1');
+const apiKey = process.env.MES_API_KEY?.trim();
 const mqttUrl = process.env.MQTT_URL ?? 'mqtt://localhost:1883';
 const tenant = process.env.MES_TENANT_ID ?? 'tenant-demo';
 const timeout = Number(process.env.SMOKE_TIMEOUT_MS ?? 8000);
@@ -69,9 +70,16 @@ try {
 }
 
 async function get(path) {
-  const response = await fetch(`${api}${path}`, { headers: { 'x-tenant-id': tenant } });
+  const headers = { 'x-tenant-id': tenant };
+  if (apiKey) headers.authorization = `Bearer ${apiKey}`;
+  const response = await fetch(`${api}${path}`, { headers });
   if (!response.ok) throw new Error(`${path} HTTP ${response.status}: ${await response.text()}`);
   return response.json();
+}
+
+function normalizeApiUrl(url) {
+  const normalized = url.replace(/\/$/, '');
+  return normalized.endsWith('/api/v1') ? normalized : `${normalized}/api/v1`;
 }
 
 async function pollLine(lineId, predicate) {

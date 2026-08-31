@@ -55,7 +55,15 @@ for port in 5432 1883 9000; do
   }
 done
 
-if ! curl --fail --silent --show-error http://localhost:9000/minio/health/live >/dev/null; then
+minio_ready=false
+for _ in $(seq 1 30); do
+  if curl --fail --silent --show-error http://localhost:9000/minio/health/live >/dev/null 2>&1; then
+    minio_ready=true
+    break
+  fi
+  sleep 1
+done
+if [[ "$minio_ready" != true ]]; then
   echo "BLOCKED: MinIO readiness 检查失败。" >&2
   exit 2
 fi
@@ -85,10 +93,10 @@ echo "$readiness" | grep -q '"status":"ready"' || { echo "FAIL: PostgreSQL readi
 echo "PASS backend readiness: DATABASE_ENABLED=true"
 
 node "$ROOT_DIR/scripts/browser-smoke.mjs"
-MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="${MES_API_KEY:-}" MES_TENANT_ID="${MES_TENANT_ID:-tenant-demo}" npm --prefix "$ROOT_DIR/backend" run smoke:api -- --no-start
-npm --prefix "$ROOT_DIR/backend" run smoke:mqtt
-npm --prefix "$ROOT_DIR/backend" run smoke:fault
-npm --prefix "$ROOT_DIR/backend" run smoke:digital-twin
+MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="$MES_API_KEY" MES_TENANT_ID="${MES_TENANT_ID:-tenant-demo}" npm --prefix "$ROOT_DIR/backend" run smoke:api -- --no-start
+MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="$MES_API_KEY" MES_TENANT_ID="${MES_TENANT_ID:-tenant-demo}" npm --prefix "$ROOT_DIR/backend" run smoke:mqtt
+MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="$MES_API_KEY" MES_TENANT_ID="${MES_TENANT_ID:-tenant-demo}" npm --prefix "$ROOT_DIR/backend" run smoke:fault
+MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="$MES_API_KEY" MES_TENANT_ID="${MES_TENANT_ID:-tenant-demo}" npm --prefix "$ROOT_DIR/backend" run smoke:digital-twin
 
 echo "检查 PostgreSQL 重启后的 TCP/服务可用性"
 "${COMPOSE[@]}" restart postgres
@@ -105,7 +113,7 @@ echo "检查后端重启后的真实数据库 readiness"
 backend_pid_file="$ROOT_DIR/.runtime/backend.pid"
 backend_pid="$(cat "$backend_pid_file")"
 pkill -TERM -P "$backend_pid" 2>/dev/null || true
-kill "$backend_pid"
+kill "$backend_pid" 2>/dev/null || true
 rm -f "$backend_pid_file"
 for _ in $(seq 1 30); do
   if ! kill -0 "$backend_pid" 2>/dev/null; then break; fi

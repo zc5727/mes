@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-这是第一阶段基础骨架，已准备：
+这是核心 MES 演示与现场接入基座，已准备：
 
 - NestJS模块化后端
 - `/api/v1`统一接口前缀
@@ -50,9 +50,20 @@ curl -i http://localhost:3000/api/v1/health
 ## 启动本地依赖
 
 ```bash
-docker compose --profile infra up -d
+docker-compose -f docker-compose.yml --profile infra up -d postgres mqtt
 # MinIO/S3-compatible object storage is optional:
-docker compose --profile object-storage up -d minio
+docker-compose -f docker-compose.yml --profile object-storage up -d minio
+```
+
+脚本会优先使用新版 `docker compose`，否则回退到 `docker-compose`。推荐由仓库根目录
+统一执行启动、readiness、迁移、seed 和停止清理：
+
+```bash
+cd ..
+scripts/mes-runtime.sh preflight
+scripts/mes-runtime.sh start --object-storage
+scripts/mes-runtime.sh ready
+scripts/mes-runtime.sh stop --object-storage
 ```
 
 ## PostgreSQL 持久化
@@ -74,7 +85,7 @@ DATABASE_ENABLED=true npm run start:dev
 Mosquitto 与 PostgreSQL 可通过 `backend/docker-compose.yml` 启动。MQTT telemetry/alarm 被投影到统一状态后，数字孪生 SSE 接口会推送完整快照：
 
 ```bash
-docker compose --profile infra up -d postgres mqtt
+docker-compose -f docker-compose.yml --profile infra up -d postgres mqtt
 MQTT_ENABLED=true MQTT_URL=mqtt://localhost:1883 npm run start:dev
 curl -N -H 'Authorization: Bearer dev-key' -H 'x-tenant-id: tenant-demo' \
   http://localhost:3000/api/v1/digital-twin/stream
@@ -139,13 +150,14 @@ scripts/mes-runtime.sh stop
 默认只启动 PostgreSQL 和 Mosquitto；需要 MinIO/S3-compatible 对象存储时使用
 `scripts/mes-runtime.sh start --object-storage`。基础设施不可用、迁移失败或 readiness 不通过时脚本返回非零状态，不会继续伪装成可运行环境。
 
-## 下一步开发顺序
+## 尚未达到生产交付的事项
 
-1. 租户、用户和权限
-2. 工厂、车间和四条产线
-3. 设备台账与实时状态
-4. 订单、工单和报工
-5. 质量、批次和异常闭环
-6. WebSocket设备事件
-7. 图纸、表单和对象存储
-8. 主动策略与厂长智能体
+1. ERPNext 真实旁路、字段映射、四线对账和失败回退
+2. ThingsBoard/Gateway、真实设备协议和现场断线恢复
+3. PostgreSQL 生产事务、并发、备份恢复和重启数据校验
+4. IQC/IPQC/OQC、NCR/CAPA、库存扣减和完整批次追溯
+5. 正式身份、TLS、MQTT ACL、限流和不可篡改审计
+6. WebSocket 真实推送、对象存储和 CAD/OCR 生产链路
+7. Tauri `.app/.dmg` 签名、公证、安装、升级和回滚验收
+
+以上事项必须取得运行日志、API 响应、恢复记录或现场人工证据后，才能从“演示/隔离”改为生产完成。
