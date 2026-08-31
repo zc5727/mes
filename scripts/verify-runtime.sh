@@ -35,8 +35,8 @@ fi
 
 echo "检查 Docker Compose 配置"
 "${COMPOSE[@]}" config >/dev/null
-echo "启动真实 PostgreSQL/MQTT/对象存储服务"
-"${COMPOSE[@]}" up -d postgres mqtt minio
+echo "启动真实 PostgreSQL/MQTT/对象存储服务（infra + object-storage profiles）"
+"${COMPOSE[@]}" --profile infra --profile object-storage up -d postgres mqtt minio
 STARTED=true
 for port in 5432 1883 9000; do
   for _ in $(seq 1 30); do
@@ -57,6 +57,7 @@ echo "PASS PostgreSQL protocol readiness"
 
 echo "执行真实数据库迁移"
 npm --prefix "$ROOT_DIR/backend" run db:migrate
+DATABASE_URL="${DATABASE_URL:-postgresql://mes:mes_dev@localhost:5432/mes}" npm --prefix "$ROOT_DIR/backend" run db:verify-runtime
 "$ROOT_DIR/scripts/verify-migration-rollback.sh" "${COMPOSE[@]}"
 
 if [[ -z "${MES_API_KEY:-}" && -f "$ROOT_DIR/backend/.env" ]]; then

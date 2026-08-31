@@ -3,6 +3,7 @@ import { DevicesService } from '../src/devices/devices.service';
 import { MaintenanceService } from '../src/maintenance/maintenance.service';
 import { ProductionLinesService } from '../src/production-lines/production-lines.service';
 import { QualityService } from '../src/quality/quality.service';
+import { WorkOrdersService } from '../src/work-orders/work-orders.service';
 
 describe('quality and maintenance minimum loops', () => {
   it('validates an inspection rule and closes an NCR with CAPA', () => {
@@ -34,5 +35,18 @@ describe('quality and maintenance minimum loops', () => {
     expect(() => maintenance.updateStatus('tenant-demo', order.id, { status: 'completed', reason: '已修复' })).toThrow(ConflictException);
     maintenance.recordInspection('tenant-demo', order.id, { result: 'passed', remark: '空载与联动点检通过' });
     expect(maintenance.updateStatus('tenant-demo', order.id, { status: 'completed', reason: '已修复并放行' }).status).toBe('completed');
+  });
+
+  it('only allows a released quality result to be used for reporting', () => {
+    const quality = new QualityService();
+    const workOrders = new WorkOrdersService(undefined, undefined, undefined, undefined, undefined, undefined, quality);
+    const order = workOrders.create('tenant-demo', { orderNo: 'WO-QGATE', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1, dueAt: '2026-09-01T09:00:00.000Z' });
+    workOrders.updateStatus('tenant-demo', order.id, { status: 'released' });
+    workOrders.updateStatus('tenant-demo', order.id, { status: 'in_progress' });
+    const record = quality.create('tenant-demo', { workOrderId: order.id, batchNo: 'B-QGATE', lineId: 'line-cnc', operatorId: 'inspector', values: {} });
+    expect(() => workOrders.report('tenant-demo', order.id, { quantity: 1, qualityRecordId: record.id })).toThrow(ConflictException);
+    quality.submit('tenant-demo', record.id, { actorId: 'inspector' });
+    quality.confirm('tenant-demo', record.id, { actorId: 'manager' });
+    expect(workOrders.report('tenant-demo', order.id, { quantity: 1, qualityRecordId: record.id }).workOrder.status).toBe('completed');
   });
 });

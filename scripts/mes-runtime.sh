@@ -45,7 +45,7 @@ preflight() {
 
 COMMAND="${1:-}"
 shift || true
-OBJECT_STORAGE="${MES_OBJECT_STORAGE:-true}"
+OBJECT_STORAGE="${MES_OBJECT_STORAGE:-false}"
 for arg in "$@"; do
   case "$arg" in
     --object-storage) OBJECT_STORAGE=true ;;
@@ -85,6 +85,7 @@ start() {
   wait_tcp 5432
   if [[ "$OBJECT_STORAGE" == true ]]; then compose --profile object-storage up -d minio; fi
   npm --prefix "$ROOT_DIR/backend" run db:init
+  DATABASE_URL="${DATABASE_URL:-postgresql://mes:mes_dev@localhost:5432/mes}" npm --prefix "$ROOT_DIR/backend" run db:verify-runtime
   DATABASE_ENABLED=true DATABASE_REQUIRED=true MQTT_ENABLED=true MES_OBJECT_STORAGE="$OBJECT_STORAGE" "$ROOT_DIR/scripts/dev-up.sh" --mqtt
   ready
 }
@@ -106,7 +107,9 @@ smoke() {
 
 stop() {
   "$ROOT_DIR/scripts/dev-down.sh" --infra
-  for port in 3000 5173 5432 1883 9000; do
+  local ports=(3000 5173 5432 1883)
+  [[ "$OBJECT_STORAGE" == true ]] && ports+=(9000)
+  for port in "${ports[@]}"; do
     if nc -z localhost "$port" >/dev/null 2>&1; then
       echo "FAIL: 停止后端口仍监听：$port" >&2
       return 1

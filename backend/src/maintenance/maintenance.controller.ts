@@ -8,6 +8,7 @@ export class MaintenanceController {
   constructor(private readonly service: MaintenanceService) {}
   @Get() list(@TenantId() tenantId: string) { return { data: this.service.list(tenantId), tenantId }; }
   @Get('preventive-plans') listPlans(@TenantId() tenantId: string) { return { data: this.service.listPreventivePlans(tenantId), tenantId }; }
+  @Get('preventive-plans/due') duePlans(@TenantId() tenantId: string) { return { data: this.service.duePreventivePlans(tenantId), tenantId }; }
   @Post('preventive-plans') createPlan(@TenantId() tenantId: string, @Body() dto: CreatePreventivePlanDto) { return { data: this.service.createPreventivePlan(tenantId, dto), tenantId }; }
   @Get('spare-parts') listParts(@TenantId() tenantId: string) { return { data: this.service.listSpareParts(tenantId), tenantId }; }
   @Post('spare-parts') createPart(@TenantId() tenantId: string, @Body() dto: CreateSparePartDto) { return { data: this.service.createSparePart(tenantId, dto), tenantId }; }

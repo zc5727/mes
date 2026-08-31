@@ -117,6 +117,12 @@ export class QualityService implements OnModuleInit {
     return linked.length === 0 || linked.every((record) => record.status === 'confirmed');
   }
 
+  canReportWorkOrder(tenantId: string, workOrderId: string, qualityRecordId: string): boolean {
+    const record = this.findOne(tenantId, qualityRecordId);
+    if (record.workOrderId !== workOrderId) throw new ConflictException('Quality record must belong to work order');
+    return record.status === 'confirmed';
+  }
+
   private transition(tenantId: string, id: string, next: QualityRecordStatus, actorId: string): QualityRecord {
     const current = this.findOne(tenantId, id);
     const allowed: Record<QualityRecordStatus, QualityRecordStatus[]> = { draft: ['submitted'], submitted: ['confirmed', 'rejected'], confirmed: [], rejected: ['draft'] };

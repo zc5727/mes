@@ -66,4 +66,26 @@ describe('strategy governance boundary (e2e)', () => {
       expect.objectContaining({ simulationId, lifecycleStatus: 'simulated_execution' }),
     ]));
   });
+
+  it('deduplicates repeated simulation requests and blocks revoked recommendations', async () => {
+    const server = app.getHttpServer();
+    const headers = identity('supervisor', 'LINE-01,LINE-02');
+    const first = await request(server).post('/api/v1/strategies/simulate')
+      .set(headers).set('idempotency-key', 'governance-e2e-duplicate').send(snapshot).expect(200);
+    const second = await request(server).post('/api/v1/strategies/simulate')
+      .set(headers).set('idempotency-key', 'governance-e2e-duplicate').send(snapshot).expect(200);
+    expect(second.body.data.simulationId).toBe(first.body.data.simulationId);
+    expect(second.body.audit.callId).toBe(first.body.audit.callId);
+
+    const approvalId = first.body.audit.approvalIds[0];
+    await request(server).post(`/api/v1/strategies/simulations/${first.body.data.simulationId}/revoke`)
+      .set(headers).expect(200);
+    const approvals = await request(server).get(`/api/v1/strategies/simulations/${first.body.data.simulationId}/approvals`)
+      .set(headers).expect(200);
+    expect(approvals.body.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: approvalId, status: 'revoked' }),
+    ]));
+    await request(server).post(`/api/v1/strategies/simulations/${first.body.data.simulationId}/execute`)
+      .set(headers).expect(409);
+  });
 });

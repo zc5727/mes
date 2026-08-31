@@ -333,7 +333,12 @@ export class StrategyGovernanceService implements OnModuleInit {
   }
 
   private lifecycleFor(tenantId: string, simulationId: string): StrategyLifecycleStatus {
+    const tracked = this.simulations.get(this.key(tenantId, simulationId));
+    if (tracked?.audit.lifecycleStatus === 'revoked' || tracked?.audit.lifecycleStatus === 'rejected') {
+      return tracked.audit.lifecycleStatus;
+    }
     const approvals = this.listApprovalsForSimulation(tenantId, simulationId);
+    if (approvals.some((approval) => approval.status === 'revoked')) return 'revoked';
     if (approvals.some((approval) => approval.status === 'rejected')) return 'rejected';
     if (approvals.length === 0 || approvals.some((approval) => approval.status === 'pending')) return 'pending_approval';
     return 'approved';

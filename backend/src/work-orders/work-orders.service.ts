@@ -255,6 +255,9 @@ export class WorkOrdersService implements OnModuleInit {
   report(tenantId: string, id: string, dto: ReportWorkOrderDto): { workOrder: WorkOrder; report: WorkOrderReport } {
     const current = this.findOne(tenantId, id);
     if (current.status !== 'in_progress') throw new ConflictException('Only in-progress work orders can report production');
+    if (dto.qualityRecordId && this.qualityService && !this.qualityService.canReportWorkOrder(tenantId, id, dto.qualityRecordId)) {
+      throw new ConflictException('Quality release is required before reporting production');
+    }
     if (current.completedQty + dto.quantity > current.plannedQty) throw new ConflictException('Report quantity exceeds planned quantity');
     if (dto.sourceTraceId && this.reports.some((item) => item.tenantId === tenantId && item.sourceTraceId === dto.sourceTraceId)) {
       throw new ConflictException(`Report trace ${dto.sourceTraceId} already exists`);
