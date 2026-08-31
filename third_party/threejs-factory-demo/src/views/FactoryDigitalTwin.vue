@@ -250,6 +250,8 @@ const ackAlarm = async (id: string) => {
 
 const closeAlarmAction = async (id: string) => {
   if (!canWrite || alarmSubmitting.value) { dataNotice.value = writeDisabledReason; return; }
+  const alarm = alarms.value.find((item) => item.id === id);
+  if (alarm && !window.confirm(`确认关闭告警“${alarm.message}”？`)) return;
   alarmSubmitting.value = true;
   try { await closeAlarm(id); await refreshApiSnapshot(); dataNotice.value = '告警已关闭'; }
   catch { dataNotice.value = '告警关闭失败，请检查后端服务和当前角色权限'; }
@@ -344,6 +346,8 @@ const submitLine = async () => {
     lineFormError.value = '目标 OEE 必须是 0～100 的整数';
     return;
   }
+  const actionLabel = editingLineId.value ? '修改' : '创建';
+  if (!window.confirm(`确认${actionLabel}产线“${form.name}”？该操作将写入 MES。`)) return;
   lineSubmitting.value = true;
   lineFormError.value = '';
   try {

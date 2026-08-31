@@ -167,22 +167,25 @@ const transitionMaintenance = async (id: string) => { if (!props.apiEnabled || !
 
 const injectFault = async () => {
   if (!props.apiEnabled || !props.simulatorControlEnabled || !props.selectedDevice) { error.value = props.simulatorControlDisabledReason || '请先选择设备'; return; }
+  const faultLabel = faultOptions.find((item) => item.value === faultType.value)?.label ?? faultType.value;
+  if (!window.confirm(`确认对“${props.selectedDevice.name}”注入${faultLabel}故障？该操作仅影响测试仿真数据。`)) return;
   controlBusy.value = 'fault'; error.value = ''; notice.value = '';
   try {
-    await controlSimulator({ action: 'fault', lineId: toBackendLineId(props.selectedLine.id), deviceId: toBackendDeviceId(props.selectedDevice.id), faultType: faultType.value, requestedBy: 'digital-twin-ui' });
+    const result = await controlSimulator({ action: 'fault', lineId: toBackendLineId(props.selectedLine.id), deviceId: toBackendDeviceId(props.selectedDevice.id), faultType: faultType.value, requestedBy: 'digital-twin-ui' });
     emit('data-changed');
-    notice.value = `故障注入命令已提交：${faultOptions.find((item) => item.value === faultType.value)?.label ?? faultType.value}`;
+    notice.value = `故障注入命令已提交：${faultLabel}（${result.commandId}）`;
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '故障注入失败，请检查 MES API、MQTT 和权限'; }
   finally { controlBusy.value = null; }
 };
 
 const recoverDevice = async () => {
   if (!props.apiEnabled || !props.simulatorControlEnabled || !props.selectedDevice) { error.value = props.simulatorControlDisabledReason || '请先选择设备'; return; }
+  if (!window.confirm(`确认恢复设备“${props.selectedDevice.name}”？该操作仅影响测试仿真数据。`)) return;
   controlBusy.value = 'recover'; error.value = ''; notice.value = '';
   try {
-    await controlSimulator({ action: 'recover', lineId: toBackendLineId(props.selectedLine.id), deviceId: toBackendDeviceId(props.selectedDevice.id), requestedBy: 'digital-twin-ui' });
+    const result = await controlSimulator({ action: 'recover', lineId: toBackendLineId(props.selectedLine.id), deviceId: toBackendDeviceId(props.selectedDevice.id), requestedBy: 'digital-twin-ui' });
     emit('data-changed');
-    notice.value = '恢复设备命令已提交，等待实时状态回传';
+    notice.value = `恢复设备命令已提交（${result.commandId}），等待实时状态回传`;
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '恢复设备失败，请检查 MES API、MQTT 和权限'; }
   finally { controlBusy.value = null; }
 };
