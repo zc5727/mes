@@ -72,19 +72,21 @@ export class ModbusTcpSimulatorServer {
   private readonly server: Server;
   private values: DeterministicTelemetryValues;
 
-  constructor(values: DeterministicTelemetryValues, private readonly host = "127.0.0.1", private readonly port = 1502) {
+  constructor(values: DeterministicTelemetryValues, private readonly host = "127.0.0.1", private readonly port = 1502, private readonly unitId = 1) {
     this.values = values;
     this.server = createServer((socket) => this.handleSocket(socket));
   }
 
   async start(): Promise<void> {
-    await new Promise<void>((resolve, reject) => { this.server.once("error", reject); this.server.listen(this.port, this.host, () => resolve()); });
+    if (this.server.listening) return;
+    await listen(this.server, this.port, this.host);
   }
 
   setValues(values: DeterministicTelemetryValues): void { this.values = values; }
-  async close(): Promise<void> { await new Promise<void>((resolve) => this.server.close(() => resolve())); }
+  async close(): Promise<void> { await closeServer(this.server); }
 
   private handleSocket(socket: Socket): void {
+    socket.on("error", () => undefined);
     let pending = Buffer.alloc(0);
     socket.on("data", (chunk) => {
       pending = Buffer.concat([pending, chunk]);
@@ -100,7 +102,8 @@ export class ModbusTcpSimulatorServer {
   }
 
   private respond(socket: Socket, request: Buffer): void {
-    const transaction = request.readUInt16BE(0); const unit = request[6]; const functionCode = request[7];
+    const transaction = request.readUInt16BE(0); const protocol = request.readUInt16BE(2); const unit = request[6]; const functionCode = request[7];
+    if (protocol !== 0 || unit !== this.unitId) { socket.destroy(); return; }
     if (functionCode !== 3 || request.length !== 12 || request.readUInt16BE(8) !== 0 || request.readUInt16BE(10) !== REGISTER_COUNT) {
       const response = Buffer.alloc(9); response.writeUInt16BE(transaction, 0); response.writeUInt16BE(3, 4); response[6] = unit; response[7] = functionCode | 0x80; response[8] = 1; socket.write(response); return;
     }
@@ -111,7 +114,7 @@ export class ModbusTcpSimulatorServer {
 
 /** Modbus TCP client with bounded reconnect and canonical MQTT event output. */
 export class ModbusTcpTelemetryClient implements ProtocolTelemetrySource {
-  constructor(private readonly identity: Omit<DeterministicTelemetryValues, "status" | "temperatureCelsius" | "cycleTimeSeconds" | "totalCount" | "goodCount" | "defectCount" | "faultCode">, private readonly host = "127.0.0.1", private readonly port = 1502) {}
+  constructor(private readonly identity: Omit<DeterministicTelemetryValues, "status" | "temperatureCelsius" | "cycleTimeSeconds" | "totalCount" | "goodCount" | "defectCount" | "faultCode">, private readonly host = "127.0.0.1", private readonly port = 1502, private readonly unitId = 1, private readonly timeoutMs = 2_000) {}
 
   async readTelemetry(retries = 1): Promise<SimulationMessage> {
     let lastError: unknown;
@@ -127,10 +130,22 @@ export class ModbusTcpTelemetryClient implements ProtocolTelemetrySource {
   private async readRegisters(): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const socket = createConnection({ host: this.host, port: this.port }); let pending = Buffer.alloc(0);
-      const timer = setTimeout(() => { socket.destroy(); reject(new Error("Modbus TCP read timed out")); }, 2_000);
-      socket.once("connect", () => { const request = Buffer.alloc(12); request.writeUInt16BE(1, 0); request.writeUInt16BE(6, 4); request[6] = 1; request[7] = 3; request.writeUInt16BE(0, 8); request.writeUInt16BE(REGISTER_COUNT, 10); socket.write(request); });
-      socket.on("data", (chunk) => { pending = Buffer.concat([pending, chunk]); if (pending.length < 9) return; clearTimeout(timer); socket.end(); if (pending[7] & 0x80) reject(new Error(`Modbus exception code: ${pending[8]}`)); else resolve(pending.subarray(9, 9 + pending[8])); });
-      socket.once("error", (error) => { clearTimeout(timer); reject(error); });
+      const timer = setTimeout(() => fail(new Error("Modbus TCP read timed out")), this.timeoutMs);
+      const fail = (error: Error): void => { clearTimeout(timer); socket.destroy(); reject(error); };
+      socket.once("connect", () => { const request = Buffer.alloc(12); request.writeUInt16BE(1, 0); request.writeUInt16BE(0, 2); request.writeUInt16BE(6, 4); request[6] = this.unitId; request[7] = 3; request.writeUInt16BE(0, 8); request.writeUInt16BE(REGISTER_COUNT, 10); socket.write(request); });
+      socket.on("data", (chunk) => {
+        pending = Buffer.concat([pending, chunk]);
+        if (pending.length < 9) return;
+        const byteCount = pending[8];
+        if (pending.length !== 9 + byteCount) { fail(new Error(`Modbus response has invalid byte count: ${byteCount}`)); return; }
+        clearTimeout(timer);
+        socket.end();
+        if (pending.readUInt16BE(0) !== 1 || pending.readUInt16BE(2) !== 0 || pending[6] !== this.unitId) { reject(new Error("Modbus response identity does not match request")); return; }
+        if (pending[7] & 0x80) { reject(new Error(`Modbus exception code: ${pending[8]}`)); return; }
+        if (pending[7] !== 3 || byteCount !== REGISTER_COUNT * 2) { reject(new Error("Modbus response function or register count is invalid")); return; }
+        resolve(pending.subarray(9));
+      });
+      socket.once("error", (error) => { fail(error); });
     });
   }
 }
@@ -140,16 +155,18 @@ export class OpcUaTelemetrySimulator implements ProtocolTelemetrySource {
   private readonly server: OPCUAServer;
   private client?: OPCUAClient;
   private session?: ClientSession;
-  constructor(private readonly values: Omit<DeterministicTelemetryValues, "faultCode">, private readonly port = 4841) {
-    this.server = new OPCUAServer({ hostname: "127.0.0.1", alternateHostname: ["127.0.0.1"], port, resourcePath: "/MES/SimulatedDevice", securityModes: [MessageSecurityMode.None], securityPolicies: [SecurityPolicy.None], allowAnonymous: true });
+  private initialized = false;
+  private started = false;
+  private startPromise?: Promise<void>;
+  constructor(private readonly values: Omit<DeterministicTelemetryValues, "faultCode">, private readonly port = 4841, private readonly host = "127.0.0.1") {
+    this.server = new OPCUAServer({ hostname: host, alternateHostname: [host], port, resourcePath: "/MES/SimulatedDevice", securityModes: [MessageSecurityMode.None], securityPolicies: [SecurityPolicy.None], allowAnonymous: true });
   }
 
   async start(): Promise<void> {
-    await this.server.initialize();
-    const namespace = this.server.engine.addressSpace!.getOwnNamespace(); const device = namespace.addObject({ organizedBy: this.server.engine.addressSpace!.rootFolder.objects, browseName: "MESDevice" });
-    const fields = ["status", "temperatureCelsius", "cycleTimeSeconds", "totalCount", "goodCount", "defectCount"] as const;
-    for (const field of fields) namespace.addVariable({ componentOf: device, nodeId: `s=mes/${field}`, browseName: field, dataType: field === "status" ? DataType.String : field.includes("Count") ? DataType.UInt32 : DataType.Double, minimumSamplingInterval: 1000, value: { get: () => new Variant({ dataType: field === "status" ? DataType.String : field.includes("Count") ? DataType.UInt32 : DataType.Double, value: this.values[field] }) } });
-    await this.server.start();
+    if (this.started) return;
+    if (this.startPromise) return this.startPromise;
+    this.startPromise = this.startInternal();
+    try { await this.startPromise; } finally { this.startPromise = undefined; }
   }
 
   async readTelemetry(retries = 1): Promise<SimulationMessage> {
@@ -162,13 +179,56 @@ export class OpcUaTelemetrySimulator implements ProtocolTelemetrySource {
 
   private async readOnce(): Promise<SimulationMessage> {
     this.client ??= OPCUAClient.create({ endpointMustExist: false });
-    if (!this.session) { await this.client.connect(`opc.tcp://127.0.0.1:${this.port}`); this.session = await this.client.createSession(); }
+    if (!this.session) { await this.client.connect(`opc.tcp://${this.host}:${this.port}`); this.session = await this.client.createSession(); }
     const nodes = ["status", "temperatureCelsius", "cycleTimeSeconds", "totalCount", "goodCount", "defectCount"];
     const results = await this.session.read(nodes.map((field) => ({ nodeId: `ns=1;s=mes/${field}`, attributeId: AttributeIds.Value })));
+    if (results.some((result) => !result.statusCode.isGood())) throw new Error("OPC UA response contains a bad status code");
     const values = Object.fromEntries(nodes.map((field, index) => [field, results[index].value.value]));
     return adaptOpcUaTelemetry({ ...this.values, values: values as OpcUaTelemetryFrame["values"] });
   }
 
   private async resetClient(): Promise<void> { await this.session?.close().catch(() => undefined); await this.client?.disconnect().catch(() => undefined); this.session = undefined; this.client = undefined; }
-  async close(): Promise<void> { await this.resetClient(); await this.server.shutdown(); }
+  async close(): Promise<void> {
+    await this.resetClient();
+    if (!this.initialized) return;
+    await this.server.shutdown();
+    this.started = false;
+    this.initialized = false;
+  }
+
+  private async startInternal(): Promise<void> {
+    try {
+      if (!this.initialized) {
+        await this.server.initialize();
+        this.initialized = true;
+        const namespace = this.server.engine.addressSpace!.getOwnNamespace(); const device = namespace.addObject({ organizedBy: this.server.engine.addressSpace!.rootFolder.objects, browseName: "MESDevice" });
+        const fields = ["status", "temperatureCelsius", "cycleTimeSeconds", "totalCount", "goodCount", "defectCount"] as const;
+        for (const field of fields) namespace.addVariable({ componentOf: device, nodeId: `s=mes/${field}`, browseName: field, dataType: field === "status" ? DataType.String : field.includes("Count") ? DataType.UInt32 : DataType.Double, minimumSamplingInterval: 1000, value: { get: () => new Variant({ dataType: field === "status" ? DataType.String : field.includes("Count") ? DataType.UInt32 : DataType.Double, value: this.values[field] }) } });
+      }
+      await this.server.start();
+      this.started = true;
+    } catch (error: unknown) {
+      if (this.initialized) await this.server.shutdown().catch(() => undefined);
+      this.started = false;
+      this.initialized = false;
+      throw error;
+    }
+  }
+}
+
+function listen(server: Server, port: number, host: string): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const onError = (error: Error): void => { server.removeListener("listening", onListening); reject(error); };
+    const onListening = (): void => { server.removeListener("error", onError); resolve(); };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(port, host);
+  });
+}
+
+function closeServer(server: Server): Promise<void> {
+  if (!server.listening) return Promise.resolve();
+  return new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
 }
