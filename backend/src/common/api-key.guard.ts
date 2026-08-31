@@ -53,6 +53,7 @@ export class ApiKeyGuard implements CanActivate {
     request.mesIdentity = this.authenticate(request.headers.authorization, realtimeQuery ? this.queryValue(request.query.apiKey) : undefined);
     this.assertTenant(request.headers['x-tenant-id'], realtimeQuery ? this.queryValue(request.query.tenantId) : undefined, request.mesIdentity?.tenantId);
     this.bindTrustedClaims(request);
+    this.assertFactoryScope(request);
     this.assertSession(request);
     this.assertRateLimit(request);
     return true;
@@ -94,7 +95,10 @@ export class ApiKeyGuard implements CanActivate {
     const identity = request.mesIdentity;
     if (!identity) return;
     this.setHeaderIfAbsent(request, 'x-user-id', identity.subject);
-    if (identity.role) this.setHeaderIfAbsent(request, 'x-user-role', identity.role);
+    if (identity.role) {
+      this.setHeaderIfAbsent(request, 'x-user-role', identity.role);
+      this.setHeaderIfAbsent(request, 'x-role', identity.role);
+    }
     if (identity.factoryId) this.setHeaderIfAbsent(request, 'x-factory-id', identity.factoryId);
     if (identity.scope) this.setHeaderIfAbsent(request, 'x-scope', identity.scope);
     if (identity.sessionId) this.setHeaderIfAbsent(request, 'x-session-id', identity.sessionId);
@@ -104,6 +108,23 @@ export class ApiKeyGuard implements CanActivate {
 
   private setHeaderIfAbsent(request: MesRequest, key: string, value: string): void {
     if (!request.headers[key]) request.headers[key] = value;
+  }
+
+  private assertFactoryScope(request: MesRequest): void {
+    const factoryId = request.mesIdentity?.factoryId;
+    if (!factoryId) return;
+    const queryFactory = this.queryValue(request.query.factoryId);
+    const bodyFactory = this.bodyFactory(request.body);
+    if ((queryFactory && queryFactory !== factoryId) || (bodyFactory && bodyFactory !== factoryId)) {
+      throw new UnauthorizedException('JWT factory scope does not match request');
+    }
+    if (!queryFactory && request.query && typeof request.query === 'object') request.query.factoryId = factoryId;
+  }
+
+  private bodyFactory(body: unknown): string | undefined {
+    if (!body || typeof body !== 'object' || !('factoryId' in body)) return undefined;
+    const value = (body as { factoryId?: unknown }).factoryId;
+    return this.claimString(value);
   }
 
   private verifyJwt(token: string, secret: string): MesIdentity {

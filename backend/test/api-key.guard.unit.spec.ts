@@ -86,6 +86,7 @@ describe('ApiKeyGuard', () => {
     expect(request.mesIdentity?.subject).toBe('operator-01');
     expect(request.headers['x-user-id']).toBe('operator-01');
     expect(request.headers['x-user-role']).toBe('operator');
+    expect(request.headers['x-role']).toBe('operator');
     expect(request.headers['x-tenant-id']).toBe('tenant-demo');
   });
 
@@ -95,6 +96,23 @@ describe('ApiKeyGuard', () => {
     expect(() => new ApiKeyGuard(new Reflector()).canActivate(createContext(`Bearer ${expired}`, undefined))).toThrow(UnauthorizedException);
     const valid = createJwt('jwt-test-secret', { sub: 'operator-01', tenantId: 'tenant-demo', exp: Math.floor(Date.now() / 1000) + 300 });
     expect(() => new ApiKeyGuard(new Reflector()).canActivate(createContext(`Bearer ${valid.slice(0, -1)}x`, undefined))).toThrow(UnauthorizedException);
+  });
+
+  it('applies the JWT factory scope to query defaults and rejects mismatches', () => {
+    process.env.MES_JWT_SECRET = 'jwt-test-secret';
+    const token = createJwt('jwt-test-secret', {
+      sub: 'supervisor-01', role: 'supervisor', tenantId: 'tenant-demo', factoryId: 'factory-01',
+      exp: Math.floor(Date.now() / 1000) + 300,
+    });
+    const context = createContext(`Bearer ${token}`, undefined);
+    expect(new ApiKeyGuard(new Reflector()).canActivate(context)).toBe(true);
+    const request = context.switchToHttp().getRequest() as { query: { factoryId?: string } };
+    expect(request.query.factoryId).toBe('factory-01');
+
+    const mismatch = createContext(`Bearer ${token}`, 'tenant-demo');
+    const mismatchedRequest = mismatch.switchToHttp().getRequest() as { query: { factoryId: string } };
+    mismatchedRequest.query.factoryId = 'factory-02';
+    expect(() => new ApiKeyGuard(new Reflector()).canActivate(mismatch)).toThrow(/factory scope/);
   });
 });
 
