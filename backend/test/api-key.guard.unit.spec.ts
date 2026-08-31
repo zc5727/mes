@@ -1,13 +1,15 @@
 import { ExecutionContext, HttpException, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { createHmac } from 'node:crypto';
 import { ApiKeyGuard } from '../src/common/api-key.guard';
 
 function createContext(authorization?: string, tenantId?: string, ip = 'test-ip'): ExecutionContext {
+  const request = { headers: { authorization, 'x-tenant-id': tenantId }, ip, path: '/api/v1/agent-api/tools/execute', query: {} };
   return {
     getHandler: () => function handler() {},
     getClass: () => class TestController {},
     switchToHttp: () => ({
-      getRequest: () => ({ headers: { authorization, 'x-tenant-id': tenantId }, ip, path: '/api/v1/agent-api/tools/execute' }),
+      getRequest: () => request,
       getResponse: () => ({}),
       getNext: () => undefined,
     }),
@@ -18,6 +20,7 @@ describe('ApiKeyGuard', () => {
   const originalApiKey = process.env.MES_API_KEY;
   const originalTenants = process.env.MES_ALLOWED_TENANTS;
   const originalRateLimit = process.env.MES_RATE_LIMIT_PER_MINUTE;
+  const originalJwtSecret = process.env.MES_JWT_SECRET;
 
   beforeEach(() => {
     process.env.MES_API_KEY = 'test-api-key';
@@ -29,6 +32,7 @@ describe('ApiKeyGuard', () => {
     process.env.MES_API_KEY = originalApiKey;
     process.env.MES_ALLOWED_TENANTS = originalTenants;
     process.env.MES_RATE_LIMIT_PER_MINUTE = originalRateLimit;
+    process.env.MES_JWT_SECRET = originalJwtSecret;
   });
 
   it('accepts the configured key and tenant', () => {
@@ -68,4 +72,36 @@ describe('ApiKeyGuard', () => {
     expect(guard.canActivate(context)).toBe(true);
     expect(() => guard.canActivate(context)).toThrow(HttpException);
   });
+
+  it('verifies an HS256 user token and derives trusted identity headers', () => {
+    process.env.MES_JWT_SECRET = 'jwt-test-secret';
+    const token = createJwt('jwt-test-secret', {
+      sub: 'operator-01', role: 'operator', tenantId: 'tenant-demo',
+      exp: Math.floor(Date.now() / 1000) + 300,
+    });
+    const context = createContext(`Bearer ${token}`, undefined);
+    const request = context.switchToHttp().getRequest() as { headers: Record<string, string>; mesIdentity?: { subject: string } };
+
+    expect(new ApiKeyGuard(new Reflector()).canActivate(context)).toBe(true);
+    expect(request.mesIdentity?.subject).toBe('operator-01');
+    expect(request.headers['x-user-id']).toBe('operator-01');
+    expect(request.headers['x-user-role']).toBe('operator');
+    expect(request.headers['x-tenant-id']).toBe('tenant-demo');
+  });
+
+  it('rejects expired or tampered JWTs', () => {
+    process.env.MES_JWT_SECRET = 'jwt-test-secret';
+    const expired = createJwt('jwt-test-secret', { sub: 'operator-01', tenantId: 'tenant-demo', exp: Math.floor(Date.now() / 1000) - 1 });
+    expect(() => new ApiKeyGuard(new Reflector()).canActivate(createContext(`Bearer ${expired}`, undefined))).toThrow(UnauthorizedException);
+    const valid = createJwt('jwt-test-secret', { sub: 'operator-01', tenantId: 'tenant-demo', exp: Math.floor(Date.now() / 1000) + 300 });
+    expect(() => new ApiKeyGuard(new Reflector()).canActivate(createContext(`Bearer ${valid.slice(0, -1)}x`, undefined))).toThrow(UnauthorizedException);
+  });
 });
+
+function createJwt(secret: string, payload: Record<string, unknown>): string {
+  const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const header = encode({ alg: 'HS256', typ: 'JWT' });
+  const body = encode(payload);
+  const signature = createHmac('sha256', secret).update(`${header}.${body}`).digest('base64url');
+  return `${header}.${body}.${signature}`;
+}

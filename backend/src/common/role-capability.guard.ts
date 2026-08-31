@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { Request } from 'express';
+import type { MesRequest } from './api-key.guard';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import {
   ROUTE_CAPABILITY_KEY,
@@ -28,12 +28,13 @@ export class RoleCapabilityGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     if (this.isPublic(context)) return true;
 
-    const request = context.switchToHttp().getRequest<Request>();
+    const request = context.switchToHttp().getRequest<MesRequest>();
     const capability = this.reflector.getAllAndOverride<RouteCapability>(
       ROUTE_CAPABILITY_KEY,
       [context.getHandler(), context.getClass()],
     );
-    const userRole = this.headerValue(request.headers['x-user-role']);
+    const userRole = request.mesIdentity?.role ?? this.headerValue(request.headers['x-user-role']);
+    this.assertIdentityRoleConsistency(request, userRole);
     this.assertRoleHeaderConsistency(userRole, request.headers['x-role']);
 
     // Read-only requests remain compatible even when their controller also
@@ -88,6 +89,17 @@ export class RoleCapabilityGuard implements CanActivate {
       throw new ForbiddenException(
         'ROLE_MISMATCH: x-user-role and x-role must identify the same role',
       );
+    }
+  }
+
+  private assertIdentityRoleConsistency(request: MesRequest, role: string | undefined): void {
+    const identityRole = request.mesIdentity?.role;
+    const headerRole = this.headerValue(request.headers['x-user-role']);
+    if (identityRole && headerRole && this.normalizeRole(identityRole) !== this.normalizeRole(headerRole)) {
+      throw new ForbiddenException('ROLE_MISMATCH: JWT role and x-user-role must identify the same role');
+    }
+    if (identityRole && role !== identityRole) {
+      throw new ForbiddenException('ROLE_MISMATCH: trusted identity role cannot be overridden');
     }
   }
 
