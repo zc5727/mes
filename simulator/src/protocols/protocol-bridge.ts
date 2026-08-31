@@ -4,8 +4,29 @@ import { adaptModbusTelemetry, adaptOpcUaTelemetry, type ModbusTelemetryFrame, t
 import type { DeviceStatus, SimulationMessage } from "../types";
 
 export interface ProtocolTelemetrySource {
-  readTelemetry(): Promise<SimulationMessage>;
+  readTelemetry(retries?: number): Promise<SimulationMessage>;
   close(): Promise<void>;
+}
+
+export type ProtocolKind = "modbus-tcp" | "opc-ua";
+
+export interface ProtocolEndpointConfig {
+  protocol: ProtocolKind;
+  host: string;
+  port: number;
+  unitId?: number;
+  timeoutMs?: number;
+}
+
+/** Validate an endpoint before a simulator process opens a socket. */
+export function parseProtocolEndpoint(input: Partial<ProtocolEndpointConfig>): ProtocolEndpointConfig {
+  if (input.protocol !== "modbus-tcp" && input.protocol !== "opc-ua") throw new Error("protocol must be modbus-tcp or opc-ua");
+  if (typeof input.host !== "string" || !input.host.trim()) throw new Error("protocol host is required");
+  const port = input.port;
+  if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) throw new Error("protocol port must be an integer from 1 to 65535");
+  if (input.unitId !== undefined && (!Number.isInteger(input.unitId) || input.unitId < 1 || input.unitId > 247)) throw new Error("Modbus unitId must be from 1 to 247");
+  if (input.timeoutMs !== undefined && (!Number.isInteger(input.timeoutMs) || input.timeoutMs < 100 || input.timeoutMs > 30000)) throw new Error("protocol timeoutMs must be from 100 to 30000");
+  return { protocol: input.protocol, host: input.host.trim(), port, unitId: input.unitId ?? 1, timeoutMs: input.timeoutMs ?? 2000 };
 }
 
 export interface DeterministicTelemetryValues {
@@ -91,9 +112,13 @@ export class ModbusTcpSimulatorServer {
 export class ModbusTcpTelemetryClient implements ProtocolTelemetrySource {
   constructor(private readonly identity: Omit<DeterministicTelemetryValues, "status" | "temperatureCelsius" | "cycleTimeSeconds" | "totalCount" | "goodCount" | "defectCount" | "faultCode">, private readonly host = "127.0.0.1", private readonly port = 1502) {}
 
-  async readTelemetry(): Promise<SimulationMessage> {
-    const response = await this.readRegisters();
-    return adaptModbusTelemetry(decodeRegisters(response, this.identity));
+  async readTelemetry(retries = 1): Promise<SimulationMessage> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < Math.max(1, retries); attempt += 1) {
+      try { return adaptModbusTelemetry(decodeRegisters(await this.readRegisters(), this.identity)); }
+      catch (error: unknown) { lastError = error; }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
   async close(): Promise<void> { return Promise.resolve(); }
@@ -126,7 +151,15 @@ export class OpcUaTelemetrySimulator implements ProtocolTelemetrySource {
     await this.server.start();
   }
 
-  async readTelemetry(): Promise<SimulationMessage> {
+  async readTelemetry(retries = 1): Promise<SimulationMessage> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < Math.max(1, retries); attempt += 1) {
+      try { return await this.readOnce(); } catch (error: unknown) { lastError = error; await this.resetClient(); }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  }
+
+  private async readOnce(): Promise<SimulationMessage> {
     this.client ??= OPCUAClient.create({ endpointMustExist: false });
     if (!this.session) { await this.client.connect(`opc.tcp://127.0.0.1:${this.port}`); this.session = await this.client.createSession(); }
     const nodes = ["status", "temperatureCelsius", "cycleTimeSeconds", "totalCount", "goodCount", "defectCount"];
@@ -135,5 +168,6 @@ export class OpcUaTelemetrySimulator implements ProtocolTelemetrySource {
     return adaptOpcUaTelemetry({ ...this.values, values: values as OpcUaTelemetryFrame["values"] });
   }
 
-  async close(): Promise<void> { await this.session?.close(); await this.client?.disconnect(); await this.server.shutdown(); }
+  private async resetClient(): Promise<void> { await this.session?.close().catch(() => undefined); await this.client?.disconnect().catch(() => undefined); this.session = undefined; this.client = undefined; }
+  async close(): Promise<void> { await this.resetClient(); await this.server.shutdown(); }
 }

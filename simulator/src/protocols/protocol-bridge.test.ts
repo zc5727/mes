@@ -1,12 +1,18 @@
 import { connect } from "node:net";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ModbusTcpSimulatorServer, ModbusTcpTelemetryClient, OpcUaTelemetrySimulator, type DeterministicTelemetryValues } from "./protocol-bridge";
+import { ModbusTcpSimulatorServer, ModbusTcpTelemetryClient, OpcUaTelemetrySimulator, parseProtocolEndpoint, type DeterministicTelemetryValues } from "./protocol-bridge";
 
 const values: DeterministicTelemetryValues = {
   tenantId: "tenant-demo", lineId: "line-cnc", deviceId: "cnc-01", timestamp: "2026-08-31T00:00:00.000Z",
   status: "RUNNING", temperatureCelsius: 42.5, cycleTimeSeconds: 8.4, totalCount: 100, goodCount: 98, defectCount: 2, faultCode: 0,
 };
+
+test("protocol endpoint validation rejects unsafe or incomplete configuration", () => {
+  assert.deepEqual(parseProtocolEndpoint({ protocol: "modbus-tcp", host: "127.0.0.1", port: 1502 }), { protocol: "modbus-tcp", host: "127.0.0.1", port: 1502, unitId: 1, timeoutMs: 2000 });
+  assert.throws(() => parseProtocolEndpoint({ protocol: "opc-ua", host: "", port: 4842 }), /host is required/);
+  assert.throws(() => parseProtocolEndpoint({ protocol: "modbus-tcp", host: "127.0.0.1", port: 70000 }), /port must be/);
+});
 
 test("Modbus TCP server/client reads deterministic telemetry and maps to canonical MQTT", async () => {
   const server = new ModbusTcpSimulatorServer(values, "127.0.0.1", 16002);
@@ -35,6 +41,22 @@ test("Modbus TCP rejects a bad function frame and surfaces disconnects", async (
     await server.close();
     await assert.rejects(new ModbusTcpTelemetryClient({ tenantId: values.tenantId, lineId: values.lineId, deviceId: values.deviceId, timestamp: values.timestamp }, "127.0.0.1", 16003).readTelemetry());
   } finally { await server.close().catch(() => undefined); }
+});
+
+test("separate Modbus endpoints keep device telemetry isolated", async () => {
+  const second = { ...values, deviceId: "cnc-02", totalCount: 200 };
+  const firstServer = new ModbusTcpSimulatorServer(values, "127.0.0.1", 16004);
+  const secondServer = new ModbusTcpSimulatorServer(second, "127.0.0.1", 16005);
+  await Promise.all([firstServer.start(), secondServer.start()]);
+  try {
+    const [first, secondMessage] = await Promise.all([
+      new ModbusTcpTelemetryClient({ tenantId: values.tenantId, lineId: values.lineId, deviceId: values.deviceId, timestamp: values.timestamp }, "127.0.0.1", 16004).readTelemetry(),
+      new ModbusTcpTelemetryClient({ tenantId: second.tenantId, lineId: second.lineId, deviceId: second.deviceId, timestamp: second.timestamp }, "127.0.0.1", 16005).readTelemetry(),
+    ]);
+    assert.equal((first.payload.data as Record<string, unknown>).deviceId, "cnc-01");
+    assert.equal((secondMessage.payload.data as Record<string, unknown>).deviceId, "cnc-02");
+    assert.equal((secondMessage.payload.data as Record<string, unknown>).totalCount, 200);
+  } finally { await Promise.all([firstServer.close(), secondServer.close()]); }
 });
 
 test("OPC UA simulator/client reads the same canonical telemetry contract", async () => {
