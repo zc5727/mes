@@ -94,6 +94,16 @@ export function validateSimulatorControlCommand(command: SimulatorControlDto): v
     return;
   }
 
+  if (command.action === 'start' || command.action === 'stop') {
+    if (command.faultType || command.speed !== undefined) {
+      throw new BadRequestException(`${command.action} does not accept speed or fault arguments`);
+    }
+    if (command.deviceId && !command.lineId) {
+      throw new BadRequestException(`${command.action} deviceId requires lineId`);
+    }
+    return;
+  }
+
   if (command.speed !== undefined || command.lineId || command.deviceId || command.faultType) {
     throw new BadRequestException(`${command.action} does not accept control arguments`);
   }

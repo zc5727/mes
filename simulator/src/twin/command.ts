@@ -157,6 +157,15 @@ function validateControlArguments(command: SimulatorControlCommand): void {
     }
     return;
   }
+  if (command.action === "start" || command.action === "stop") {
+    if (command.deviceId !== undefined && command.lineId === undefined) {
+      throw new Error(`${command.action} deviceId requires lineId`);
+    }
+    if (command.faultType !== undefined) {
+      throw new Error(`${command.action} does not accept fault arguments`);
+    }
+    return;
+  }
   if (command.lineId !== undefined || command.deviceId !== undefined || command.faultType !== undefined) {
     throw new Error(`${command.action} does not accept line, device or fault arguments`);
   }

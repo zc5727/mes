@@ -201,11 +201,9 @@ export class FactorySimulator {
 
     switch (command.action) {
       case "start":
-        this.start();
-        return [this.controlAppliedMessage(command, commandTimestamp)];
+        return this.applyLifecycleCommand(command, "START_LINE", "START_DEVICE", commandTimestamp);
       case "stop":
-        this.stop();
-        return [this.controlAppliedMessage(command, commandTimestamp)];
+        return this.applyLifecycleCommand(command, "STOP_LINE", "STOP_DEVICE", commandTimestamp);
       case "pause":
         this.pause();
         return [this.controlAppliedMessage(command, commandTimestamp)];
@@ -257,6 +255,26 @@ export class FactorySimulator {
           }),
         ];
     }
+  }
+
+  private applyLifecycleCommand(
+    command: SimulatorControlCommand,
+    lineAction: "START_LINE" | "STOP_LINE",
+    deviceAction: "START_DEVICE" | "STOP_DEVICE",
+    timestamp: Date,
+  ): SimulationMessage[] {
+    if (!command.lineId) {
+      if (lineAction === "START_LINE") this.start(); else this.stop();
+      return [this.controlAppliedMessage(command, timestamp)];
+    }
+    const line = this.findLine(command.lineId);
+    const alarms = command.deviceId
+      ? line.executeDeviceAction(deviceAction, command.deviceId, timestamp)
+      : line.executeLineAction(lineAction, timestamp);
+    return [
+      ...alarms.map((alarm) => this.alarmMessage("alarm.cleared", alarm)),
+      this.controlAppliedMessage(command, timestamp),
+    ];
   }
 
   public handleTwinCommand(command: TwinCommand, timestamp = new Date()): SimulationMessage[] {

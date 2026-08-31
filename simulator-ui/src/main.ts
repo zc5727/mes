@@ -52,7 +52,7 @@ async function control(action: string, faultType?: string): Promise<void> {
   if (!selectedDevice) return;
   const device = devices.find((item) => item.id === selectedDevice); if (!device) return;
   try {
-    const body = ['fault', 'reset', 'recover'].includes(action)
+    const body = ['fault', 'reset', 'recover', 'start', 'stop'].includes(action)
       ? { action, lineId: device.lineId, deviceId: device.id, faultType }
       : { action };
     await api('/simulator/control', { method: 'POST', body: JSON.stringify(body) });
@@ -76,6 +76,16 @@ function bind(): void {
   document.querySelector('#startAll')?.addEventListener('click', () => controlAll('start'));
   document.querySelector('#stopAll')?.addEventListener('click', () => controlAll('stop'));
   document.querySelector('#snapshot')?.addEventListener('click', () => control('snapshot'));
+  document.querySelector('#newDevice')?.addEventListener('click', async () => {
+    const lineId = window.prompt(`选择产线：${lines.map((line) => `${line.id}(${line.name})`).join('、')}`, lines[0]?.id ?? '');
+    const name = window.prompt('设备名称', '仿真机床');
+    const code = window.prompt('设备编码', `SIM-${Date.now().toString().slice(-4)}`);
+    if (!lineId || !name || !code) return;
+    try {
+      await api('/devices', { method: 'POST', body: JSON.stringify({ lineId, name, code, model: 'Generic CNC', protocol: 'simulator', metadata: { source: 'simulator-console' } }) });
+      log('模拟设备注册成功'); await load();
+    } catch (error) { log(`设备注册失败：${String(error)}`); }
+  });
 }
 
 render(); void load();
