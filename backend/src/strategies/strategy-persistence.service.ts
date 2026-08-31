@@ -9,6 +9,7 @@ export interface PersistedStrategyRun {
   tenantId: string;
   result: StrategySimulationResult;
   audit: StrategyCallRecord;
+  approvals: Approval[];
 }
 
 /** Durable repository for strategy history and its approval/audit projection. */
@@ -75,8 +76,8 @@ export class StrategyPersistenceService {
 
   private fromJson(tenantId: string, value: unknown): PersistedStrategyRun[] {
     if (!value || typeof value !== 'object') return [];
-    const item = value as { result?: StrategySimulationResult; audit?: StrategyCallRecord };
-    return item.result && item.audit ? [{ tenantId, result: item.result, audit: item.audit }] : [];
+    const item = value as { result?: StrategySimulationResult; audit?: StrategyCallRecord; approvals?: Approval[] };
+    return item.result && item.audit ? [{ tenantId, result: item.result, audit: item.audit, approvals: item.approvals ?? [] }] : [];
   }
 
   private json(value: unknown): Prisma.InputJsonValue {

@@ -1,0 +1,31 @@
+name: MES quality gate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            simulator/package-lock.json
+            third_party/threejs-factory-demo/package-lock.json
+      - name: Install dependencies
+        run: |
+          npm --prefix backend ci
+          npm --prefix simulator ci
+          npm --prefix third_party/threejs-factory-demo ci
+      - name: Prepare backend environment
+        run: cp backend/.env.example backend/.env
+      - name: Run code and real dependency gates
+        env:
+          CI: true
+        run: ./scripts/verify-ci.sh

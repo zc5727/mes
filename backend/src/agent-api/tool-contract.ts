@@ -51,6 +51,13 @@ export interface AgentToolResponse<TData = unknown> {
   data?: TData;
   error?: { code: string; message: string };
   audit?: AgentToolAudit;
+  meta?: AgentToolMeta;
+}
+
+export interface AgentToolMeta {
+  source: 'mes' | 'strategy-governance' | 'audit';
+  sourceTime: string;
+  permission: 'granted' | 'denied';
 }
 
 export interface AgentToolAudit {

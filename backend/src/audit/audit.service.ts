@@ -17,6 +17,10 @@ export class AuditService {
   private readonly audit = new Map<string, AuditEntry[]>();
   private readonly approvals = new Map<string, Approval[]>();
   list(tenantId: string) { return this.audit.get(tenantId) ?? []; }
+  restore(entry: GovernedAuditEntry): void {
+    if (this.list(entry.tenantId).some((item) => item.id === entry.id)) return;
+    this.audit.set(entry.tenantId, [...this.list(entry.tenantId), entry]);
+  }
   record(tenantId: string, actor: string, dto: CreateAuditDto): GovernedAuditEntry {
     const operator = dto.operator?.trim() || actor;
     const object = dto.object?.trim() || `${dto.resource}${dto.resourceId ? `:${dto.resourceId}` : ''}`;
@@ -35,6 +39,10 @@ export class AuditService {
     return entry;
   }
   listApprovals(tenantId: string) { return this.approvals.get(tenantId) ?? []; }
+  restoreApproval(item: Approval): void {
+    if (this.listApprovals(item.tenantId).some((approval) => approval.id === item.id)) return;
+    this.approvals.set(item.tenantId, [...this.listApprovals(item.tenantId), item]);
+  }
   createApproval(tenantId: string, dto: CreateApprovalDto): Approval { const item: Approval = { id: createId('approval'), tenantId, resource: dto.resource, resourceId: dto.resourceId, status: 'pending', comment: dto.comment ?? '', createdAt: timestamp() }; this.approvals.set(tenantId, [...this.listApprovals(tenantId), item]); return item; }
   decide(tenantId: string, id: string, status: 'approved' | 'rejected', comment?: string): Approval { const item = this.listApprovals(tenantId).find((approval) => approval.id === id); if (!item) throw new NotFoundException(`Approval ${id} not found`); if (item.status !== 'pending') throw new ConflictException(`Approval ${id} is already ${item.status}`); const updated = { ...item, status, comment: comment ?? item.comment, decidedAt: timestamp() }; this.approvals.set(tenantId, this.listApprovals(tenantId).map((approval) => approval.id === id ? updated : approval)); return updated; }
 }

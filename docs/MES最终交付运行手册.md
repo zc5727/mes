@@ -1,7 +1,7 @@
 # MES 最终交付运行手册
 
 **负责人：** 赵丞  
-**适用版本：** 核心 MES 试点版 v1.2 / 提交 `1f4c2157`
+**适用版本：** 核心 MES 试点版 v1.2 / 提交 `8b4a661a`
 **适用范围：** 单工厂、单车间、四条模拟产线；不包含 SaaS、Nanobot 原生集成和真实 PLC 控制。
 
 ## 1. 交付边界
@@ -134,9 +134,23 @@ bash scripts/desktop.sh rebuild
 - 数据库迁移、备份恢复、回滚和权限拒绝测试结果。
 - 操作者、时间、环境、产线、设备、工单、`traceId` 和证据文件路径。
 
+### 7.1 提交 8b4a661a 已具备的代码/测试证据
+
+下表只记录仓库中确实存在的实现或测试文件，不等同于现场生产通过。
+
+| 能力 | 代码证据 | 测试/验证证据 | 当前判定 |
+|---|---|---|---|
+| 核心数据库迁移 | `backend/prisma/migrations/20260830000000_init`、`20260831000000_traceability`、`backend/src/database/core-persistence.service.ts` | `backend/test/core-persistence.unit.spec.ts`、`backend/test/foundation-persistence.unit.spec.ts` | 有代码与测试证据；真实启用和重启恢复未验证 |
+| 质量/维修/文档基础持久化 | `backend/src/database/foundation-persistence.service.ts` 及对应三个业务服务 | `backend/test/foundation-persistence.unit.spec.ts`、`backend/test/quality-maintenance-traceability.e2e-spec.ts` | 基础边界有证据；完整生产流程未完成 |
+| 批次、序列号和物料批次校验 | `backend/src/work-orders/work-orders.service.ts`、`report-work-order.dto.ts` | `backend/test/orders-work-orders.unit.spec.ts`、质量/维修/追溯 E2E | 校验能力有证据；库存扣减和双向追溯未完成 |
+| Agent 只读授权 | `backend/src/agent-api/agent-api.service.ts`、`strategy-authorization.service.ts` | `backend/test/agent-api.service.unit.spec.ts` | 授权拒绝和资源范围有测试；正式身份未接入 |
+| 策略治理持久化 | `backend/src/strategies/strategy-persistence.service.ts`、`strategy-governance.service.ts` | `backend/test/strategy-governance.unit.spec.ts`、`agent-api.service.unit.spec.ts` | 模拟结果/审批记录有代码与测试；生产审批和数据库恢复未验证 |
+| 主数据审计 | `backend/src/audit/audit.service.ts` 及主数据服务调用边界 | `backend/test/master-data-audit.unit.spec.ts` | 审计调用有测试；身份、不可篡改存储和现场拒绝未验证 |
+| 运行时验证入口 | `scripts/verify-local.sh`、`scripts/verify-ci.sh`、`scripts/verify-runtime.sh` | 脚本本身存在；需保存实际执行输出 | 入口已具备；当前提交未据此宣称现场通过 |
+
 ## 8. 生产化缺口清单与退出证据
 
-以下清单按当前提交 `1f4c2157` 的代码和脚本核对；“基础接口/演示”不等于生产完成。每一项只有在右栏证据归档后才能关闭。
+以下清单按当前提交 `8b4a661a` 的代码和脚本核对；“基础接口/演示”不等于生产完成。每一项只有在右栏证据归档后才能关闭。
 
 | 缺口 | 当前真实状态 | 关闭所需退出证据 |
 |---|---|---|
@@ -174,4 +188,4 @@ bash scripts/desktop.sh rebuild
 
 ## 9. 当前未完成事项
 
-截至提交 `1f4c2157`，质量/维修/文档已有基础持久化代码和部分自动化证据，但以下事项仍不能标记为完成：ERPNext 真实旁路与四线对账、PostgreSQL 生产事务/重启恢复、ThingsBoard/Gateway 运行接入、库存扣减、IQC/IPQC/OQC/NCR/CAPA 完整闭环、对象存储、正式身份/TLS 与不可篡改审计、Tauri `.app/.dmg` 实机升级回滚。具体退出标准以 `docs/MES里程碑计划.md` 和 `docs/MES成熟功能域路线与端到端验收.md` 为准。
+截至提交 `8b4a661a`，策略治理持久化、报工约束和主数据审计测试已有代码/测试证据，但以下事项仍不能标记为完成：ERPNext 真实旁路与四线对账、PostgreSQL 生产事务/重启恢复、ThingsBoard/Gateway 运行接入、库存扣减、IQC/IPQC/OQC/NCR/CAPA 完整闭环、对象存储、正式身份/TLS 与不可篡改审计、Tauri `.app/.dmg` 实机升级回滚。具体退出标准以 `docs/MES里程碑计划.md` 和 `docs/MES成熟功能域路线与端到端验收.md` 为准。

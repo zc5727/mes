@@ -35,17 +35,16 @@ export class MqttStatePersistenceService {
     await this.prisma.ensureConnection();
     if (!this.prisma.isReady()) return;
     try {
-      await this.prisma.mqttDeviceState.upsert({
+      const operations: Array<Promise<unknown>> = [this.prisma.mqttDeviceState.upsert({
         where: { tenantId_lineId_deviceId: { tenantId: record.tenantId, lineId: record.lineId, deviceId: record.deviceId } },
         create: { tenantId: record.tenantId, lineId: record.lineId, deviceId: record.deviceId, eventTime: new Date(record.timestamp), payload: record as object },
         update: { eventTime: new Date(record.timestamp), payload: record as object },
-      });
-      await this.prisma.currentState.upsert({
+      }), this.prisma.currentState.upsert({
         where: { tenantId_lineId_deviceId: { tenantId: record.tenantId, lineId: record.lineId, deviceId: record.deviceId } },
         create: { tenantId: record.tenantId, lineId: record.lineId, deviceId: record.deviceId, status: record.status, eventTime: new Date(record.timestamp), payload: record as object },
         update: { status: record.status, eventTime: new Date(record.timestamp), payload: record as object },
-      });
-      if (this.prisma.device?.updateMany) await this.prisma.device.updateMany({
+      })];
+      if (this.prisma.device?.updateMany) operations.push(this.prisma.device.updateMany({
         where: {
           tenantId: record.tenantId,
           lineId: record.lineId,
@@ -57,13 +56,14 @@ export class MqttStatePersistenceService {
           lastSeenAt: new Date(record.timestamp),
           metrics: record as object,
         },
-      });
+      }));
       const eventId = this.telemetryEventId(record);
-      await this.prisma.deviceEvent.upsert({
+      operations.push(this.prisma.deviceEvent.upsert({
         where: { id: eventId },
         create: { id: eventId, tenantId: record.tenantId, lineId: record.lineId, deviceId: record.deviceId, eventType: 'telemetry', traceId: record.traceId, quality: record.quality, eventTime: new Date(record.timestamp), payload: record as object },
         update: { eventTime: new Date(record.timestamp), traceId: record.traceId, quality: record.quality, payload: record as object },
-      });
+      }));
+      await this.transaction(operations);
     } catch (error: unknown) {
       this.logFailure('persist telemetry', error);
     }
@@ -73,12 +73,12 @@ export class MqttStatePersistenceService {
     await this.prisma.ensureConnection();
     if (!this.prisma.isReady()) return;
     try {
-      await this.prisma.mqttAlarmState.upsert({
+      const operations: Array<Promise<unknown>> = [this.prisma.mqttAlarmState.upsert({
         where: { tenantId_alarmId: { tenantId: state.tenantId, alarmId: state.alarm.id } },
         create: { tenantId: state.tenantId, alarmId: state.alarm.id, eventTime: new Date(state.alarm.clearedAt ?? state.alarm.startedAt), active: state.active, payload: state as object },
         update: { eventTime: new Date(state.alarm.clearedAt ?? state.alarm.startedAt), active: state.active, payload: state as object },
-      });
-      if (this.prisma.alarm?.upsert) await this.prisma.alarm.upsert({
+      })];
+      if (this.prisma.alarm?.upsert) operations.push(this.prisma.alarm.upsert({
         where: { id: this.alarmId(state) },
         create: {
           id: this.alarmId(state), tenantId: state.tenantId,
@@ -94,13 +94,14 @@ export class MqttStatePersistenceService {
           message: state.alarm.message, resolvedAt: state.active ? null : new Date(state.alarm.clearedAt ?? state.updatedAt),
           occurredAt: new Date(state.alarm.clearedAt ?? state.alarm.startedAt),
         },
-      });
+      }));
       const id = `alarm:${state.tenantId}:${state.alarm.id}:${state.lastEvent}`;
-      await this.prisma.deviceEvent.upsert({
+      operations.push(this.prisma.deviceEvent.upsert({
         where: { id },
         create: { id, tenantId: state.tenantId, lineId: state.alarm.lineId, deviceId: state.alarm.deviceId, eventType: state.lastEvent, eventTime: new Date(state.alarm.clearedAt ?? state.alarm.startedAt), payload: state as object },
         update: { eventTime: new Date(state.alarm.clearedAt ?? state.alarm.startedAt), payload: state as object },
-      });
+      }));
+      await this.transaction(operations);
     } catch (error: unknown) {
       this.logFailure('persist alarm', error);
     }
@@ -143,5 +144,14 @@ export class MqttStatePersistenceService {
 
   private alarmId(state: AlarmState): string {
     return `mqtt-${state.tenantId}-${state.alarm.id}`.slice(0, 40);
+  }
+
+  private async transaction(operations: Array<Promise<unknown>>): Promise<void> {
+    const client = this.prisma as PrismaService & { $transaction?: (operations: Array<Promise<unknown>>) => Promise<unknown> };
+    if (client.$transaction) {
+      await client.$transaction(operations);
+      return;
+    }
+    await Promise.all(operations);
   }
 }

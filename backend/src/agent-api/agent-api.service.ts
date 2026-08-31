@@ -8,6 +8,7 @@ import { StrategyEngineService } from '../strategies/strategy-engine.service';
 import { StrategyGovernanceService } from '../strategies/strategy-governance.service';
 import { StrategyAuthorizationService } from '../strategies/strategy-authorization.service';
 import { StrategyRequestContext, StrategySnapshot, StrategySimulationResult } from '../strategies/strategy.types';
+import { AuditService } from '../audit/audit.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import {
   AGENT_READ_ONLY_TOOLS,
@@ -39,6 +40,7 @@ export class AgentApiService {
     private readonly strategyEngine: StrategyEngineService,
     @Optional() private readonly governance?: StrategyGovernanceService,
     @Optional() private readonly authorization?: StrategyAuthorizationService,
+    @Optional() private readonly auditService?: AuditService,
   ) {}
 
   execute(request: RawAgentRequest): AgentToolResponse {
@@ -48,15 +50,28 @@ export class AgentApiService {
     const audit = this.audit(tenantId, request.requestedBy, args);
 
     if (!isReadOnlyAgentTool(request.tool)) {
+      this.recordToolAudit(tenantId, request.requestedBy, String(request.tool ?? ''), traceId, 'denied', 'UNKNOWN_TOOL');
       return this.failure(String(request.tool ?? ''), traceId, 'UNKNOWN_TOOL', '工具不存在或不在只读工具白名单中', audit);
     }
-    if (tenantId === 'unknown') return this.failure(request.tool, traceId, 'INVALID_REQUEST', '参数 tenantId 不能为空', audit);
+    if (tenantId === 'unknown') {
+      this.recordToolAudit(tenantId, request.requestedBy, request.tool, traceId, 'denied', 'INVALID_REQUEST');
+      return this.failure(request.tool, traceId, 'INVALID_REQUEST', '参数 tenantId 不能为空', audit);
+    }
 
     try {
       const context = this.authorize(request.authorization, tenantId, traceId);
       const data = this.dispatch(request.tool, tenantId, args, context);
-      return { ok: true, tool: request.tool, traceId, data, audit };
+      this.recordToolAudit(tenantId, context?.userId ?? request.requestedBy, request.tool, traceId, 'success');
+      return {
+        ok: true,
+        tool: request.tool,
+        traceId,
+        data,
+        audit,
+        meta: { source: this.sourceFor(request.tool), sourceTime: this.sourceTime(data, audit.calledAt), permission: 'granted' },
+      };
     } catch (error: unknown) {
+      this.recordToolAudit(tenantId, request.requestedBy, request.tool, traceId, 'denied', this.errorCode(error));
       return this.failure(request.tool, traceId, this.errorCode(error), this.errorMessage(error), audit);
     }
   }
@@ -257,7 +272,52 @@ export class AgentApiService {
 
   private failure(tool: AgentReadOnlyTool | string, traceId: string, code: string, message: string, audit: AgentToolAudit): AgentToolResponse {
     const response = createToolError(tool, traceId, code, message);
-    return { ...response, audit };
+    return { ...response, audit, meta: { source: this.sourceFor(tool), sourceTime: audit.calledAt, permission: 'denied' } };
+  }
+
+  private sourceFor(tool: AgentReadOnlyTool | string): 'mes' | 'strategy-governance' | 'audit' {
+    if (tool === 'get_strategy_history' || tool === 'get_strategy_result' || tool === 'get_simulation_snapshot' || tool === 'get_strategy_approval_status') {
+      return 'strategy-governance';
+    }
+    return 'mes';
+  }
+
+  private sourceTime(data: unknown, fallback: string): string {
+    if (Array.isArray(data)) {
+      const first = data[0];
+      if (first && typeof first === 'object') {
+        const record = first as Record<string, unknown>;
+        for (const field of ['createdAt', 'snapshotTimestamp', 'timestamp']) {
+          if (typeof record[field] === 'string' && !Number.isNaN(Date.parse(record[field]))) return record[field];
+        }
+      }
+      return fallback;
+    }
+    if (!data || typeof data !== 'object') return fallback;
+    const record = data as Record<string, unknown>;
+    for (const field of ['timestamp', 'generatedAt', 'occurredAt', 'updatedAt', 'dueAt']) {
+      if (typeof record[field] === 'string' && !Number.isNaN(Date.parse(record[field]))) return record[field];
+    }
+    return fallback;
+  }
+
+  private recordToolAudit(
+    tenantId: string,
+    actor: string | undefined,
+    tool: string,
+    traceId: string,
+    result: 'success' | 'denied',
+    errorCode?: string,
+  ): void {
+    this.auditService?.record(tenantId, actor?.trim() || 'agent-gateway', {
+      action: 'AGENT_TOOL_EXECUTE',
+      resource: 'agent-tool',
+      resourceId: traceId,
+      traceId,
+      result,
+      reason: result === 'success' ? '受控只读工具调用' : `受控工具调用被拒绝: ${errorCode ?? 'TOOL_EXECUTION_ERROR'}`,
+      details: { tool, permission: result === 'success' ? 'granted' : 'denied', errorCode },
+    });
   }
 
   private requiredArg(args: Record<string, unknown>, name: string): string {

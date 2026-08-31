@@ -157,6 +157,31 @@ describe('production execution flow', () => {
     }).report.batchNo).toBe('FG-001');
   });
 
+  it('queries the raw-material to finished-product trace by batch, serial and operation', () => {
+    const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService());
+    const workOrder = workOrders.create('tenant-demo', {
+      orderNo: 'WO-TRACE-SEARCH', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1,
+      dueAt: '2026-08-31T18:00:00.000Z',
+    });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'in_progress' });
+    workOrders.reportTrace('tenant-demo', workOrder.id, {
+      quantity: 1, batchNo: 'FG-SEARCH', serialNumbers: ['SN-SEARCH'], operationCode: 'OP-SEARCH',
+      deviceId: 'device-cnc-01', materialConsumptions: [{ materialCode: 'RAW-SEARCH', batchNo: 'RAW-BATCH', quantity: 1 }],
+      sourceTraceId: 'TRACE-SEARCH',
+    });
+
+    const result = workOrders.searchTraceability('tenant-demo', {
+      serialNumber: 'SN-SEARCH', materialBatchNo: 'RAW-BATCH', operationCode: 'OP-SEARCH',
+    });
+    expect(result).toEqual(expect.objectContaining({ total: 1 }));
+    expect(result.reports[0]).toEqual(expect.objectContaining({
+      workOrder: expect.objectContaining({ id: workOrder.id, completedQty: 1, status: 'completed' }),
+      report: expect.objectContaining({ batchNo: 'FG-SEARCH', sourceTraceId: 'TRACE-SEARCH' }),
+    }));
+    expect(workOrders.searchTraceability('tenant-other', { batchNo: 'FG-SEARCH' }).total).toBe(0);
+  });
+
   it('binds a work order to existing BOM and routing records', () => {
     const masterData = new MasterDataService();
     const operation = masterData.create('tenant-demo', 'operation', { code: 'OP-BIND', name: '装配' });

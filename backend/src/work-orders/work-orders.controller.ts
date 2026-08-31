@@ -4,7 +4,7 @@ import { CreateWorkOrderDto } from './dto/create-work-order.dto';
 import { UpdateWorkOrderStatusDto } from './dto/update-work-order-status.dto';
 import { UpdateWorkOrderDto } from './dto/update-work-order.dto';
 import { ReportWorkOrderDto } from './dto/report-work-order.dto';
-import { WorkOrdersService } from './work-orders.service';
+import { TraceabilityQuery, WorkOrdersService } from './work-orders.service';
 
 @Controller('work-orders')
 export class WorkOrdersController {
@@ -13,6 +13,11 @@ export class WorkOrdersController {
   @Get('overview')
   overview(@TenantId() tenantId: string) {
     return { data: this.workOrdersService.findOverview(tenantId), tenantId };
+  }
+
+  @Get('traceability/search')
+  searchTraceability(@TenantId() tenantId: string, @Query() query: TraceabilityQuery) {
+    return { data: this.workOrdersService.searchTraceability(tenantId, query), tenantId };
   }
 
   @Get()

@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { Approval, AuditService } from '../audit/audit.service';
+import { Approval, AuditService, GovernedAuditEntry } from '../audit/audit.service';
 import {
   StrategyRequestContext,
   StrategyAction,
@@ -57,10 +57,11 @@ export class StrategyGovernanceService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     const runs = await this.persistence?.restore() ?? [];
-    runs.forEach((run) => this.simulations.set(this.key(run.tenantId, run.result.simulationId), {
-      result: run.result,
-      audit: run.audit,
-    }));
+    runs.forEach((run) => {
+      this.simulations.set(this.key(run.tenantId, run.result.simulationId), { result: run.result, audit: run.audit });
+      this.auditService.restore(this.toAuditEntry(run.audit));
+      run.approvals.forEach((approval) => this.auditService.restoreApproval(approval));
+    });
   }
 
   recordSimulation(
@@ -200,6 +201,7 @@ export class StrategyGovernanceService implements OnModuleInit {
       },
     };
     this.simulations.set(key, updated);
+    void this.persistence?.save(tenantId, updated.result, updated.audit, this.auditService.listApprovals(tenantId));
     // Keep the original result and audit record addressable for traceability.
     void auditEntry;
     return updated;
@@ -274,5 +276,25 @@ export class StrategyGovernanceService implements OnModuleInit {
     const normalized = idempotencyKey.trim();
     if (!normalized) throw new ConflictException('IDEMPOTENCY_KEY_INVALID: key must not be empty');
     return `${tenantId}:${normalized}`;
+  }
+
+  private toAuditEntry(record: StrategyCallRecord): GovernedAuditEntry {
+    return {
+      id: record.callId,
+      tenantId: record.tenantId,
+      actor: record.requestedBy,
+      action: 'STRATEGY_SIMULATE',
+      resource: 'strategy-simulation',
+      resourceId: record.simulationId,
+      details: { ...record.after, rollback: record.rollback },
+      createdAt: record.createdAt,
+      operator: record.operator,
+      object: record.object,
+      before: record.before,
+      after: record.after,
+      reason: record.reason,
+      traceId: record.traceId,
+      result: record.result,
+    };
   }
 }

@@ -69,6 +69,16 @@ export interface FinishedProductTrace {
   defectQty: number;
 }
 
+export interface TraceabilityQuery {
+  batchNo?: string;
+  serialNumber?: string;
+  materialBatchNo?: string;
+  operationCode?: string;
+  deviceId?: string;
+  workOrderId?: string;
+  sourceTraceId?: string;
+}
+
 const allowedTransitions: Record<WorkOrderStatus, WorkOrderStatus[]> = {
   draft: ['released', 'cancelled'],
   released: ['in_progress', 'cancelled'],
@@ -342,6 +352,32 @@ export class WorkOrdersService implements OnModuleInit {
   findReports(tenantId: string, workOrderId: string): WorkOrderReport[] {
     this.findOne(tenantId, workOrderId);
     return this.reports.filter((report) => report.tenantId === tenantId && report.workOrderId === workOrderId);
+  }
+
+  /** Searches the complete report-based trace graph while enforcing tenant isolation. */
+  searchTraceability(tenantId: string, query: TraceabilityQuery): {
+    total: number;
+    reports: Array<{ workOrder: WorkOrder; report: WorkOrderReport }>;
+  } {
+    const normalized = Object.fromEntries(
+      Object.entries(query).map(([key, value]) => [key, value?.trim()]),
+    ) as TraceabilityQuery;
+    if (normalized.workOrderId) this.findOne(tenantId, normalized.workOrderId);
+
+    const reports = this.reports
+      .filter((report) => report.tenantId === tenantId)
+      .filter((report) => !normalized.workOrderId || report.workOrderId === normalized.workOrderId)
+      .filter((report) => !normalized.batchNo || report.batchNo === normalized.batchNo)
+      .filter((report) => !normalized.serialNumber || report.serialNumbers.includes(normalized.serialNumber))
+      .filter((report) => !normalized.materialBatchNo || report.materialConsumptions.some((item) => item.batchNo === normalized.materialBatchNo))
+      .filter((report) => !normalized.operationCode || report.operationCode === normalized.operationCode)
+      .filter((report) => !normalized.deviceId || report.deviceId === normalized.deviceId)
+      .filter((report) => !normalized.sourceTraceId || report.sourceTraceId === normalized.sourceTraceId);
+
+    return {
+      total: reports.length,
+      reports: reports.map((report) => ({ workOrder: this.findOne(tenantId, report.workOrderId), report })),
+    };
   }
 
   private updateProgress(current: WorkOrder, completedQty: number): WorkOrder {

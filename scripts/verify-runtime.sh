@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPOSE_FILE="$ROOT_DIR/backend/docker-compose.yml"
+COMPOSE_FILE="${MES_RUNTIME_COMPOSE_FILE:-$ROOT_DIR/backend/docker-compose.yml}"
 STARTED=false
 
 cleanup() {
@@ -21,6 +21,15 @@ elif command -v docker-compose >/dev/null 2>&1; then
 else
   echo "BLOCKED: Docker Compose 不可用，无法执行 PostgreSQL/MQTT 启停恢复验收。"
   echo "可重复命令：$ROOT_DIR/scripts/verify-runtime.sh"
+  exit 2
+fi
+
+if [[ ! -f "$COMPOSE_FILE" ]]; then
+  echo "BLOCKED: Docker Compose 文件不存在：$COMPOSE_FILE" >&2
+  exit 2
+fi
+if ! docker info >/dev/null 2>&1; then
+  echo "BLOCKED: Docker Engine 不可用，无法启动真实 PostgreSQL/MQTT。" >&2
   exit 2
 fi
 

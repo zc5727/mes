@@ -5,9 +5,9 @@
       <div class="breadcrumb">南沙示范工厂 / {{ selectedLine?.workshop ?? '全部车间' }}</div>
       <div class="shop-tree">
         <button type="button" class="tree-row active" @click="$emit('select-line', selectedLineId)"><span>⌄</span>一车间</button>
-        <button type="button" class="tree-row" @click="$emit('select-line', 'LINE-01')"><span>└</span>加工产线 <em>4台</em></button>
-        <button type="button" class="tree-row" @click="$emit('select-line', 'LINE-02')"><span>└</span>装配产线 <em>2台</em></button>
-        <div class="tree-row tree-row--static"><span>└</span>原料与成品仓 <em>12项</em></div>
+        <button type="button" class="tree-row" @click="$emit('select-line', 'LINE-01')"><span>└</span>加工产线 <em>{{ deviceCount('LINE-01') }}台</em></button>
+        <button type="button" class="tree-row" @click="$emit('select-line', 'LINE-02')"><span>└</span>装配产线 <em>{{ deviceCount('LINE-02') }}台</em></button>
+        <div class="tree-row tree-row--static"><span>└</span>原料与成品仓 <em>API数据</em></div>
       </div>
       <div class="flow-title line-overview-title">
         <span>生产线总览</span>
@@ -69,7 +69,7 @@
 <script setup lang="ts">
 import type { DeviceTelemetry, FactoryAlarm, ProductionLineTelemetry } from '@/types/factory';
 
-defineProps<{
+const props = defineProps<{
   alarms: FactoryAlarm[];
   devices: DeviceTelemetry[];
   selectedDeviceId: string | null;
@@ -78,6 +78,8 @@ defineProps<{
   selectedLine?: ProductionLineTelemetry;
   canManageLines: boolean;
 }>();
+
+const deviceCount = (lineId: string) => props.devices.filter((device) => device.lineId === lineId).length;
 
 defineEmits<{
   (event: 'select-device', id: string): void;
