@@ -122,7 +122,7 @@ node scripts/desktop-smoke.mjs --app-dir=desktop --build
 | 从 DMG 解出并打开 `.app` | `open` 返回 `0`，应用进程 `mes-desktop` 成功出现，窗口可被 macOS UI Scripting 识别 | 部分通过：进程/窗口启动通过，未完成业务页面视觉和三维手势自动化 |
 | DMG 挂载/卸载 | `hdiutil attach -readonly` 成功；挂载目录含 `.app`；`hdiutil detach` 成功且挂载点释放 | 通过 |
 | 窗口缩放 | UI Scripting 将窗口设置为 `1100x720`、`1440x900`，系统返回对应尺寸 | 通过窗口 API；三维拖拽/滚轮未自动化 |
-| 不同路径副本单实例 | `/tmp/mes-instance-a.app` 和 `/tmp/mes-instance-b.app` 同时 `open`，各自进程数为 `1` | 未通过：不同路径副本可同时运行；待实现单实例策略 |
+| 不同路径副本单实例 | Tauri single-instance 插件之外，Rust 启动前使用固定应用标识的原子锁，并清理已退出进程留下的失效锁 | 代码已补强；需重新执行两份 `.app` 的实机验证，确认第二份不创建窗口/服务 |
 | 关闭后进程清理 | 关闭菜单自动化未找到菜单项，随后终止主进程；主进程退出 | 部分通过：进程可清理，但正常菜单退出路径未完成验证 |
 | `codesign` | `codesign --verify --deep --strict` 失败：`code has no resources but signature indicates they must be present`；无 `TeamIdentifier` | 未通过：当前为 ad-hoc/不完整签名 |
 | 公证/Gatekeeper | `spctl -a -vv --type execute` 失败，继承上述签名错误 | 环境阻塞：需要 Developer ID Application 证书、签名身份和 Apple 公证账号 |

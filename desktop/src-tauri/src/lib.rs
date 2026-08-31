@@ -1,3 +1,5 @@
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
@@ -6,11 +8,70 @@ use tauri::{App, Manager, RunEvent};
 
 struct RuntimeProcess(Mutex<Option<Child>>);
 
+struct DesktopInstanceLock {
+    path: PathBuf,
+}
+
+impl Drop for DesktopInstanceLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+fn instance_lock_path() -> PathBuf {
+    std::env::temp_dir().join("mes-desktop-com.zc.mes.desktop.lock")
+}
+
+fn process_is_alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        return Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(true);
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        true
+    }
+}
+
+fn acquire_instance_lock() -> Result<DesktopInstanceLock, String> {
+    let path = instance_lock_path();
+    let mut file = loop {
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(file) => break file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                let owner_pid = fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|content| content.strip_prefix("pid=")?.trim().parse().ok());
+                if owner_pid.is_some_and(process_is_alive) {
+                    return Err(format!(
+                        "MES 桌面端已经在运行（锁文件：{}）",
+                        path.display()
+                    ));
+                }
+                fs::remove_file(&path).map_err(|remove_error| {
+                    format!("无法清理失效的桌面端单实例锁：{remove_error}")
+                })?;
+            }
+            Err(error) => return Err(format!("无法创建桌面端单实例锁：{error}")),
+        }
+    };
+    if let Err(error) = writeln!(file, "pid={}", std::process::id()) {
+        let _ = fs::remove_file(&path);
+        return Err(format!("无法写入桌面端单实例锁：{error}"));
+    }
+    Ok(DesktopInstanceLock { path })
+}
+
 fn find_repo_root(start: &Path) -> Option<PathBuf> {
     start.ancestors().find_map(|candidate| {
         (candidate.join("backend/package.json").is_file()
             && candidate.join("simulator/package.json").is_file())
-            .then(|| candidate.to_path_buf())
+        .then(|| candidate.to_path_buf())
     })
 }
 
@@ -22,7 +83,8 @@ fn runtime_script(app: &App) -> Option<PathBuf> {
     if bundled.is_file() {
         return Some(bundled);
     }
-    find_repo_root(&std::env::current_exe().ok()?).map(|root| root.join("scripts/desktop-runtime.sh"))
+    find_repo_root(&std::env::current_exe().ok()?)
+        .map(|root| root.join("scripts/desktop-runtime.sh"))
 }
 
 fn repo_root(app: &App) -> Option<PathBuf> {
@@ -36,8 +98,12 @@ fn repo_root(app: &App) -> Option<PathBuf> {
             }
         }
     }
-    find_repo_root(&std::env::current_exe().ok()?)
-        .or_else(|| app.path().resource_dir().ok().and_then(|path| find_repo_root(&path)))
+    find_repo_root(&std::env::current_exe().ok()?).or_else(|| {
+        app.path()
+            .resource_dir()
+            .ok()
+            .and_then(|path| find_repo_root(&path))
+    })
 }
 
 fn show_startup_error(message: &str) {
@@ -58,7 +124,8 @@ end run"#;
 
 fn start_runtime(app: &App) -> Result<Child, String> {
     let script = runtime_script(app).ok_or_else(|| "找不到 desktop-runtime.sh".to_string())?;
-    let root = repo_root(app).ok_or_else(|| "找不到包含 backend 和 simulator 的演示运行目录".to_string())?;
+    let root = repo_root(app)
+        .ok_or_else(|| "找不到包含 backend 和 simulator 的演示运行目录".to_string())?;
     Command::new("bash")
         .arg(script)
         .arg(format!("--repo-root={}", root.display()))
@@ -80,7 +147,9 @@ fn stop_runtime(state: &RuntimeProcess) {
     };
     #[cfg(unix)]
     {
-        let _ = Command::new("kill").args(["-TERM", &child.id().to_string()]).status();
+        let _ = Command::new("kill")
+            .args(["-TERM", &child.id().to_string()])
+            .status();
     }
     #[cfg(not(unix))]
     {
@@ -91,6 +160,13 @@ fn stop_runtime(state: &RuntimeProcess) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let instance_lock = match acquire_instance_lock() {
+        Ok(lock) => lock,
+        Err(error) => {
+            eprintln!("MES desktop startup skipped: {error}");
+            return;
+        }
+    };
     let app = tauri::Builder::default()
         // Register before window startup so a second launch focuses the
         // existing window instead of creating another local service session.
@@ -101,6 +177,7 @@ pub fn run() {
             }
         }))
         .setup(|app| {
+            app.manage(instance_lock);
             if std::env::var("MES_DESKTOP_MANAGED").as_deref() == Ok("0")
                 || std::env::var("MES_DESKTOP_MODE").as_deref() == Ok("production")
             {
