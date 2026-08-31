@@ -203,6 +203,7 @@ export function createDevice(input: CreateDeviceInput) {
 }
 export function updateDevice(id: string, input: Partial<CreateDeviceInput>) { return request<Record<string, unknown>>(`/devices/${encodeURIComponent(id)}`, 'PATCH', input); }
 export function deleteDevice(id: string) { return request<Record<string, unknown>>(`/devices/${encodeURIComponent(id)}`, 'DELETE'); }
+export function updateDeviceStatus(id: string, status: 'online' | 'offline' | 'maintenance' | 'alarm', reason?: string) { return request<Record<string, unknown>>(`/devices/${encodeURIComponent(id)}/status`, 'PATCH', { status, reason }); }
 
 export function createDocument(data: Record<string, unknown>) {
   return post<Record<string, unknown>>('/foundation/documents', { data });

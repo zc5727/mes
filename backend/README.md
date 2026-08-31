@@ -99,6 +99,16 @@ npm run verify:runtime
 
 该命令检查 `/api/v1/health` 和 `/api/v1/health/readiness`。PostgreSQL 未启用时 readiness 会明确返回 `database.status=disabled`；启用但连接失败时返回 `degraded`。
 
+真实数据库验收使用：
+
+```bash
+export DATABASE_URL=postgresql://mes:mes_dev@localhost:5432/mes
+npm run verify:postgres
+DATABASE_ENABLED=true DATABASE_REQUIRED=true npm run start:dev
+```
+
+`DATABASE_REQUIRED=true` 会在数据库不可用或核心表未迁移时阻止启动，避免误把生产运行当成内存模式。
+
 ## 下一步开发顺序
 
 1. 租户、用户和权限

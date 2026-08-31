@@ -129,6 +129,7 @@ export interface StrategyAggregateImpactAssessment {
 
 export interface StrategySimulationResult {
   simulationId: string;
+  strategyVersion: string;
   generatedAt: string;
   snapshot: StrategySnapshot;
   risks: Array<{ level: RiskLevel; message: string; evidence: StrategyEvidence[] }>;

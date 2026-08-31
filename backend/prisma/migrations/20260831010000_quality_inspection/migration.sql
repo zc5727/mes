@@ -1,0 +1,3 @@
+ALTER TABLE "quality_records"
+  ADD COLUMN IF NOT EXISTS "inspection_type" VARCHAR(10) NOT NULL DEFAULT 'IPQC',
+  ADD COLUMN IF NOT EXISTS "rule_key" VARCHAR(80);

@@ -15,4 +15,11 @@ describe('HealthController', () => {
       status: 'ready', service: 'mes-saas-backend', database: { enabled: false, status: 'disabled' },
     });
   });
+
+  it('exposes a degraded readiness result when the database is unavailable', async () => {
+    const prisma = { readiness: jest.fn().mockResolvedValue({ enabled: true, status: 'unavailable' }) };
+    await expect(new HealthController(prisma as never).readiness()).resolves.toEqual({
+      status: 'degraded', service: 'mes-saas-backend', database: { enabled: true, status: 'unavailable' },
+    });
+  });
 });

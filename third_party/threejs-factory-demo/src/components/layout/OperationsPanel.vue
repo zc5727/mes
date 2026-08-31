@@ -6,6 +6,8 @@
       <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="openDeviceCreate">新增设备</button>
       <button type="button" :disabled="!apiEnabled || !selectedDevice" title="请选择设备并使用 API 模式" @click="openDeviceEdit">编辑设备</button>
       <button type="button" :disabled="!apiEnabled || !selectedDevice" title="请选择设备并使用 API 模式" @click="removeDevice">删除设备</button>
+      <button type="button" :disabled="!apiEnabled || !selectedDevice" title="请选择设备并使用 API 模式" @click="setDeviceStatus('maintenance')">设为维护</button>
+      <button type="button" :disabled="!apiEnabled || !selectedDevice" title="请选择设备并使用 API 模式" @click="setDeviceStatus('online')">恢复上线</button>
       <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'maintenance'">新建维修</button>
       <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'document'">图纸登记</button>
       <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'quality'">质量记录</button>
@@ -71,7 +73,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { confirmDocumentAnalysis, confirmQualityRecord, createDevice, deleteDevice, createMaintenance, createQualityRecord, createWorkOrder, documentContentUrl, updateDevice, listDocuments, listMaintenanceWorkOrders, listQualityRecords, rejectQualityRecord, saveDocumentAnalysisDraft, submitQualityRecord, simulateStrategy, updateDocumentStatus, updateMaintenanceStatus, uploadDocument } from '@/api/mesApi';
+import { confirmDocumentAnalysis, confirmQualityRecord, createDevice, deleteDevice, createMaintenance, createQualityRecord, createWorkOrder, documentContentUrl, updateDevice, updateDeviceStatus, listDocuments, listMaintenanceWorkOrders, listQualityRecords, rejectQualityRecord, saveDocumentAnalysisDraft, submitQualityRecord, simulateStrategy, updateDocumentStatus, updateMaintenanceStatus, uploadDocument } from '@/api/mesApi';
 import { toBackendDeviceId, toBackendLineId } from '@/api/identityMap';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
 
@@ -123,6 +125,8 @@ const transitionMaintenance = async (id: string) => { try { await updateMaintena
 
 const openDeviceCreate = () => { editingDeviceId.value = null; device.value = { code: '', name: '', model: '', protocol: 'simulator' }; active.value = 'device'; };
 const openDeviceEdit = () => { if (!props.selectedDevice) return; editingDeviceId.value = props.selectedDevice.id; device.value = { code: props.selectedDevice.code ?? props.selectedDevice.id, name: props.selectedDevice.name, model: '', protocol: 'simulator' }; active.value = 'device'; };
+const setDeviceStatus = async (status: 'online' | 'maintenance') => { if (!props.selectedDevice) return; try { await updateDeviceStatus(toBackendDeviceId(props.selectedDevice.id), status, status === 'maintenance' ? '前端工作台手动维护标记' : '前端工作台手动恢复上线'); emit('data-changed'); notice.value = status === 'maintenance' ? '设备已标记为维护' : '设备已恢复上线'; } catch { error.value = '设备状态更新失败，请检查后端服务'; } };
+
 const removeDevice = async () => { if (!props.selectedDevice || !window.confirm(`确认删除设备“${props.selectedDevice.name}”？`)) return; try { await deleteDevice(toBackendDeviceId(props.selectedDevice.id)); await loadRecords(); emit('data-changed'); notice.value = '设备已删除'; } catch { error.value = '设备删除失败，请检查权限或接口状态'; } };
 
 const selectFile = (event: Event) => { selectedFile.value = (event.target as HTMLInputElement).files?.[0] ?? null; };

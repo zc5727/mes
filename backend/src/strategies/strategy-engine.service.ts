@@ -62,6 +62,7 @@ export class StrategyEngineService {
 
     return {
       simulationId: `sim-${this.hash(JSON.stringify(snapshot))}`,
+      strategyVersion: 'rules-v1',
       generatedAt: snapshot.timestamp,
       snapshot: snapshotCopy,
       risks,

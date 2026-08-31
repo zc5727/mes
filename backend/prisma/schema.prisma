@@ -301,6 +301,8 @@ model QualityRecord {
   values      Json
   traceId     String   @map("trace_id") @db.VarChar(120)
   trace       Json
+  inspectionType String  @default("IPQC") @map("inspection_type") @db.VarChar(10)
+  ruleKey     String? @map("rule_key") @db.VarChar(80)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)

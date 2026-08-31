@@ -3,13 +3,15 @@ import { createId, timestamp } from '../common/mock.types';
 import { DevicesService } from '../devices/devices.service';
 import { ProductionLinesService } from '../production-lines/production-lines.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
-import type { CreateQualityRecordDto, QualityTransitionDto, UpdateQualityDraftDto } from './dto/quality-record.dto';
-import type { QualityRecord, QualityRecordStatus, QualityTraceEvent } from './quality.types';
+import type { CreateQualityIssueDto, CreateQualityRecordDto, CreateQualityRuleDto, QualityTransitionDto, UpdateQualityDraftDto, UpdateQualityIssueDto } from './dto/quality-record.dto';
+import type { InspectionType, QualityIssue, QualityRecord, QualityRecordStatus, QualityRule, QualityTraceEvent } from './quality.types';
 import { FoundationPersistenceService } from '../database/foundation-persistence.service';
 
 @Injectable()
 export class QualityService implements OnModuleInit {
   private readonly records = new Map<string, QualityRecord[]>();
+  private readonly rules = new Map<string, QualityRule[]>();
+  private readonly issues = new Map<string, QualityIssue[]>();
 
   constructor(
     @Optional() private readonly workOrders?: WorkOrdersService,
@@ -25,6 +27,32 @@ export class QualityService implements OnModuleInit {
 
   list(tenantId: string): QualityRecord[] {
     return [...(this.records.get(tenantId) ?? [])].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  listRules(tenantId: string): QualityRule[] { return this.rules.get(tenantId) ?? []; }
+  createRule(tenantId: string, dto: CreateQualityRuleDto): QualityRule {
+    if (this.listRules(tenantId).some((rule) => rule.key === dto.key.trim())) throw new ConflictException(`Quality rule ${dto.key} already exists`);
+    const rule: QualityRule = { id: createId('qrule'), tenantId, key: dto.key.trim(), name: dto.name.trim(), inspectionType: dto.inspectionType, requiredFields: dto.requiredFields.map((field) => field.trim()), createdAt: timestamp() };
+    this.rules.set(tenantId, [...this.listRules(tenantId), rule]);
+    return rule;
+  }
+
+  listIssues(tenantId: string): QualityIssue[] { return this.issues.get(tenantId) ?? []; }
+  createIssue(tenantId: string, dto: CreateQualityIssueDto): QualityIssue {
+    this.findOne(tenantId, dto.qualityRecordId);
+    const now = timestamp();
+    const issue: QualityIssue = { id: createId('ncr'), tenantId, qualityRecordId: dto.qualityRecordId, code: dto.code.trim(), description: dto.description.trim(), status: 'open', capa: dto.capa?.trim() || null, createdAt: now, updatedAt: now };
+    this.issues.set(tenantId, [...this.listIssues(tenantId), issue]);
+    return issue;
+  }
+  updateIssue(tenantId: string, id: string, dto: UpdateQualityIssueDto): QualityIssue {
+    const current = this.listIssues(tenantId).find((issue) => issue.id === id);
+    if (!current) throw new NotFoundException(`Quality issue ${id} not found`);
+    if (current.status === 'closed') throw new ConflictException('Closed quality issues cannot be edited');
+    if (dto.status === 'closed' && !dto.capa?.trim() && !current.capa) throw new ConflictException('CAPA is required before closing a quality issue');
+    const updated = { ...current, status: dto.status, capa: dto.capa?.trim() || current.capa, updatedAt: timestamp() };
+    this.issues.set(tenantId, this.listIssues(tenantId).map((issue) => issue.id === id ? updated : issue));
+    return updated;
   }
 
   findOne(tenantId: string, id: string): QualityRecord {
@@ -43,8 +71,10 @@ export class QualityService implements OnModuleInit {
       batchNo: dto.batchNo.trim(), lineId: dto.lineId.trim(), deviceId: dto.deviceId?.trim() || null,
       operatorId: dto.operatorId.trim(), values: dto.values, traceId, createdAt: now, updatedAt: now,
       trace: [{ type: 'draft_created', at: now, actorId: dto.operatorId.trim(), traceId }],
+      inspectionType: dto.inspectionType ?? 'IPQC', ruleKey: dto.ruleKey?.trim() || null,
     };
     this.validateReferences(tenantId, record, false);
+    this.validateRule(record);
     this.records.set(tenantId, [...(this.records.get(tenantId) ?? []), record]);
     void this.persistence?.saveQuality(record);
     return record;
@@ -84,10 +114,18 @@ export class QualityService implements OnModuleInit {
     const current = this.findOne(tenantId, id);
     const allowed: Record<QualityRecordStatus, QualityRecordStatus[]> = { draft: ['submitted'], submitted: ['confirmed', 'rejected'], confirmed: [], rejected: ['draft'] };
     if (!allowed[current.status].includes(next)) throw new ConflictException(`Cannot change quality record from ${current.status} to ${next}`);
-    if (next === 'submitted' || next === 'confirmed') this.validateReferences(tenantId, current, true);
+    if (next === 'submitted' || next === 'confirmed') { this.validateReferences(tenantId, current, true); this.validateRule(current); }
     const now = timestamp();
     const type = next === 'submitted' ? 'submitted' : next === 'confirmed' ? 'confirmed' : 'rejected';
     return this.replace({ ...current, status: next, updatedAt: now, trace: [...current.trace, { type, at: now, actorId: actorId.trim(), traceId: createId('trace') }] });
+  }
+
+  private validateRule(record: Pick<QualityRecord, 'tenantId' | 'ruleKey' | 'values' | 'inspectionType'>): void {
+    if (!record.ruleKey) return;
+    const rule = this.listRules(record.tenantId).find((item) => item.key === record.ruleKey);
+    if (!rule || rule.inspectionType !== record.inspectionType) throw new BadRequestException('Quality rule is invalid for inspection type');
+    const missing = rule.requiredFields.filter((field) => record.values[field] === undefined || record.values[field] === null);
+    if (missing.length) throw new BadRequestException(`Missing quality fields: ${missing.join(', ')}`);
   }
 
   private validateReferences(tenantId: string, record: Pick<QualityRecord, 'lineId' | 'workOrderId' | 'deviceId'>, requireWorkOrder: boolean): void {

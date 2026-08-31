@@ -47,7 +47,10 @@ describe('AgentApiService', () => {
 
     expect(response.ok).toBe(true);
     expect(response.traceId).toBe('trace-001');
-    expect(response.meta).toEqual({ source: 'mes', sourceTime: expect.any(String), permission: 'granted' });
+    expect(response.meta).toEqual(expect.objectContaining({
+      source: 'mes', sourceTime: expect.any(String), permission: 'granted',
+      sourceTimestamp: expect.any(String), permissionDecision: 'granted', requiresApproval: false,
+    }));
     expect(response.audit).toEqual(expect.objectContaining({
       tenantId: 'tenant-demo',
       requestedBy: 'nanobot',
@@ -69,7 +72,7 @@ describe('AgentApiService', () => {
       tool: 'stop_line',
       traceId: 'trace-002',
       error: { code: 'UNKNOWN_TOOL', message: expect.any(String) },
-      meta: { permission: 'denied', sourceTime: expect.any(String), source: 'mes' },
+      meta: expect.objectContaining({ permission: 'denied', sourceTime: expect.any(String), source: 'mes', permissionDecision: 'denied' }),
     }));
     expect(JSON.stringify(response)).not.toContain('stack');
   });

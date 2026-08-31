@@ -20,7 +20,10 @@ export class FoundationPersistenceService {
 
   async restore(): Promise<FoundationPersistenceSnapshot> {
     await this.prisma.ensureConnection();
-    if (!this.prisma.isReady()) return { quality: [], maintenance: [], documents: [] };
+    if (!this.prisma.isReady()) {
+      this.failIfRequired('restore foundation entities');
+      return { quality: [], maintenance: [], documents: [] };
+    }
     try {
       const [quality, maintenance, documents] = await Promise.all([
         this.prisma.qualityRecord.findMany(), this.prisma.maintenanceWorkOrder.findMany(), this.prisma.documentRecord.findMany(),
@@ -32,6 +35,7 @@ export class FoundationPersistenceService {
       };
     } catch (error: unknown) {
       this.failure('restore foundation entities', error);
+      this.failIfRequired('restore foundation entities', error);
       return { quality: [], maintenance: [], documents: [] };
     }
   }
@@ -39,8 +43,8 @@ export class FoundationPersistenceService {
   async saveQuality(record: QualityRecord): Promise<void> {
     await this.write('quality record', () => this.prisma.qualityRecord.upsert({
       where: { id: record.id },
-      create: { id: record.id, tenantId: record.tenantId, formKey: record.formKey, formVersion: record.formVersion, status: record.status, workOrderId: record.workOrderId, batchNo: record.batchNo, lineId: record.lineId, deviceId: record.deviceId, operatorId: record.operatorId, values: record.values as Prisma.InputJsonValue, traceId: record.traceId, trace: record.trace as unknown as Prisma.InputJsonValue, createdAt: new Date(record.createdAt), updatedAt: new Date(record.updatedAt) },
-      update: { formKey: record.formKey, formVersion: record.formVersion, status: record.status, workOrderId: record.workOrderId, batchNo: record.batchNo, lineId: record.lineId, deviceId: record.deviceId, operatorId: record.operatorId, values: record.values as Prisma.InputJsonValue, traceId: record.traceId, trace: record.trace as unknown as Prisma.InputJsonValue, updatedAt: new Date(record.updatedAt) },
+      create: { id: record.id, tenantId: record.tenantId, formKey: record.formKey, formVersion: record.formVersion, status: record.status, workOrderId: record.workOrderId, batchNo: record.batchNo, lineId: record.lineId, deviceId: record.deviceId, operatorId: record.operatorId, values: record.values as Prisma.InputJsonValue, traceId: record.traceId, trace: record.trace as unknown as Prisma.InputJsonValue, inspectionType: record.inspectionType, ruleKey: record.ruleKey, createdAt: new Date(record.createdAt), updatedAt: new Date(record.updatedAt) },
+      update: { formKey: record.formKey, formVersion: record.formVersion, status: record.status, workOrderId: record.workOrderId, batchNo: record.batchNo, lineId: record.lineId, deviceId: record.deviceId, operatorId: record.operatorId, values: record.values as Prisma.InputJsonValue, traceId: record.traceId, trace: record.trace as unknown as Prisma.InputJsonValue, inspectionType: record.inspectionType, ruleKey: record.ruleKey, updatedAt: new Date(record.updatedAt) },
     }));
   }
 
@@ -90,8 +94,22 @@ export class FoundationPersistenceService {
 
   private async write(label: string, operation: () => Promise<unknown>): Promise<void> {
     await this.prisma.ensureConnection();
-    if (!this.prisma.isReady()) return;
-    try { await operation(); } catch (error: unknown) { this.failure(`persist ${label}`, error); }
+    if (!this.prisma.isReady()) {
+      this.failIfRequired(`persist ${label}`);
+      return;
+    }
+    try {
+      await operation();
+    } catch (error: unknown) {
+      this.failure(`persist ${label}`, error);
+      this.failIfRequired(`persist ${label}`, error);
+    }
+  }
+
+  private failIfRequired(operation: string, error?: unknown): void {
+    if (!this.prisma.required) return;
+    const detail = error instanceof Error ? `: ${error.message}` : error ? `: ${String(error)}` : '';
+    throw new Error(`PostgreSQL is required; ${operation} cannot continue${detail}`);
   }
 
   private failure(operation: string, error: unknown): void { this.logger.error(`${operation} failed; memory/local adapter remains available: ${error instanceof Error ? error.message : String(error)}`); }

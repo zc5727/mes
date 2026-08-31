@@ -58,6 +58,9 @@ export interface AgentToolMeta {
   source: 'mes' | 'strategy-governance' | 'audit';
   sourceTime: string;
   permission: 'granted' | 'denied';
+  sourceTimestamp: string;
+  permissionDecision: 'granted' | 'denied';
+  requiresApproval: boolean;
 }
 
 export interface AgentToolAudit {

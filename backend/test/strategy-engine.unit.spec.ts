@@ -14,6 +14,7 @@ describe('StrategyEngineService', () => {
     const first = engine.simulate(snapshot);
     const second = engine.simulate(snapshot);
     expect(first).toEqual(second);
+    expect(first.strategyVersion).toBe('rules-v1');
     expect(first.recommended?.action).toBe('transfer_work_order');
     expect(first.recommended?.requiresApproval).toBe(true);
     expect(snapshot.workOrders[0].lineId).toBe('LINE-03');

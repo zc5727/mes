@@ -14,3 +14,6 @@ export interface MaintenanceWorkOrder {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface SparePart { id: string; tenantId: string; code: string; name: string; stock: number; minimumStock: number; updatedAt: string }
+export interface PreventivePlan { id: string; tenantId: string; deviceId: string; title: string; intervalHours: number; nextDueAt: string; active: boolean; createdAt: string }

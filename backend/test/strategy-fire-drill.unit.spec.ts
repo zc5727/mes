@@ -40,7 +40,7 @@ describe('strategy fire drill fixture', () => {
     )) as StrategySimulationDto;
     const result = new StrategiesController(new StrategyEngineService()).simulate(fixture).data;
     const agentResultFields = [
-      'simulationId', 'generatedAt', 'snapshot', 'risks', 'candidates', 'recommended',
+      'simulationId', 'strategyVersion', 'generatedAt', 'snapshot', 'risks', 'candidates', 'recommended',
       'requiresApproval', 'executionAllowed', 'impactAssessment',
     ];
     const candidateFields = [

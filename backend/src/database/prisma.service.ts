@@ -8,13 +8,19 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   private connected = false;
   private connecting?: Promise<void>;
   readonly enabled = process.env.DATABASE_ENABLED === 'true';
+  readonly required = process.env.DATABASE_REQUIRED === 'true';
 
   async onModuleInit(): Promise<void> {
     if (!this.enabled) {
       this.logger.log('PostgreSQL persistence disabled (DATABASE_ENABLED=false); memory mode is active');
+      if (this.required) throw new Error('DATABASE_REQUIRED=true requires DATABASE_ENABLED=true');
       return;
     }
     await this.ensureConnection();
+    if (this.required) {
+      const state = await this.readiness();
+      if (state.status !== 'ready') throw new Error('PostgreSQL is required but unavailable or not migrated; run npm run verify:postgres');
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -29,7 +35,14 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   async readiness(): Promise<{ enabled: boolean; status: 'disabled' | 'ready' | 'unavailable' }> {
     await this.ensureConnection();
-    return { enabled: this.enabled, status: !this.enabled ? 'disabled' : this.connected ? 'ready' : 'unavailable' };
+    if (!this.enabled) return { enabled: false, status: 'disabled' };
+    if (!this.connected) return { enabled: true, status: 'unavailable' };
+    try {
+      const rows = await this.$queryRaw<Array<{ table_name: string }>>`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('factories', 'production_lines', 'devices', 'alarms', 'quality_records', 'maintenance_work_orders', 'document_records')`;
+      return { enabled: true, status: rows.length === 7 ? 'ready' : 'unavailable' };
+    } catch {
+      return { enabled: true, status: 'unavailable' };
+    }
   }
 
   async ensureConnection(): Promise<void> {

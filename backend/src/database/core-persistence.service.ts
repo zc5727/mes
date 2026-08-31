@@ -12,7 +12,10 @@ export class CorePersistenceService {
 
   async restore(): Promise<CorePersistenceSnapshot> {
     await this.prisma.ensureConnection();
-    if (!this.prisma.isReady()) return this.empty();
+    if (!this.prisma.isReady()) {
+      this.failIfRequired('restore core entities');
+      return this.empty();
+    }
     try {
       const [factories, lines, devices, orders, workOrders, reports] = await Promise.all([
         this.prisma.factory.findMany(), this.prisma.productionLine.findMany(), this.prisma.device.findMany(),
@@ -25,6 +28,7 @@ export class CorePersistenceService {
       };
     } catch (error: unknown) {
       this.failure('restore core entities', error);
+      this.failIfRequired('restore core entities', error);
       return this.empty();
     }
   }
@@ -80,8 +84,22 @@ export class CorePersistenceService {
 
   private async write(label: string, operation: () => Promise<unknown>): Promise<void> {
     await this.prisma.ensureConnection();
-    if (!this.prisma.isReady()) return;
-    try { await operation(); } catch (error: unknown) { this.failure(`persist ${label}`, error); }
+    if (!this.prisma.isReady()) {
+      this.failIfRequired(`persist ${label}`);
+      return;
+    }
+    try {
+      await operation();
+    } catch (error: unknown) {
+      this.failure(`persist ${label}`, error);
+      this.failIfRequired(`persist ${label}`, error);
+    }
+  }
+
+  private failIfRequired(operation: string, error?: unknown): void {
+    if (!this.prisma.required) return;
+    const detail = error instanceof Error ? `: ${error.message}` : error ? `: ${String(error)}` : '';
+    throw new Error(`PostgreSQL is required; ${operation} cannot continue${detail}`);
   }
 
   private json(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {

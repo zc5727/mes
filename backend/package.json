@@ -20,6 +20,7 @@
     "test:all": "npm test -- --runInBand && npm run test:e2e -- --runInBand",
     "verify:env": "node scripts/verify-env.mjs",
     "verify:runtime": "node scripts/verify-runtime.mjs",
+    "verify:postgres": "node scripts/verify-postgres.mjs",
     "verify:mock": "node scripts/verify-mock-flow.mjs",
     "smoke:api": "node scripts/smoke-api.mjs",
     "smoke:mqtt": "node test/smoke-mqtt.mjs",

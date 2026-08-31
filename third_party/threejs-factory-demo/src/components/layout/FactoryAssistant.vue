@@ -6,7 +6,7 @@
         <strong>厂长智能助手</strong>
       </div>
       <div class="assistant-head-actions">
-        <span class="assistant-status"><i></i>未接入 Nanobot</span>
+        <span class="assistant-status"><i></i>Nanobot 未接入</span>
         <button
           type="button"
           class="assistant-toggle"
@@ -41,11 +41,12 @@
       </div>
 
       <div class="quick-prompts" aria-label="快捷提问">
-      <button v-for="prompt in prompts" :key="prompt" type="button" @click="ask(prompt)">{{ prompt }}</button>
+      <button v-for="prompt in prompts" :key="prompt" type="button" disabled title="Nanobot 尚未接入，暂不执行智能问答" @click="ask(prompt)">{{ prompt }}</button>
       </div>
+      <p class="assistant-disabled-hint">智能问答接口尚未接入；当前仅保留设备/产线定位操作。</p>
       <form class="assistant-input" @submit.prevent="submitQuestion">
-      <input v-model="question" placeholder="问问工厂现在发生了什么..." aria-label="向厂长智能助手提问" />
-      <button type="submit">发送</button>
+      <input v-model="question" disabled placeholder="Nanobot 接入后可查询生产状态" aria-label="向厂长智能助手提问" />
+      <button type="submit" disabled title="Nanobot 尚未接入">发送</button>
       </form>
     </template>
   </aside>
@@ -267,6 +268,7 @@ onBeforeUnmount(() => {
 .eyebrow { display:block; color:#67d5ff; font-size:9px; letter-spacing:1.2px; }
 .assistant-head strong { display:block; margin-top:4px; color:#eef8ff; font-size:15px; }
 .assistant-status { gap:6px; color:#72f5ba; font-size:11px; }
+.assistant-disabled-hint { margin:8px 0 0; color:#8ba6bd; font-size:10px; line-height:1.4; }
 .assistant-status i { width:7px; height:7px; border-radius:50%; background:#39f5b6; box-shadow:0 0 10px #39f5b6; }
 .assistant-toggle { min-width:44px; min-height:32px; padding:4px 7px; border:1px solid rgba(104,200,255,.3); background:rgba(29,143,255,.1); color:#a9d7ff; cursor:pointer; font-size:10px; }
 .assistant-toggle:hover,.assistant-toggle:focus-visible { border-color:#68c8ff; background:rgba(29,143,255,.2); outline:none; }
@@ -279,6 +281,7 @@ onBeforeUnmount(() => {
 .message-action { margin-top:8px; padding:5px 7px; border:1px solid rgba(104,200,255,.3); background:transparent; color:#a9d7ff; cursor:pointer; font-size:10px; }
 .quick-prompts { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }.quick-prompts button { padding:6px 8px; border:1px solid rgba(104,200,255,.3); background:rgba(29,143,255,.1); color:#a9d7ff; cursor:pointer; font-size:11px; }.quick-prompts button:hover,.message-action:hover { border-color:#68c8ff; background:rgba(29,143,255,.2); }
 .assistant-input { gap:7px; margin-top:12px; }.assistant-input input { min-width:0; flex:1; padding:8px 9px; border:1px solid rgba(111,183,255,.2); outline:none; background:rgba(0,0,0,.18); color:#dcecff; font-size:12px; }.assistant-input input:focus { border-color:#4a90e2; }.assistant-input button { padding:8px 11px; border:0; background:#1d8fff; color:#fff; cursor:pointer; font-size:12px; }
+.quick-prompts button:disabled,.assistant-input input:disabled,.assistant-input button:disabled { cursor:not-allowed; opacity:.5; }
 @media (prefers-reduced-motion: reduce) { .assistant { transition:none; } }
 @media (max-width: 900px) { .assistant { right:12px; top:88px; width:min(310px, calc(100vw - 24px)); } .assistant.is-collapsed { width:128px; } }
 </style>

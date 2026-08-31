@@ -68,7 +68,7 @@ export class AgentApiService {
         traceId,
         data,
         audit,
-        meta: { source: this.sourceFor(request.tool), sourceTime: this.sourceTime(data, audit.calledAt), permission: 'granted' },
+        meta: this.toolMeta(request.tool, this.sourceTime(data, audit.calledAt), 'granted'),
       };
     } catch (error: unknown) {
       this.recordToolAudit(tenantId, request.requestedBy, request.tool, traceId, 'denied', this.errorCode(error));
@@ -272,7 +272,15 @@ export class AgentApiService {
 
   private failure(tool: AgentReadOnlyTool | string, traceId: string, code: string, message: string, audit: AgentToolAudit): AgentToolResponse {
     const response = createToolError(tool, traceId, code, message);
-    return { ...response, audit, meta: { source: this.sourceFor(tool), sourceTime: audit.calledAt, permission: 'denied' } };
+    return { ...response, audit, meta: this.toolMeta(tool, audit.calledAt, 'denied') };
+  }
+
+  private toolMeta(tool: AgentReadOnlyTool | string, sourceTimestamp: string, permissionDecision: 'granted' | 'denied') {
+    return {
+      source: this.sourceFor(tool), sourceTime: sourceTimestamp, permission: permissionDecision,
+      sourceTimestamp, permissionDecision,
+      requiresApproval: tool === 'get_strategy_result',
+    } as const;
   }
 
   private sourceFor(tool: AgentReadOnlyTool | string): 'mes' | 'strategy-governance' | 'audit' {

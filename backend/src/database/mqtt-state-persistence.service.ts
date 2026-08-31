@@ -13,7 +13,10 @@ export class MqttStatePersistenceService {
 
   async restore(): Promise<{ telemetry: CachedDeviceTelemetry[]; alarms: AlarmState[] }> {
     await this.prisma.ensureConnection();
-    if (!this.prisma.isReady()) return { telemetry: [], alarms: [] };
+    if (!this.prisma.isReady()) {
+      this.failIfRequired('restore MQTT state');
+      return { telemetry: [], alarms: [] };
+    }
     try {
       const [telemetry, alarms] = await Promise.all([
         this.prisma.mqttDeviceState.findMany(),
@@ -27,13 +30,17 @@ export class MqttStatePersistenceService {
       };
     } catch (error: unknown) {
       this.logFailure('restore MQTT state', error);
+      this.failIfRequired('restore MQTT state', error);
       return { telemetry: [], alarms: [] };
     }
   }
 
   async saveTelemetry(record: CachedDeviceTelemetry): Promise<void> {
     await this.prisma.ensureConnection();
-    if (!this.prisma.isReady()) return;
+    if (!this.prisma.isReady()) {
+      this.failIfRequired('persist telemetry');
+      return;
+    }
     try {
       const operations: Array<Promise<unknown>> = [this.prisma.mqttDeviceState.upsert({
         where: { tenantId_lineId_deviceId: { tenantId: record.tenantId, lineId: record.lineId, deviceId: record.deviceId } },
@@ -66,12 +73,16 @@ export class MqttStatePersistenceService {
       await this.transaction(operations);
     } catch (error: unknown) {
       this.logFailure('persist telemetry', error);
+      this.failIfRequired('persist telemetry', error);
     }
   }
 
   async saveAlarm(state: AlarmState): Promise<void> {
     await this.prisma.ensureConnection();
-    if (!this.prisma.isReady()) return;
+    if (!this.prisma.isReady()) {
+      this.failIfRequired('persist alarm');
+      return;
+    }
     try {
       const operations: Array<Promise<unknown>> = [this.prisma.mqttAlarmState.upsert({
         where: { tenantId_alarmId: { tenantId: state.tenantId, alarmId: state.alarm.id } },
@@ -104,12 +115,16 @@ export class MqttStatePersistenceService {
       await this.transaction(operations);
     } catch (error: unknown) {
       this.logFailure('persist alarm', error);
+      this.failIfRequired('persist alarm', error);
     }
   }
 
   async recordConnection(tenantId: string, status: string, details: Record<string, unknown>): Promise<void> {
     await this.prisma.ensureConnection();
-    if (!this.prisma.isReady()) return;
+    if (!this.prisma.isReady()) {
+      this.failIfRequired('persist connection event');
+      return;
+    }
     try {
       const eventTime = new Date();
       await this.prisma.connectionEvent.create({
@@ -117,11 +132,18 @@ export class MqttStatePersistenceService {
       });
     } catch (error: unknown) {
       this.logFailure('persist connection event', error);
+      this.failIfRequired('persist connection event', error);
     }
   }
 
   private logFailure(operation: string, error: unknown): void {
     this.logger.error(`${operation} failed; memory projection remains available: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  private failIfRequired(operation: string, error?: unknown): void {
+    if (!this.prisma.required) return;
+    const detail = error instanceof Error ? `: ${error.message}` : error ? `: ${String(error)}` : '';
+    throw new Error(`PostgreSQL is required; ${operation} cannot continue${detail}`);
   }
 
   private telemetryEventId(record: CachedDeviceTelemetry): string {

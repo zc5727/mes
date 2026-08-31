@@ -5,8 +5,7 @@
       <div class="breadcrumb">南沙示范工厂 / {{ selectedLine?.workshop ?? '全部车间' }}</div>
       <div class="shop-tree">
         <button type="button" class="tree-row active" @click="$emit('select-line', selectedLineId)"><span>⌄</span>一车间</button>
-        <button type="button" class="tree-row" @click="$emit('select-line', 'LINE-01')"><span>└</span>加工产线 <em>{{ deviceCount('LINE-01') }}台</em></button>
-        <button type="button" class="tree-row" @click="$emit('select-line', 'LINE-02')"><span>└</span>装配产线 <em>{{ deviceCount('LINE-02') }}台</em></button>
+        <button v-for="line in productionLines" :key="`tree-${line.id}`" type="button" class="tree-row" :class="{ selected: selectedLineId === line.id }" @click="$emit('select-line', line.id)"><span>└</span>{{ line.name }} <em>{{ deviceCount(line.id) }}台</em></button>
         <div class="tree-row tree-row--static"><span>└</span>原料与成品仓 <em>API数据</em></div>
       </div>
       <div class="flow-title line-overview-title">
@@ -122,7 +121,7 @@ defineEmits<{
 .tree-row { display:flex; align-items:center; gap:8px; padding:6px 8px; border:0; background:transparent; color:#b9d9f3; cursor:pointer; font-size:12px; text-align:left; }
 .tree-row span { width:12px; color:#68c8ff; }
 .tree-row em { margin-left:auto; color:#6e97b9; font-size:10px; font-style:normal; }
-.tree-row.active,.tree-row:hover { background:rgba(29,143,255,.13); color:#eef8ff; }
+.tree-row.active,.tree-row.selected,.tree-row:hover { background:rgba(29,143,255,.13); color:#eef8ff; }
 .flow-title { margin:14px 0 8px; color:#83add0; font-size:11px; }
 .add-line-button { margin-left:auto; padding:3px 6px; border:1px solid rgba(104,200,255,.28); background:rgba(29,143,255,.08); color:#9ed2ff; cursor:pointer; font-size:10px; }
 .add-line-button:disabled { cursor:not-allowed; opacity:.45; }
