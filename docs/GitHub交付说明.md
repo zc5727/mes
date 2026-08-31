@@ -1,7 +1,7 @@
 # MES GitHub 交付说明
 
 **仓库：** `https://github.com/zc5727/mes`
-**当前基线：** `9d9633d4`
+**当前基线：** `12904bab`
 **负责人：** 赵丞
 
 ## 1. 交付内容
@@ -28,14 +28,14 @@ GitHub 提交存在、构建通过或单测通过，只能证明代码级能力�
 ```bash
 git clone https://github.com/zc5727/mes.git
 cd mes
-git checkout 9d9633d4
+git checkout 12904bab
 ./scripts/verify-local.sh
 ```
 
 需要真实 PostgreSQL/MQTT 依赖时：
 
 ```bash
-./scripts/verify-runtime.sh
+./scripts/verify-runtime.sh --object-storage
 ```
 
 CI 使用：
