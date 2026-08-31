@@ -8,6 +8,22 @@ import { WorkOrdersService } from '../work-orders/work-orders.service';
 import { MqttIngestionService } from '../mqtt/mqtt-ingestion.service';
 import type { CachedDeviceTelemetry } from '../mqtt/mqtt.types';
 
+type DashboardDataSource = 'simulator' | 'mqtt' | 'database' | 'mock';
+type Position = { x: number; y: number; z: number } | null;
+
+export type DashboardDevice = Device & {
+  deviceId: string;
+  canonicalId: string;
+  sourceId: string;
+  timestamp: string;
+  lastUpdatedAt: string;
+  snapshotVersion: string;
+  dataSource: DashboardDataSource;
+  position: Position;
+  positionSource: 'backend' | 'scene-default' | null;
+  activeFaults: string[];
+};
+
 export interface ProductionMetrics {
   plannedQty: number;
   completedQty: number;
@@ -23,6 +39,7 @@ export interface ProductionMetrics {
   oee: number | null;
   oeeAvailable: boolean;
   oeeSource: 'telemetry' | 'target' | 'unavailable';
+  metrics: Record<string, number | string | boolean | null>;
   source: 'work_orders_and_device_snapshot';
   generatedAt: string;
 }
@@ -47,9 +64,22 @@ export interface DashboardLineSummary {
   latestAlarmAt: string | null;
   riskScore: number;
   riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  deviceIds: string[];
+  metrics: Record<string, number | string | boolean | null>;
+  position: Position;
+  timestamp: string;
+  lastUpdatedAt: string;
+  snapshotVersion: string;
+  dataSource: DashboardDataSource;
 }
 
 export interface DashboardOverview {
+  timestamp: string;
+  lastUpdatedAt: string;
+  snapshotVersion: string;
+  dataSource: DashboardDataSource;
+  metrics: Record<string, number | string | boolean | null>;
+  position: Position;
   lines: {
     total: number;
     active: number;
@@ -105,6 +135,8 @@ export interface DashboardRealtimeMessage {
 
 @Injectable()
 export class DashboardService {
+  private readonly snapshotSequences = new Map<string, number>();
+
   constructor(
     private readonly productionLinesService: ProductionLinesService,
     private readonly devicesService: DevicesService,
@@ -115,18 +147,38 @@ export class DashboardService {
   ) {}
 
   getOverview(tenantId: string): DashboardOverview {
+    const snapshotVersion = this.nextSnapshotVersion(tenantId);
     const lines = this.productionLinesService.findOverview(tenantId);
     const lineEntities = this.productionLinesService.findAll(tenantId);
-    const devices = this.currentDevices(tenantId);
+    const devices = this.currentDevices(tenantId, snapshotVersion);
     const workOrders = this.workOrdersService.findOverview(tenantId);
     const agvs = this.agvsService.findAll(tenantId);
     const alarms = this.alarmsService.findAll(tenantId);
-    const lineSummaries = lineEntities.map((line) => this.toLineSummary(line, tenantId, devices));
+    const lineSummaries = lineEntities.map((line) => this.toLineSummary(line, tenantId, devices, snapshotVersion));
     const highestRiskLine = this.highestRiskLine(lineSummaries);
     const deviceSummary = this.summarizeDevices(devices);
     const alarmSummary = this.summarizeAlarms(alarms);
 
     return {
+      timestamp: this.latestTimestamp(
+        devices.map((device) => device.timestamp),
+        alarms.map((alarm) => alarm.timestamp),
+        lineEntities.map((line) => line.updatedAt),
+      ) ?? new Date().toISOString(),
+      lastUpdatedAt: this.latestTimestamp(
+        devices.map((device) => device.lastUpdatedAt),
+        alarms.map((alarm) => alarm.lastUpdatedAt),
+        lineEntities.map((line) => line.updatedAt),
+      ) ?? new Date().toISOString(),
+      snapshotVersion,
+      dataSource: this.dataSource(devices, alarms),
+      metrics: {
+        powerConsumptionKw: this.sumMetric(devices, 'power', 'load'),
+        oee: this.getProductionMetrics(tenantId, undefined, snapshotVersion).oee,
+        todayOutput: workOrders.completedQty,
+        activeAlarmCount: alarmSummary.active,
+      },
+      position: null,
       lines,
       lineSummaries,
       highestRiskLine,
@@ -135,7 +187,7 @@ export class DashboardService {
       deviceOnlineRate: deviceSummary.onlineRate,
       devices: deviceSummary,
       workOrders,
-      productionMetrics: this.getProductionMetrics(tenantId),
+      productionMetrics: this.getProductionMetrics(tenantId, undefined, snapshotVersion),
       agvs: this.summarizeAgvs(agvs),
       alarms: alarmSummary,
       todayTasks: workOrders.inProgress + workOrders.released,
@@ -174,10 +226,10 @@ export class DashboardService {
     });
   }
 
-  getProductionMetrics(tenantId: string, lineId?: string): ProductionMetrics {
+  getProductionMetrics(tenantId: string, lineId?: string, snapshotVersion = this.nextSnapshotVersion(tenantId)): ProductionMetrics {
     const workOrders = this.workOrdersService.findAll(tenantId)
       .filter((order) => !lineId || order.lineId === lineId);
-    const devices = this.currentDevices(tenantId)
+    const devices = this.currentDevices(tenantId, snapshotVersion)
       .filter((device) => !lineId || device.lineId === lineId);
     const targetLines = this.productionLinesService.findAll(tenantId)
       .filter((line) => !lineId || line.id === lineId);
@@ -190,12 +242,15 @@ export class DashboardService {
     const qualityRate = hasCountTelemetry && totalCount > 0 ? this.percent(goodCount / totalCount) : null;
     const onlineDeviceCount = devices.filter((device) => device.status === 'online').length;
     const availabilityRate = devices.length ? this.percent(onlineDeviceCount / devices.length) : 0;
+    const performanceRate = this.performanceRate(devices, lineId);
     const targetOee = targetLines.length
       ? this.round(targetLines.reduce((total, line) => total + line.targetOee, 0) / targetLines.length)
       : null;
     const oee = qualityRate === null
       ? targetOee
-      : this.round((availabilityRate * qualityRate) / 100);
+      : performanceRate === null
+        ? this.round((availabilityRate * qualityRate) / 100)
+        : this.round((availabilityRate * performanceRate * qualityRate) / 10000);
 
     return {
       plannedQty,
@@ -208,10 +263,19 @@ export class DashboardService {
       defectCount,
       qualityRate,
       availabilityRate,
-      performanceRate: qualityRate === null ? null : 100,
+      performanceRate,
       oee,
       oeeAvailable: qualityRate !== null,
       oeeSource: qualityRate !== null ? 'telemetry' : targetOee === null ? 'unavailable' : 'target',
+      metrics: {
+        availabilityRate,
+        performanceRate,
+        qualityRate,
+        oee,
+        totalCount,
+        goodCount,
+        defectCount,
+      },
       source: 'work_orders_and_device_snapshot',
       generatedAt: new Date().toISOString(),
     };
@@ -219,12 +283,13 @@ export class DashboardService {
 
   getLineOverview(tenantId: string, lineId: string) {
     const line = this.productionLinesService.findOne(tenantId, lineId);
-    const allDevices = this.currentDevices(tenantId);
+    const snapshotVersion = this.nextSnapshotVersion(tenantId);
+    const allDevices = this.currentDevices(tenantId, snapshotVersion);
     const devices = allDevices.filter((device) => device.lineId === lineId);
     const alarms = this.alarmsService.findAll(tenantId, { lineId });
     const workOrders = this.workOrdersService.findAll(tenantId).filter((order) => order.lineId === lineId);
-    const productionMetrics = this.getProductionMetrics(tenantId, lineId);
-    const summary = this.toLineSummary(line, tenantId, allDevices);
+    const productionMetrics = this.getProductionMetrics(tenantId, lineId, snapshotVersion);
+    const summary = this.toLineSummary(line, tenantId, allDevices, snapshotVersion);
 
     return {
       line,
@@ -242,10 +307,15 @@ export class DashboardService {
     };
   }
 
-  private toLineSummary(line: ProductionLine, tenantId: string, devices: Device[]): DashboardLineSummary {
+  private toLineSummary(
+    line: ProductionLine,
+    tenantId: string,
+    devices: DashboardDevice[],
+    snapshotVersion: string,
+  ): DashboardLineSummary {
     const lineDevices = devices.filter((device) => device.lineId === line.id);
     const alarms = this.alarmsService.findAll(tenantId, { lineId: line.id });
-    const metrics = this.getProductionMetrics(tenantId, line.id);
+    const metrics = this.getProductionMetrics(tenantId, line.id, snapshotVersion);
     const onlineDeviceCount = lineDevices.filter((device) => device.status === 'online').length;
     const onlineRate = lineDevices.length ? this.percent(onlineDeviceCount / lineDevices.length) : 0;
     const riskScore = this.calculateRiskScore(line, lineDevices, alarms);
@@ -270,6 +340,26 @@ export class DashboardService {
       latestAlarmAt: this.latestAlarmAt(alarms),
       riskScore,
       riskLevel: this.riskLevel(riskScore),
+      deviceIds: lineDevices.map((device) => device.canonicalId),
+      metrics: {
+        ...metrics.metrics,
+        plannedQty: metrics.plannedQty,
+        completedQty: metrics.completedQty,
+        remainingQty: metrics.remainingQty,
+      },
+      position: null,
+      timestamp: this.latestTimestamp(
+        lineDevices.map((device) => device.timestamp),
+        alarms.map((alarm) => alarm.timestamp),
+        [line.updatedAt],
+      ) ?? line.updatedAt,
+      lastUpdatedAt: this.latestTimestamp(
+        lineDevices.map((device) => device.lastUpdatedAt),
+        alarms.map((alarm) => alarm.lastUpdatedAt),
+        [line.updatedAt],
+      ) ?? line.updatedAt,
+      snapshotVersion,
+      dataSource: this.dataSource(lineDevices, alarms),
     };
   }
 
@@ -319,19 +409,59 @@ export class DashboardService {
     return alarms.map((alarm) => alarm.occurredAt).sort().at(-1) ?? null;
   }
 
-  private currentDevices(tenantId: string): Device[] {
-    const baseDevices = this.devicesService.findAll(tenantId);
+  private latestTimestamp(...groups: string[][]): string | null {
+    return groups.flat().sort().at(-1) ?? null;
+  }
+
+  private dataSource(
+    devices: Array<{ dataSource: DashboardDataSource }>,
+    alarms: Array<{ dataSource: DashboardDataSource }>,
+  ): DashboardDataSource {
+    if (devices.some((device) => device.dataSource === 'mqtt')
+      || alarms.some((alarm) => alarm.dataSource === 'mqtt')) return 'mqtt';
+    return 'mock';
+  }
+
+  private performanceRate(devices: Device[], lineId?: string): number | null {
+    const cycleTimes = devices
+      .map((device) => device.metrics.cycleTimeSeconds ?? device.metrics.cycleTime)
+      .map((value) => typeof value === 'number' ? value : Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    if (!cycleTimes.length) return null;
+
+    const idealCycleTime: Record<string, number> = {
+      'line-cnc': 42,
+      'line-assembly': 35,
+      'line-welding': 55,
+      'line-vision': 28,
+    };
+    const ideal = lineId ? idealCycleTime[lineId] : undefined;
+    if (!ideal) return 100;
+    const average = cycleTimes.reduce((total, value) => total + value, 0) / cycleTimes.length;
+    return this.percent(Math.min(1, ideal / average));
+  }
+
+  private nextSnapshotVersion(tenantId: string): string {
+    const next = (this.snapshotSequences.get(tenantId) ?? 0) + 1;
+    this.snapshotSequences.set(tenantId, next);
+    return `${tenantId}-${String(next).padStart(6, '0')}`;
+  }
+
+  private currentDevices(tenantId: string, snapshotVersion = this.nextSnapshotVersion(tenantId)): DashboardDevice[] {
+    const baseDevices = this.devicesService.findAll(tenantId)
+      .map((device) => this.toDashboardDevice(device, snapshotVersion));
     const liveDevices = this.mqttIngestionService?.listDevices(tenantId) ?? [];
     if (!liveDevices.length) return baseDevices;
 
     const liveLines = new Set(liveDevices.map((device) => device.lineId));
     return [
       ...baseDevices.filter((device) => !liveLines.has(device.lineId)),
-      ...liveDevices.map((device) => this.toDevice(device)),
+      ...liveDevices.map((device) => this.toDevice(device, snapshotVersion)),
     ];
   }
 
-  private toDevice(device: CachedDeviceTelemetry): Device {
+  private toDevice(device: CachedDeviceTelemetry, snapshotVersion: string): DashboardDevice {
+    const canonicalId = this.canonicalDeviceId(device.tenantId, device.lineId, device.deviceId);
     const status: Device['status'] = device.status === 'FAULT'
       ? 'alarm'
       : device.status === 'STOPPED'
@@ -358,7 +488,40 @@ export class DashboardService {
       metadata: { activeFaults: device.activeFaults },
       createdAt: device.timestamp,
       updatedAt: device.timestamp,
+      deviceId: canonicalId,
+      canonicalId,
+      sourceId: device.deviceId,
+      timestamp: device.timestamp,
+      lastUpdatedAt: device.receivedAt,
+      snapshotVersion,
+      dataSource: 'mqtt',
+      position: null,
+      positionSource: null,
+      activeFaults: [...device.activeFaults],
     };
+  }
+
+  private toDashboardDevice(device: Device, snapshotVersion: string): DashboardDevice {
+    return {
+      ...device,
+      deviceId: device.id,
+      canonicalId: device.id,
+      sourceId: device.id,
+      timestamp: device.updatedAt,
+      lastUpdatedAt: device.updatedAt,
+      snapshotVersion,
+      dataSource: 'mock',
+      position: null,
+      positionSource: null,
+      activeFaults: device.statusReason ? [device.statusReason] : [],
+    };
+  }
+
+  private canonicalDeviceId(tenantId: string, lineId: string, sourceId: string): string {
+    const known = this.devicesService.findAll(tenantId).find((device) => device.lineId === lineId
+      && (device.id === sourceId || device.code === sourceId));
+    if (known) return known.id;
+    return `sim-${lineId.replace(/[^a-z0-9-]+/gi, '-')}-${sourceId.replace(/[^a-z0-9-]+/gi, '-')}`;
   }
 
   private summarizeDevices(devices: Device[]): DashboardOverview['devices'] {

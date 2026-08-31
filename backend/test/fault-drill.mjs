@@ -108,6 +108,7 @@ async function request(path, init = {}) {
       'x-tenant-id': config.tenant,
       'x-user-id': 'fault-drill-runner',
       'x-role': 'plant_manager',
+      'x-user-role': 'supervisor',
       'x-factory-id': 'factory-demo',
       'x-scope': '*',
       'x-session-id': `fault-drill-${process.pid}`,

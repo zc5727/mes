@@ -1,9 +1,11 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { CreateLocationDto, CreateMaterialDto, ListInventoryQuery, MaterialIssueDto, StockCountDto, StockReceiptDto } from './dto/inventory.dto';
 import { InventoryService } from './inventory.service';
 
 @Controller('inventory')
+@RequireCapability('write')
 export class InventoryController {
   constructor(private readonly service: InventoryService) {}
   private factoryId(query?: string): string { return query?.trim() || 'factory-demo'; }

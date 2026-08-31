@@ -1,3 +1,4 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { FoundationService } from './foundation.service';
@@ -5,6 +6,7 @@ import { FoundationService } from './foundation.service';
 interface RecordBody { data?: Record<string, unknown>; status?: string }
 
 @Controller('foundation')
+@RequireCapability('admin')
 export class FoundationController {
   constructor(private readonly service: FoundationService) {}
 

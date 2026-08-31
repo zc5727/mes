@@ -1,9 +1,11 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { OrdersService } from './orders.service';
 
 @Controller('orders')
+@RequireCapability('write')
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 

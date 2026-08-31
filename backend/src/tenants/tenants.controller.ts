@@ -1,9 +1,11 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { TenantsService } from './tenants.service';
 
 @Controller('tenants')
+@RequireCapability('admin')
 export class TenantsController {
   constructor(private readonly tenantsService: TenantsService) {}
 

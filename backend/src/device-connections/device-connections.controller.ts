@@ -1,9 +1,11 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { CreateDeviceConnectionDto, CreateUnifiedDeviceEventDto, UpdateDeviceConnectionDto } from './dto/device-connection.dto';
 import { DeviceConnectionsService } from './device-connections.service';
 
 @Controller('device-connections')
+@RequireCapability('control')
 export class DeviceConnectionsController {
   constructor(private readonly service: DeviceConnectionsService) {}
 

@@ -18,7 +18,7 @@ const snapshot = {
 
 function identity(role: string, scope = '*') {
   return {
-    'x-user-id': `${role}-e2e`, 'x-role': role, 'x-factory-id': 'factory-demo',
+    'x-user-id': `${role}-e2e`, 'x-role': role, 'x-user-role': role, 'x-factory-id': 'factory-demo',
     'x-scope': scope, 'x-session-id': `session-${role}`, 'x-trace-id': `trace-${role}`,
   };
 }

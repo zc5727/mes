@@ -1,3 +1,4 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { CreateWorkOrderDto } from './dto/create-work-order.dto';
@@ -7,6 +8,7 @@ import { ReportWorkOrderDto } from './dto/report-work-order.dto';
 import { TraceabilityQuery, WorkOrdersService } from './work-orders.service';
 
 @Controller('work-orders')
+@RequireCapability('write')
 export class WorkOrdersController {
   constructor(private readonly workOrdersService: WorkOrdersService) {}
 

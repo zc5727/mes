@@ -1,3 +1,4 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { CreateDeviceDto } from './dto/create-device.dto';
@@ -7,6 +8,7 @@ import { UpdateDeviceDto } from './dto/update-device.dto';
 import { DevicesService } from './devices.service';
 
 @Controller('devices')
+@RequireCapability('control')
 export class DevicesController {
   constructor(private readonly devicesService: DevicesService) {}
 
@@ -26,21 +28,25 @@ export class DevicesController {
   }
 
   @Post()
+  @RequireCapability('write')
   create(@TenantId() tenantId: string, @Body() dto: CreateDeviceDto) {
     return { data: this.devicesService.create(tenantId, dto), tenantId };
   }
 
   @Patch(':id/status')
+  @RequireCapability('write')
   updateStatus(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateDeviceStatusDto) {
     return { data: this.devicesService.updateStatus(tenantId, id, dto), tenantId };
   }
 
   @Post(':id/telemetry')
+  @RequireCapability('write')
   ingestTelemetry(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: IngestTelemetryDto) {
     return { data: this.devicesService.ingestTelemetry(tenantId, id, dto), tenantId };
   }
 
   @Patch(':id')
+  @RequireCapability('write')
   update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateDeviceDto) {
     return { data: this.devicesService.update(tenantId, id, dto), tenantId };
   }

@@ -27,6 +27,7 @@ import { ErpNextModule } from './integrations/erpnext/erpnext.module';
 import { SidecarModule } from './integrations/sidecar/sidecar.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { DeviceProfilesModule } from './device-profiles/device-profiles.module';
+import { RoleCapabilityGuard } from './common/role-capability.guard';
 
 @Module({
   controllers: [HealthController],
@@ -57,6 +58,9 @@ import { DeviceProfilesModule } from './device-profiles/device-profiles.module';
     InventoryModule,
     DeviceProfilesModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ApiKeyGuard }],
+  providers: [
+    { provide: APP_GUARD, useClass: ApiKeyGuard },
+    { provide: APP_GUARD, useClass: RoleCapabilityGuard },
+  ],
 })
 export class AppModule {}

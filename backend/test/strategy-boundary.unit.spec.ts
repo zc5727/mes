@@ -49,4 +49,41 @@ describe('StrategyEngineService read-only boundary', () => {
     expect(candidates.every((candidate) => candidate.expectedImpact.length > 0 && candidate.reason.length > 0)).toBe(true);
     expect(JSON.stringify(snapshot)).toBe(before);
   });
+
+  it('keeps the multi-protocol snapshot contract read-only and complete', () => {
+    const snapshot = baseSnapshot();
+    snapshot.devices[2].status = 'offline';
+    snapshot.workOrders.push({
+      id: 'WO-CONTRACT', lineId: 'LINE-03', remainingQty: 80,
+      dueAt: '2026-08-28T09:00:00.000Z', priority: 4, status: 'running',
+    });
+    snapshot.materialShortages = [{ materialCode: 'MAT-CONTRACT', affectedWorkOrderIds: ['WO-CONTRACT'] }];
+    const before = JSON.stringify(snapshot);
+    const result = new StrategyEngineService().simulate(snapshot);
+
+    expect(result).toEqual(expect.objectContaining({
+      simulationId: expect.stringMatching(/^sim-/),
+      strategyVersion: 'rules-v1',
+      requiresApproval: true,
+      executionAllowed: false,
+      inputSummary: expect.objectContaining({ snapshotHash: expect.any(String) }),
+      outputSummary: expect.objectContaining({ executionAllowed: false }),
+    }));
+    expect(result.candidates.length).toBeGreaterThan(1);
+    expect(result.candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: 'transfer_work_order' }),
+      expect.objectContaining({ action: 'reschedule_material' }),
+      expect.objectContaining({ action: 'expedite_work_order' }),
+    ]));
+    for (const candidate of result.candidates) {
+      expect(candidate).toEqual(expect.objectContaining({
+        expectedFinishTime: expect.any(String),
+        affectedOrders: expect.any(Array),
+        risk: expect.any(String),
+        requiresApproval: true,
+        impactAssessment: expect.objectContaining({ executionAllowed: false }),
+      }));
+    }
+    expect(JSON.stringify(snapshot)).toBe(before);
+  });
 });

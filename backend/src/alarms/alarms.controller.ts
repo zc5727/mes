@@ -1,3 +1,4 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import { BadRequestException, Controller, Get, Param, Patch, Post, Query, Sse } from '@nestjs/common';
 import type { Observable } from 'rxjs';
 import { TenantId } from '../common/tenant.decorator';
@@ -5,6 +6,7 @@ import { AlarmRealtimeMessage, AlarmsService } from './alarms.service';
 import { AlarmQueryDto } from './dto/alarm-query.dto';
 
 @Controller('alarms')
+@RequireCapability('write')
 export class AlarmsController {
   constructor(private readonly alarmsService: AlarmsService) {}
 

@@ -1,3 +1,4 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import { Body, Controller, Get, Param, Patch, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
@@ -7,6 +8,7 @@ import { DocumentsService } from './documents.service';
 import type { UploadedDocumentFile } from './documents.types';
 
 @Controller('foundation/documents')
+@RequireCapability('write')
 export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 

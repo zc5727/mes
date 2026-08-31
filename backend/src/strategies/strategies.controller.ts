@@ -1,3 +1,4 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { StrategyEngineService } from './strategy-engine.service';
@@ -10,6 +11,7 @@ import {
 } from './strategy-simulation.dto';
 
 @Controller('strategies')
+@RequireCapability('control')
 export class StrategiesController {
   constructor(
     private readonly strategyEngine: StrategyEngineService,
@@ -241,6 +243,7 @@ export class StrategiesController {
   }
 
   @Post('simulations/:simulationId/replay')
+  @RequireCapability('read')
   @HttpCode(HttpStatus.OK)
   replay(
     @TenantId() tenantId: string, @Param('simulationId') simulationId: string,

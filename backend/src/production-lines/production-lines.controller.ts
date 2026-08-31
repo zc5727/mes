@@ -1,3 +1,4 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { CreateProductionLineDto } from './dto/create-production-line.dto';
@@ -6,6 +7,7 @@ import { UpdateProductionLineDto } from './dto/update-production-line.dto';
 import { ProductionLinesService } from './production-lines.service';
 
 @Controller('production-lines')
+@RequireCapability('control')
 export class ProductionLinesController {
   constructor(private readonly linesService: ProductionLinesService) {}
 

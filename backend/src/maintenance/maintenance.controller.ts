@@ -1,9 +1,11 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { CreateMaintenanceDto, CreatePreventivePlanDto, CreateSparePartDto, ConsumeSparePartDto, MaintenanceInspectionDto, UpdateMaintenanceStatusDto } from './dto/maintenance.dto';
 import { MaintenanceService } from './maintenance.service';
 
 @Controller('maintenance/work-orders')
+@RequireCapability('control')
 export class MaintenanceController {
   constructor(private readonly service: MaintenanceService) {}
   @Get() list(@TenantId() tenantId: string) { return { data: this.service.list(tenantId), tenantId }; }

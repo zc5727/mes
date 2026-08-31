@@ -9,7 +9,7 @@ describe('inventory execution API (e2e)', () => {
   afterAll(async () => { await app.close(); });
 
   it('receives stock, issues it to a work order, and exposes the ledger', async () => {
-    const headers = { 'x-tenant-id': 'tenant-demo' };
+    const headers = { 'x-tenant-id': 'tenant-demo', 'x-user-role': 'operator' };
     await request(app.getHttpServer()).post('/api/v1/inventory/materials?factoryId=factory-demo').set(headers)
       .send({ code: 'MAT-E2E', name: '测试物料', unit: '件' }).expect(201);
     await request(app.getHttpServer()).post('/api/v1/inventory/locations?factoryId=factory-demo').set(headers)
@@ -28,6 +28,7 @@ describe('inventory execution API (e2e)', () => {
 
   it('rejects an issue that would create a negative balance', async () => {
     await request(app.getHttpServer()).post('/api/v1/inventory/issues?factoryId=factory-demo').set('x-tenant-id', 'tenant-demo')
+      .set('x-user-role', 'operator')
       .send({ materialCode: 'MAT-E2E', batchNo: 'B-E2E', locationCode: 'E2E-01', quantity: 100, idempotencyKey: 'issue-negative-e2e' })
       .expect(409);
   });

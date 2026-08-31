@@ -17,6 +17,7 @@ describe('MES API data contracts (e2e)', () => {
     const response = await request(app.getHttpServer())
       .get('/api/v1/devices')
       .set('x-tenant-id', 'tenant-demo')
+      .set('x-user-role', 'operator')
       .expect(200);
 
     expect(response.body).toEqual({
@@ -52,12 +53,14 @@ describe('MES API data contracts (e2e)', () => {
     await request(app.getHttpServer())
       .post('/api/v1/devices')
       .set('x-tenant-id', 'tenant-demo')
+      .set('x-user-role', 'operator')
       .send({ lineId: 'x', code: 'x', name: 'x' })
       .expect(400);
 
     await request(app.getHttpServer())
       .post('/api/v1/devices')
       .set('x-tenant-id', 'tenant-demo')
+      .set('x-user-role', 'operator')
       .send({ lineId: 'line-cnc', code: 'CNC-001', name: '重复设备' })
       .expect(409);
   });
@@ -67,6 +70,7 @@ describe('MES API data contracts (e2e)', () => {
     await request(app.getHttpServer())
       .patch(`/api/v1/devices/${deviceId}/status`)
       .set('x-tenant-id', 'tenant-demo')
+      .set('x-user-role', 'operator')
       .send({ status: 'offline', reason: '网络中断' })
       .expect(200)
       .expect(({ body }) => {
@@ -77,6 +81,7 @@ describe('MES API data contracts (e2e)', () => {
     await request(app.getHttpServer())
       .post(`/api/v1/devices/${deviceId}/telemetry`)
       .set('x-tenant-id', 'tenant-demo')
+      .set('x-user-role', 'operator')
       .send({
         source: 'edge-gateway-01',
         timestamp: '2026-08-28T08:06:00.000Z',
@@ -103,6 +108,7 @@ describe('MES API data contracts (e2e)', () => {
     await request(app.getHttpServer())
       .post('/api/v1/ingestion/device-events')
       .set('x-tenant-id', 'tenant-demo')
+      .set('x-user-role', 'operator')
       .send(event)
       .expect(202)
       .expect(({ body }) => expect(body.data).toEqual({ accepted: true, duplicate: false, eventId: 'http-event-001' }));
@@ -110,6 +116,7 @@ describe('MES API data contracts (e2e)', () => {
     await request(app.getHttpServer())
       .post('/api/v1/ingestion/device-events')
       .set('x-tenant-id', 'tenant-demo')
+      .set('x-user-role', 'operator')
       .send(event)
       .expect(202)
       .expect(({ body }) => expect(body.data).toEqual({ accepted: false, duplicate: true, eventId: 'http-event-001' }));

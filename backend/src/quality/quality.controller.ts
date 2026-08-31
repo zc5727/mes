@@ -1,9 +1,11 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { CreateQualityIssueDto, CreateQualityRecordDto, CreateQualityRuleDto, QualityTransitionDto, UpdateQualityDraftDto, UpdateQualityIssueDto } from './dto/quality-record.dto';
 import { QualityService } from './quality.service';
 
 @Controller('foundation/quality-records')
+@RequireCapability('write')
 export class QualityController {
   constructor(private readonly qualityService: QualityService) {}
 

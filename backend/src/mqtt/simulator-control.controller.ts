@@ -1,3 +1,4 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import {
   Body,
   Controller,
@@ -18,6 +19,7 @@ import {
 } from './simulator-control.dto';
 
 @Controller('simulator')
+@RequireCapability('control')
 export class SimulatorControlController {
   constructor(
     private readonly mqtt: MqttIngestionService,

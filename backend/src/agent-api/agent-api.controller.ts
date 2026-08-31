@@ -1,3 +1,4 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import {
   Body,
   Controller,
@@ -24,6 +25,7 @@ export class AgentApiController {
   }
 
   @Post('tools/execute')
+  @RequireCapability('read')
   execute(
     @Body() request: AgentToolRequestDto,
     @Headers('x-tenant-id') tenantId?: string,

@@ -1,3 +1,4 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import {
   Body,
   Controller,
@@ -19,6 +20,7 @@ import {
 import { AuditService } from './audit.service';
 
 @Controller('audit')
+@RequireCapability('admin')
 export class AuditController {
   constructor(
     private readonly service: AuditService,

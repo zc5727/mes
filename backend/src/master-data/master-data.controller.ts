@@ -1,9 +1,11 @@
+import { RequireCapability } from '../common/route-capability.decorator';
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { BatchInventoryMovementDto, CreateBatchInventoryDto, CreateBomDto, CreateCalendarDto, CreateOperationDto, CreateProcessDto, CreateProductDto, CreateRoutingDto, CreateShiftDto } from './dto/master-data.dto';
 import { MasterDataService } from './master-data.service';
 
 @Controller('master-data')
+@RequireCapability('admin')
 export class MasterDataController {
   constructor(private readonly service: MasterDataService) {}
   @Get('products') products(@TenantId() tenantId: string) { return { data: this.service.list(tenantId, 'product'), tenantId }; }
@@ -28,6 +30,10 @@ export class MasterDataController {
   @Post('routings') createRouting(@TenantId() tenantId: string, @Body() dto: CreateRoutingDto) { return { data: this.service.create(tenantId, 'routing', dto), tenantId }; }
   @Get('routings/:id') routing(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.findOne(tenantId, 'routing', id), tenantId }; }
   @Get('batches') batches(@TenantId() tenantId: string) { return { data: this.service.listBatches(tenantId), tenantId }; }
-  @Post('batches') createBatch(@TenantId() tenantId: string, @Body() dto: CreateBatchInventoryDto) { return { data: this.service.createBatch(tenantId, dto), tenantId }; }
-  @Post('batches/return') returnBatch(@TenantId() tenantId: string, @Body() dto: BatchInventoryMovementDto) { return { data: this.service.returnBatch(tenantId, dto), tenantId }; }
+  @Post('batches')
+  @RequireCapability('write')
+  createBatch(@TenantId() tenantId: string, @Body() dto: CreateBatchInventoryDto) { return { data: this.service.createBatch(tenantId, dto), tenantId }; }
+  @Post('batches/return')
+  @RequireCapability('write')
+  returnBatch(@TenantId() tenantId: string, @Body() dto: BatchInventoryMovementDto) { return { data: this.service.returnBatch(tenantId, dto), tenantId }; }
 }

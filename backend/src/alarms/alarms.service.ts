@@ -10,23 +10,36 @@ import { Observable } from 'rxjs';
 import { Device, DevicesService } from '../devices/devices.service';
 import { MqttIngestionService } from '../mqtt/mqtt-ingestion.service';
 import { MaintenanceService } from '../maintenance/maintenance.service';
+import { resolveSimulatorIdentity } from '../digital-twin/device-identity';
 
 export type AlarmLevel = 'info' | 'warning' | 'critical';
 export type AlarmStatus = 'active' | 'acknowledged' | 'closed';
+export type AlarmDataSource = 'simulator' | 'mqtt' | 'database' | 'mock';
 
 export interface Alarm {
   id: string;
   tenantId: string;
   source: string;
   sourceId: string;
+  /** Canonical MES device identity; sourceId remains the gateway/simulator identity. */
+  deviceId: string;
+  canonicalDeviceId: string;
+  alarmId: string;
   lineId: string;
   level: AlarmLevel;
   message: string;
   time: string;
   occurredAt: string;
+  timestamp: string;
+  lastUpdatedAt: string;
+  metrics: Record<string, number | string | boolean | null>;
+  position: { x: number; y: number; z: number } | null;
+  snapshotVersion: string;
+  dataSource: AlarmDataSource;
   status: AlarmStatus;
   acknowledgedAt?: string;
   closedAt?: string;
+  clearedAt?: string;
 }
 
 export interface AlarmFilters {
@@ -52,6 +65,7 @@ export interface AlarmRealtimeMessage {
 @Injectable()
 export class AlarmsService {
   private readonly alarms = new Map<string, Alarm>();
+  private readonly snapshotSequences = new Map<string, number>();
 
   constructor(
     private readonly devicesService: DevicesService,
@@ -61,7 +75,7 @@ export class AlarmsService {
 
   findAll(tenantId: string, filters: AlarmFilters = {}): Alarm[] {
     const normalizedFilters = this.normalizeFilters(filters);
-    const current = this.readCurrentAlarms(tenantId);
+    const current = this.readCurrentAlarms(tenantId, this.nextSnapshotVersion(tenantId));
     const currentKeys = new Set(current.map((alarm) => this.alarmKey(alarm.tenantId, alarm.id)));
 
     current.forEach((alarm) => this.upsertCurrentAlarm(alarm));
@@ -74,7 +88,8 @@ export class AlarmsService {
         : alarm.status !== 'closed')
       .filter((alarm) => !normalizedFilters.level || alarm.level === normalizedFilters.level)
       .filter((alarm) => !normalizedFilters.lineId || alarm.lineId === normalizedFilters.lineId)
-      .filter((alarm) => !normalizedFilters.deviceId || alarm.sourceId === normalizedFilters.deviceId)
+      .filter((alarm) => !normalizedFilters.deviceId
+        || [alarm.deviceId, alarm.canonicalDeviceId, alarm.sourceId].includes(normalizedFilters.deviceId))
       .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
   }
 
@@ -125,7 +140,13 @@ export class AlarmsService {
     if (alarm.status === 'acknowledged') return alarm;
 
     const acknowledgedAt = new Date().toISOString();
-    const updated = { ...alarm, status: 'acknowledged' as const, acknowledgedAt };
+    const updated = {
+      ...alarm,
+      status: 'acknowledged' as const,
+      acknowledgedAt,
+      lastUpdatedAt: acknowledgedAt,
+      snapshotVersion: this.nextSnapshotVersion(tenantId),
+    };
     this.alarms.set(this.alarmKey(tenantId, id), updated);
     return updated;
   }
@@ -134,10 +155,14 @@ export class AlarmsService {
     const alarm = this.findOne(tenantId, id);
     if (alarm.status === 'closed') return alarm;
 
+    const closedAt = new Date().toISOString();
     const updated = {
       ...alarm,
       status: 'closed' as const,
-      closedAt: new Date().toISOString(),
+      closedAt,
+      clearedAt: closedAt,
+      lastUpdatedAt: closedAt,
+      snapshotVersion: this.nextSnapshotVersion(tenantId),
     };
     this.alarms.set(this.alarmKey(tenantId, id), updated);
     return updated;
@@ -151,19 +176,19 @@ export class AlarmsService {
   }
 
   private syncTenant(tenantId: string): void {
-    const current = this.readCurrentAlarms(tenantId);
+    const current = this.readCurrentAlarms(tenantId, this.nextSnapshotVersion(tenantId));
     const currentKeys = new Set(current.map((alarm) => this.alarmKey(alarm.tenantId, alarm.id)));
     current.forEach((alarm) => this.upsertCurrentAlarm(alarm));
     this.closeMissingAlarms(tenantId, currentKeys);
   }
 
-  private readCurrentAlarms(tenantId: string): Alarm[] {
+  private readCurrentAlarms(tenantId: string, snapshotVersion: string): Alarm[] {
     const deviceAlarms = this.devicesService
       .findAll(tenantId)
       .filter((device) => this.isAlarmSource(device))
-      .map((device) => this.toAlarm(device));
+      .map((device) => this.toAlarm(device, snapshotVersion));
     const simulatorAlarms = this.mqttIngestionService?.listActiveAlarms(tenantId)
-      .map((state) => this.toSimulatorAlarm(state)) ?? [];
+      .map((state) => this.toSimulatorAlarm(state, snapshotVersion)) ?? [];
 
     return this.deduplicate(deviceAlarms.concat(simulatorAlarms));
   }
@@ -194,6 +219,9 @@ export class AlarmsService {
         ...alarm,
         status: 'closed',
         closedAt: alarm.closedAt ?? new Date().toISOString(),
+        clearedAt: alarm.clearedAt ?? alarm.closedAt,
+        lastUpdatedAt: alarm.closedAt ?? new Date().toISOString(),
+        snapshotVersion: this.nextSnapshotVersion(tenantId),
       });
     }
   }
@@ -234,20 +262,29 @@ export class AlarmsService {
     return device.status === 'alarm' || device.status === 'maintenance' || device.status === 'offline';
   }
 
-  private toAlarm(device: Device): Alarm {
+  private toAlarm(device: Device, snapshotVersion: string): Alarm {
     const level = this.levelFor(device.status);
     const occurredAt = device.updatedAt;
 
     return {
       id: `alarm-${device.id}`,
+      alarmId: `alarm-${device.id}`,
       tenantId: device.tenantId,
       source: device.code,
       sourceId: device.id,
+      deviceId: device.id,
+      canonicalDeviceId: device.id,
       lineId: device.lineId,
       level,
       message: this.messageFor(device, level),
       time: occurredAt,
       occurredAt,
+      timestamp: occurredAt,
+      lastUpdatedAt: occurredAt,
+      metrics: { ...device.metrics },
+      position: null,
+      snapshotVersion,
+      dataSource: 'mock',
       status: 'active',
     };
   }
@@ -263,18 +300,37 @@ export class AlarmsService {
     return `${device.name}处于维护状态`;
   }
 
-  private toSimulatorAlarm(state: ReturnType<MqttIngestionService['listActiveAlarms']>[number]): Alarm {
+  private toSimulatorAlarm(
+    state: ReturnType<MqttIngestionService['listActiveAlarms']>[number],
+    snapshotVersion: string,
+  ): Alarm {
+    const identity = resolveSimulatorIdentity(state.alarm.lineId, state.alarm.deviceId);
     return {
       id: `mqtt-alarm-${state.tenantId}-${state.alarm.id}`,
+      alarmId: state.alarm.id,
       tenantId: state.tenantId,
       source: state.alarm.deviceId,
       sourceId: state.alarm.deviceId,
+      deviceId: identity.canonicalId,
+      canonicalDeviceId: identity.canonicalId,
       lineId: state.alarm.lineId,
       level: state.alarm.severity.toLowerCase() as AlarmLevel,
       message: state.alarm.message,
       time: state.alarm.startedAt,
       occurredAt: state.alarm.startedAt,
+      timestamp: state.alarm.startedAt,
+      lastUpdatedAt: state.updatedAt,
+      metrics: { severity: state.alarm.severity, faultType: state.alarm.type },
+      position: null,
+      snapshotVersion,
+      dataSource: 'mqtt',
       status: 'active',
     };
+  }
+
+  private nextSnapshotVersion(tenantId: string): string {
+    const next = (this.snapshotSequences.get(tenantId) ?? 0) + 1;
+    this.snapshotSequences.set(tenantId, next);
+    return `${tenantId}-${String(next).padStart(6, '0')}`;
   }
 }

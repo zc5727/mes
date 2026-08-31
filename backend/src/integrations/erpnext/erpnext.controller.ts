@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { RequireCapability } from '../../common/route-capability.decorator';
 import { TenantId } from '../../common/tenant.decorator';
 import { ErpNextReportDto } from './dto/erpnext-report.dto';
 import { ErpNextService } from './erpnext.service';
@@ -20,6 +21,7 @@ export class ErpNextController {
   reports(@TenantId() tenantId: string) { return this.service.reports(tenantId); }
 
   @Post('work-orders/:workOrderId/reports')
+  @RequireCapability('write')
   report(@TenantId() tenantId: string, @Param('workOrderId') workOrderId: string, @Body() dto: ErpNextReportDto) {
     return this.service.bridgeReport(tenantId, workOrderId, { ...dto, ...(dto.details ?? {}) });
   }
