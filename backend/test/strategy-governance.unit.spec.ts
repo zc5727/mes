@@ -155,4 +155,22 @@ describe('StrategyGovernanceService', () => {
       }),
     ]));
   });
+
+  it('restores approvals and idempotency state from the persistence boundary', async () => {
+    const sourceAudit = new AuditService();
+    const source = new StrategyGovernanceService(sourceAudit);
+    const result = new StrategyEngineService().simulate(snapshot);
+    const call = source.recordSimulation('tenant-a', 'creator-1', snapshot, result, undefined, 'restart-key');
+    const approvals = source.listApprovalsForSimulation('tenant-a', result.simulationId);
+    const persistence = {
+      restore: jest.fn().mockResolvedValue([{ tenantId: 'tenant-a', result, audit: call, approvals }]),
+    } as unknown as import('../src/strategies/strategy-persistence.service').StrategyPersistenceService;
+    const restored = new StrategyGovernanceService(new AuditService(), persistence);
+
+    await restored.onModuleInit();
+
+    expect(restored.getSimulation('tenant-a', result.simulationId)).toEqual({ result, audit: call });
+    expect(restored.listApprovalsForSimulation('tenant-a', result.simulationId)).toEqual(approvals);
+    expect(restored.getIdempotent('tenant-a', 'restart-key', restored.fingerprint(snapshot))).toEqual({ data: result, audit: call });
+  });
 });

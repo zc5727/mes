@@ -49,6 +49,7 @@ export class SimulatorControlController {
     });
     this.authorization.assertCanControlSimulator(context);
     validateSimulatorControlCommand(command);
+    this.authorization.assertSimulatorCommandAccess(context, command);
 
     const normalizedCommand = normalizeSimulatorControlCommand(command);
     const commandId = await this.mqtt.publishSimulatorControl(

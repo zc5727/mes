@@ -4,10 +4,11 @@ import type { INestApplication } from '@nestjs/common';
 import request = require('supertest');
 import { AlarmsModule } from '../src/alarms/alarms.module';
 import { DashboardModule } from '../src/dashboard/dashboard.module';
+import { DatabaseModule } from '../src/database/database.module';
 import { DeviceTelemetryCache } from '../src/mqtt/device-cache';
 import { AlarmDeduplicator } from '../src/mqtt/alarm-deduplicator';
 
-@Module({ imports: [AlarmsModule, DashboardModule] })
+@Module({ imports: [DatabaseModule, AlarmsModule, DashboardModule] })
 class AlarmsDashboardTestModule {}
 
 describe('Alarms and dashboard API (e2e)', () => {
@@ -116,6 +117,20 @@ describe('Alarms and dashboard API (e2e)', () => {
       .get('/api/v1/alarms/alarm-device-welding-01')
       .set('x-tenant-id', 'other-tenant')
       .expect(404);
+  });
+
+  it('serves tenant-scoped production history for the professional dashboard', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/dashboard/history?lineId=line-cnc')
+      .set('x-tenant-id', 'tenant-demo')
+      .expect(200);
+
+    expect(response.body).toEqual({ tenantId: 'tenant-demo', data: [] });
+    await request(app.getHttpServer())
+      .get('/api/v1/dashboard/history?lineId=line-cnc')
+      .set('x-tenant-id', 'other-tenant')
+      .expect(200)
+      .expect({ tenantId: 'other-tenant', data: [] });
   });
 
   it('projects an injected MQTT fault into alarms and dashboard state', async () => {

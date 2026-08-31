@@ -56,4 +56,32 @@ describe('AlarmsService', () => {
     expect(events).toEqual(['snapshot', 'updated']);
     subscription.unsubscribe();
   });
+
+  it('restores an acknowledged lifecycle from the persisted alarm projection', async () => {
+    const persisted = {
+      id: 'alarm-device-welding-01',
+      tenantId: 'tenant-demo',
+      lineId: 'line-welding',
+      deviceId: 'device-welding-01',
+      code: 'WLD-001',
+      level: 'warning',
+      status: 'acknowledged',
+      message: '计划保养',
+      dedupeKey: null,
+      occurredAt: new Date('2026-01-01T00:00:00.000Z'),
+      resolvedAt: null,
+      updatedAt: new Date('2026-08-31T10:00:00.000Z'),
+    };
+    const prisma = {
+      ensureConnection: async () => undefined,
+      isReady: () => true,
+      alarm: { findMany: async () => [persisted] },
+    } as any;
+    const service = new AlarmsService(new DevicesService(), undefined, undefined, prisma);
+
+    await service.onModuleInit();
+
+    expect(service.findOne('tenant-demo', 'alarm-device-welding-01').status).toBe('acknowledged');
+    expect(service.findAll('tenant-demo', { status: 'acknowledged' })).toHaveLength(1);
+  });
 });

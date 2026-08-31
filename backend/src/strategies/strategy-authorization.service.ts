@@ -130,6 +130,15 @@ export class StrategyAuthorizationService {
     }
   }
 
+  /** Apply the caller's resource scope to simulator fault/recovery commands. */
+  assertSimulatorCommandAccess(
+    context: StrategyRequestContext,
+    command: { lineId?: string; deviceId?: string },
+  ): void {
+    if (command.lineId) this.assertResourceAccess(context, 'line', command.lineId);
+    if (command.deviceId) this.assertResourceAccess(context, 'device', command.deviceId, command.lineId);
+  }
+
   private assertAction(context: StrategyRequestContext, action: 'read' | 'simulate' | 'approve' | 'execute' | 'rollback', message: string): void {
     if (!STRATEGY_ACTION_MATRIX[context.role]?.has(action)) throw new ForbiddenException(`ROLE_FORBIDDEN: ${message}`);
   }

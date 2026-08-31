@@ -44,6 +44,18 @@ export interface ProductionMetrics {
   generatedAt: string;
 }
 
+export interface ProductionHistoryPoint {
+  timestamp: string;
+  lineId: string;
+  workOrderId: string;
+  quantity: number;
+  goodQty: number;
+  defectQty: number;
+  cumulativeCompletedQty: number;
+  completionRate: number;
+  source: 'work_order_reports';
+}
+
 export interface DashboardLineSummary {
   lineId: string;
   code: string;
@@ -121,6 +133,7 @@ export interface DashboardOverview {
   todayTasks: number;
   powerConsumption: number;
   temperatureTrend: number[];
+  productionHistory: ProductionHistoryPoint[];
   generatedAt: string;
 }
 
@@ -158,6 +171,7 @@ export class DashboardService {
     const highestRiskLine = this.highestRiskLine(lineSummaries);
     const deviceSummary = this.summarizeDevices(devices);
     const alarmSummary = this.summarizeAlarms(alarms);
+    const productionHistory = this.getProductionHistory(tenantId);
 
     return {
       timestamp: this.latestTimestamp(
@@ -193,8 +207,33 @@ export class DashboardService {
       todayTasks: workOrders.inProgress + workOrders.released,
       powerConsumption: this.sumMetric(devices, 'power', 'load'),
       temperatureTrend: this.temperatureTrend(devices),
+      productionHistory,
       generatedAt: new Date().toISOString(),
     };
+  }
+
+  getProductionHistory(tenantId: string, lineId?: string): ProductionHistoryPoint[] {
+    const workOrders = this.workOrdersService.findAll(tenantId)
+      .filter((order) => !lineId || order.lineId === lineId);
+    return workOrders.flatMap((workOrder) => {
+      let cumulativeCompletedQty = 0;
+      return this.workOrdersService.findReports(tenantId, workOrder.id)
+        .sort((left, right) => left.reportedAt.localeCompare(right.reportedAt))
+        .map((report) => {
+          cumulativeCompletedQty += report.quantity;
+          return {
+            timestamp: report.reportedAt,
+            lineId: workOrder.lineId,
+            workOrderId: workOrder.id,
+            quantity: report.quantity,
+            goodQty: report.goodQty,
+            defectQty: report.defectQty,
+            cumulativeCompletedQty,
+            completionRate: workOrder.plannedQty ? this.percent(cumulativeCompletedQty / workOrder.plannedQty) : 0,
+            source: 'work_order_reports' as const,
+          };
+        });
+    }).sort((left, right) => left.timestamp.localeCompare(right.timestamp));
   }
 
   stream(tenantId: string): Observable<DashboardRealtimeMessage> {
@@ -298,6 +337,7 @@ export class DashboardService {
       alarms,
       workOrders,
       productionMetrics,
+      productionHistory: this.getProductionHistory(tenantId, lineId),
       summary,
       onlineRate: summary.onlineRate,
       activeAlarmCount: summary.activeAlarmCount,

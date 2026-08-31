@@ -1,7 +1,8 @@
-import { Controller, Get, Param, Sse } from '@nestjs/common';
+import { Controller, Get, Param, Query, Sse } from '@nestjs/common';
 import type { Observable } from 'rxjs';
 import { TenantId } from '../common/tenant.decorator';
 import { DashboardRealtimeMessage, DashboardService } from './dashboard.service';
+import { DashboardHistoryQueryDto } from './dto/dashboard-history-query.dto';
 
 @Controller('dashboard')
 export class DashboardController {
@@ -20,6 +21,11 @@ export class DashboardController {
   @Get('production-metrics')
   productionMetrics(@TenantId() tenantId: string) {
     return { data: this.dashboardService.getProductionMetrics(tenantId), tenantId };
+  }
+
+  @Get('history')
+  history(@TenantId() tenantId: string, @Query() query: DashboardHistoryQueryDto) {
+    return { data: this.dashboardService.getProductionHistory(tenantId, query.lineId?.trim()), tenantId };
   }
 
   @Get('lines/:lineId')

@@ -10,7 +10,7 @@ import { SimulatorControlController } from '../src/mqtt/simulator-control.contro
 import { StrategyAuthorizationService } from '../src/strategies/strategy-authorization.service';
 
 describe('simulator control API contract', () => {
-  const identity = ['operator-1', 'equipment_supervisor', 'factory-demo', '*', 'session-1', 'trace-001'] as const;
+  const identity = ['operator-1', 'equipment_supervisor', 'factory-demo', 'line-cnc', 'session-1', 'trace-001'] as const;
 
   it('accepts the frontend fault payload and publishes it unchanged', async () => {
     const mqtt = { publishSimulatorControl: jest.fn().mockResolvedValue('cmd-1') } as unknown as MqttIngestionService;
@@ -88,6 +88,24 @@ describe('simulator control API contract', () => {
       'session-2',
       'trace-2',
     )).rejects.toThrow('ROLE_FORBIDDEN');
+    expect(mqtt.publishSimulatorControl).not.toHaveBeenCalled();
+  });
+
+  it('rejects fault injection outside the caller resource scope', async () => {
+    const mqtt = { publishSimulatorControl: jest.fn() } as unknown as MqttIngestionService;
+    const audit = { record: jest.fn() } as unknown as AuditService;
+    const controller = new SimulatorControlController(mqtt, audit, new StrategyAuthorizationService());
+
+    await expect(controller.control(
+      'tenant-demo',
+      { action: 'fault', lineId: 'line-other', deviceId: 'device-other', faultType: 'OVERHEAT' },
+      'engineer',
+      'equipment_supervisor',
+      'factory-demo',
+      'line-cnc',
+      'session-scope',
+      'trace-scope',
+    )).rejects.toThrow('RESOURCE_SCOPE_DENIED');
     expect(mqtt.publishSimulatorControl).not.toHaveBeenCalled();
   });
 });
