@@ -39,7 +39,7 @@
             <em>{{ alarm.time.slice(-8) }}</em>
           </div>
           <p>{{ alarm.message }}</p>
-          <div class="alarm-actions"><button type="button" @click="$emit('ack-alarm', alarm.id)">确认</button><button type="button" @click="$emit('close-alarm', alarm.id)">关闭</button></div>
+          <div class="alarm-actions"><button type="button" :disabled="!canManageLines" title="本地仿真模式不写入 MES" @click="$emit('ack-alarm', alarm.id)">确认</button><button type="button" :disabled="!canManageLines" title="本地仿真模式不写入 MES" @click="$emit('close-alarm', alarm.id)">关闭</button></div>
         </div>
         <div v-if="!alarms.length" class="empty-state">当前产线暂无未处理告警。</div>
       </div>
@@ -222,6 +222,7 @@ defineEmits<{
 
 .alarm-actions { display:flex; gap:6px; margin-top:7px; }
 .alarm-actions button { padding:3px 6px; border:1px solid currentColor; background:transparent; color:inherit; cursor:pointer; font-size:10px; }
+.alarm-actions button:disabled { cursor:not-allowed; opacity:.45; }
 
 .device-block {
   overflow: hidden;

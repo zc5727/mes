@@ -2,12 +2,12 @@
   <section class="operations panel" aria-label="生产业务操作">
     <div class="operations__head"><strong>生产业务</strong><span>仅提交正式 MES API</span></div>
     <div class="operations__actions">
-      <button type="button" @click="active = 'work-order'">新建工单</button>
-      <button type="button" @click="active = 'device'">新增设备</button>
-      <button type="button" @click="active = 'maintenance'">新建维修</button>
-      <button type="button" @click="active = 'document'">图纸登记</button>
-      <button type="button" @click="active = 'quality'">质量记录</button>
-      <button type="button" @click="active = 'strategy'">策略评估</button>
+      <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'work-order'">新建工单</button>
+      <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'device'">新增设备</button>
+      <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'maintenance'">新建维修</button>
+      <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'document'">图纸登记</button>
+      <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'quality'">质量记录</button>
+      <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'strategy'">策略评估</button>
       <button v-if="pendingDocumentId" type="button" @click="confirmDocument">确认图纸分析</button>
     </div>
     <small v-if="notice" :class="{ error: error }">{{ notice }}</small>
@@ -74,7 +74,8 @@ import { toBackendLineId } from '@/api/identityMap';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
 
 type Operation = 'work-order' | 'device' | 'maintenance' | 'document' | 'quality' | 'strategy';
-const props = defineProps<{ selectedLine: ProductionLineTelemetry; selectedDevice: DeviceTelemetry | null; lines: ProductionLineTelemetry[]; devices: DeviceTelemetry[] }>();
+const props = defineProps<{ selectedLine: ProductionLineTelemetry; selectedDevice: DeviceTelemetry | null; lines: ProductionLineTelemetry[]; devices: DeviceTelemetry[]; apiEnabled: boolean }>();
+const emit = defineEmits<{ (event: 'data-changed'): void }>();
 const active = ref<Operation | null>(null);
 const submitting = ref(false);
 const notice = ref('');
@@ -119,7 +120,7 @@ const transitionMaintenance = async (id: string) => { try { await updateMaintena
 
 const selectFile = (event: Event) => { selectedFile.value = (event.target as HTMLInputElement).files?.[0] ?? null; };
 const submit = async () => {
-  if (!active.value) return;
+  if (!active.value || !props.apiEnabled) return;
   submitting.value = true; notice.value = ''; error.value = '';
   try {
     if (active.value === 'work-order') {
@@ -150,6 +151,7 @@ const submit = async () => {
       resultPreview.value = JSON.stringify(result, null, 2);
     }
     await loadRecords();
+    emit('data-changed');
     notice.value = active.value === 'strategy' ? '策略仿真完成，结果仅供评估' : '提交成功，后端已受理'; active.value = null;
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '提交失败，请检查后端服务';
@@ -157,12 +159,13 @@ const submit = async () => {
 };
 
 const confirmDocument = async () => {
-  if (!pendingDocumentId.value) return;
+  if (!pendingDocumentId.value || !props.apiEnabled) return;
   submitting.value = true; error.value = ''; notice.value = '';
   try {
     await confirmDocumentAnalysis(pendingDocumentId.value, 'digital-twin-ui', { analysisStatus: 'confirmed' });
     pendingDocumentId.value = null;
     await loadRecords();
+    emit('data-changed');
     notice.value = '图纸分析已确认';
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '图纸确认失败'; }
   finally { submitting.value = false; }

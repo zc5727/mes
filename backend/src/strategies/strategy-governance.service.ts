@@ -34,6 +34,8 @@ export interface StrategyCallRecord {
   requiresApproval: true;
   executionAllowed: false;
   approvalIds: string[];
+  riskLevels: Array<'low' | 'medium' | 'high'>;
+  recommendedRisk: 'low' | 'medium' | 'high' | null;
   rollback: StrategyRollbackState;
 }
 
@@ -111,6 +113,8 @@ export class StrategyGovernanceService {
       requiresApproval: true,
       executionAllowed: false,
       approvalIds,
+      riskLevels: [...new Set(result.candidates.map((candidate) => candidate.risk))],
+      recommendedRisk: result.recommended?.risk ?? null,
       rollback: { supported: true, action: 'discard_simulation', status: 'available', executionAllowed: false },
     };
     this.simulations.set(this.key(tenantId, result.simulationId), { result, audit: record });
@@ -218,6 +222,15 @@ export class StrategyGovernanceService {
     return [...this.simulations.values()]
       .filter((tracked) => tracked.audit.tenantId === tenantId)
       .map((tracked) => tracked.audit);
+  }
+
+  listCallsForContext(tenantId: string, context: StrategyRequestContext): StrategyCallRecord[] {
+    return this.listCalls(tenantId).filter((record) => {
+      if (record.factoryId && record.factoryId !== context.factoryId) return false;
+      if (context.role === 'system_admin' || context.role === 'plant_manager') return true;
+      const scope = new Set(context.scope);
+      return record.lineIds.every((lineId) => scope.has('*') || scope.has(lineId) || scope.has(`line:${lineId}`));
+    });
   }
 
   listApprovalsForSimulation(tenantId: string, simulationId: string): Approval[] {

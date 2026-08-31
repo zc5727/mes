@@ -39,7 +39,7 @@
       :selected-device="activeSelectedDevice"
       @select-device="handleSceneSelect"
     />
-    <OperationsPanel :selected-line="selectedLine" :selected-device="activeSelectedDevice" :lines="lineSummaries" :devices="devices" />
+    <OperationsPanel :selected-line="selectedLine" :selected-device="activeSelectedDevice" :lines="lineSummaries" :devices="devices" :api-enabled="controlMode === 'api'" @data-changed="handleDataChanged" />
     <LeftPanel
       :alarms="lineAlarms"
       :devices="lineDevices"
@@ -211,6 +211,10 @@ let apiRefreshTimer: number | null = null;
 
 const handleSceneSelect = (device: DeviceTelemetry | null) => store.selectDevice(device?.id ?? null);
 const handleListSelect = (id: string) => store.selectDevice(id);
+
+const handleDataChanged = () => {
+  if (controlMode.value === 'api') void refreshApiSnapshot().catch(() => { loadError.value = true; });
+};
 
 const ackAlarm = async (id: string) => {
   try { await acknowledgeAlarm(id); await refreshApiSnapshot(); controlNotice.value = '告警已确认'; }

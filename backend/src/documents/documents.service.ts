@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { createId, timestamp } from '../common/mock.types';
 import type { ConfirmDocumentAnalysisDto, UpdateDocumentStatusDto, UploadDocumentDto } from './dto/upload-document.dto';
@@ -10,6 +10,7 @@ import type {
   DocumentTraceEvent,
   UploadedDocumentFile,
 } from './documents.types';
+import { FoundationPersistenceService } from '../database/foundation-persistence.service';
 
 const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set(['.pdf', '.png', '.jpg', '.jpeg', '.dwg', '.dxf']);
@@ -24,10 +25,15 @@ const STATUS_TRANSITIONS: Record<DocumentStatus, DocumentStatus[]> = {
 };
 
 @Injectable()
-export class DocumentsService {
+export class DocumentsService implements OnModuleInit {
   private readonly records = new Map<string, DocumentRecord[]>();
 
-  constructor(@Inject(DOCUMENT_STORAGE) private readonly storage: DocumentStorage) {}
+  constructor(@Inject(DOCUMENT_STORAGE) private readonly storage: DocumentStorage, @Optional() private readonly persistence?: FoundationPersistenceService) {}
+
+  async onModuleInit(): Promise<void> {
+    const snapshot = await this.persistence?.restore();
+    if (snapshot?.documents.length) snapshot.documents.forEach((record) => this.records.set(record.tenantId, [...(this.records.get(record.tenantId) ?? []), record]));
+  }
 
   async upload(tenantId: string, dto: UploadDocumentDto, file?: UploadedDocumentFile): Promise<DocumentRecord> {
     this.validateFile(file);
@@ -81,6 +87,7 @@ export class DocumentsService {
       })],
     };
     this.records.set(tenantId, [...(this.records.get(tenantId) ?? []), record]);
+    void this.persistence?.saveDocument(record);
     return record;
   }
 
@@ -154,6 +161,7 @@ export class DocumentsService {
   private replace(current: DocumentRecord, patch: Partial<DocumentRecord>): DocumentRecord {
     const updated = { ...current, ...patch };
     this.records.set(current.tenantId, (this.records.get(current.tenantId) ?? []).map((item) => item.id === current.id ? updated : item));
+    void this.persistence?.saveDocument(updated);
     return updated;
   }
 

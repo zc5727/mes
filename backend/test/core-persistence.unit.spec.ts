@@ -34,4 +34,28 @@ describe('core PostgreSQL persistence repository', () => {
       create: expect.objectContaining({ tenantId: 'tenant-demo', code: 'F001' }),
     }));
   });
+
+  it('persists report traceability fields for restore and audit correlation', async () => {
+    const report = { upsert: jest.fn().mockResolvedValue(undefined) };
+    const prisma = {
+      ensureConnection: jest.fn().mockResolvedValue(undefined),
+      isReady: () => true,
+      workOrderReport: report,
+    } as unknown as PrismaService;
+
+    await new CorePersistenceService(prisma).saveReport({
+      id: 'report-1', tenantId: 'tenant-demo', workOrderId: 'wo-1', deviceId: 'device-1',
+      quantity: 2, goodQty: 2, defectQty: 0, sourceTraceId: 'trace-1', batchNo: 'B-1',
+      serialNumbers: ['S-1', 'S-2'], operationCode: 'OP-10', operatorId: 'operator-1',
+      qualityRecordId: 'quality-1', materialConsumptions: [{ materialCode: 'RAW-1', batchNo: 'RB-1', quantity: 2 }],
+      reportedAt: '2026-08-31T00:00:00.000Z',
+    });
+
+    expect(report.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        batchNo: 'B-1', serialNumbers: ['S-1', 'S-2'], operationCode: 'OP-10',
+        qualityRecordId: 'quality-1', materialConsumptions: [{ materialCode: 'RAW-1', batchNo: 'RB-1', quantity: 2 }],
+      }),
+    }));
+  });
 });

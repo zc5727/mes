@@ -63,6 +63,9 @@ model Tenant {
   reports          WorkOrderReport[]
   alarms           Alarm[]
   strategyRuns     StrategyRun[]
+  qualityRecords   QualityRecord[]
+  maintenanceWorkOrders MaintenanceWorkOrder[]
+  documents        DocumentRecord[]
 
   @@map("tenants")
 }
@@ -282,6 +285,77 @@ model MqttAlarmState {
   @@id([tenantId, alarmId])
   @@index([tenantId, active, eventTime])
   @@map("mqtt_alarm_states")
+}
+
+model QualityRecord {
+  id          String   @id @db.VarChar(40)
+  tenantId    String   @map("tenant_id") @db.VarChar(40)
+  formKey     String   @map("form_key") @db.VarChar(80)
+  formVersion String   @map("form_version") @db.VarChar(40)
+  status      String   @db.VarChar(30)
+  workOrderId String?  @map("work_order_id") @db.VarChar(40)
+  batchNo     String   @map("batch_no") @db.VarChar(80)
+  lineId      String   @map("line_id") @db.VarChar(40)
+  deviceId    String?  @map("device_id") @db.VarChar(40)
+  operatorId  String   @map("operator_id") @db.VarChar(80)
+  values      Json
+  traceId     String   @map("trace_id") @db.VarChar(120)
+  trace       Json
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@unique([tenantId, traceId])
+  @@index([tenantId, status, updatedAt])
+  @@map("quality_records")
+}
+
+model MaintenanceWorkOrder {
+  id          String   @id @db.VarChar(40)
+  tenantId    String   @map("tenant_id") @db.VarChar(40)
+  lineId      String   @map("line_id") @db.VarChar(40)
+  deviceId    String   @map("device_id") @db.VarChar(40)
+  type        String   @db.VarChar(30)
+  title       String   @db.VarChar(120)
+  description String   @default("") @db.VarChar(500)
+  status      String   @db.VarChar(30)
+  plannedAt   DateTime @map("planned_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId, status, plannedAt])
+  @@map("maintenance_work_orders")
+}
+
+model DocumentRecord {
+  id                    String   @id @db.VarChar(40)
+  tenantId              String   @map("tenant_id") @db.VarChar(40)
+  documentKey           String   @map("document_key") @db.VarChar(120)
+  fileName              String   @map("file_name") @db.VarChar(255)
+  contentType           String   @map("content_type") @db.VarChar(120)
+  extension             String   @db.VarChar(20)
+  size                  Int
+  fileHash              String   @map("file_hash") @db.VarChar(128)
+  version               Int
+  supersedesId          String?  @map("supersedes_id") @db.VarChar(40)
+  storageKey            String   @map("storage_key") @db.VarChar(255)
+  storageProvider       String   @map("storage_provider") @db.VarChar(40)
+  status                String   @db.VarChar(30)
+  lineId                String?  @map("line_id") @db.VarChar(40)
+  workOrderId           String?  @map("work_order_id") @db.VarChar(40)
+  productCode           String?  @map("product_code") @db.VarChar(80)
+  uploadedBy            String   @map("uploaded_by") @db.VarChar(80)
+  uploadedAt            DateTime @map("uploaded_at")
+  analysisStatus        String   @map("analysis_status") @db.VarChar(30)
+  analysisDraft         Json?
+  analysisConfirmedBy   String?  @map("analysis_confirmed_by") @db.VarChar(80)
+  analysisConfirmedAt   DateTime? @map("analysis_confirmed_at")
+  trace                 Json
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  tenant                Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId, documentKey, version])
+  @@map("document_records")
 }
 
 model DeviceEvent {

@@ -95,6 +95,35 @@ describe('production execution flow', () => {
       .toThrow(ConflictException);
   });
 
+  it('does not exceed the planned quantity when reports arrive concurrently', async () => {
+    const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService());
+    const workOrder = workOrders.create('tenant-demo', {
+      orderNo: 'WO-CONCURRENT-REPORT', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 2,
+      dueAt: '2026-08-31T18:00:00.000Z',
+    });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'in_progress' });
+
+    const results = await Promise.allSettled([
+      Promise.resolve().then(() => workOrders.report('tenant-demo', workOrder.id, { quantity: 2, sourceTraceId: 'parallel-1' })),
+      Promise.resolve().then(() => workOrders.report('tenant-demo', workOrder.id, { quantity: 1, sourceTraceId: 'parallel-2' })),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(workOrders.findOne('tenant-demo', workOrder.id).completedQty).toBe(2);
+  });
+
+  it('does not expose reports across tenants', () => {
+    const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService());
+    const workOrder = workOrders.create('tenant-demo', {
+      orderNo: 'WO-TENANT-A', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1,
+      dueAt: '2026-08-31T18:00:00.000Z',
+    });
+    expect(() => workOrders.findOne('tenant-b', workOrder.id)).toThrow();
+    expect(() => workOrders.findReports('tenant-b', workOrder.id)).toThrow();
+  });
+
   it('keeps batch and serial traceability on reports', () => {
     const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService(), new DevicesService());
     const workOrder = workOrders.create('tenant-demo', {

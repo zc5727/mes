@@ -50,7 +50,27 @@ export class CorePersistenceService {
   }
 
   async saveReport(item: PersistedReport): Promise<void> {
-    await this.write('work order report', () => this.prisma.workOrderReport.upsert({ where: { id: item.id }, create: { id: item.id, tenantId: item.tenantId, workOrderId: item.workOrderId, deviceId: item.deviceId, quantity: item.quantity, goodQty: item.goodQty, defectQty: item.defectQty, sourceTraceId: item.sourceTraceId, reportedAt: new Date(item.reportedAt), createdAt: new Date(item.reportedAt) }, update: { quantity: item.quantity, goodQty: item.goodQty, defectQty: item.defectQty, reportedAt: new Date(item.reportedAt) } }));
+    await this.write('work order report', () => this.prisma.workOrderReport.upsert({
+      where: { id: item.id },
+      create: {
+        id: item.id, tenantId: item.tenantId, workOrderId: item.workOrderId,
+        deviceId: item.deviceId, quantity: item.quantity, goodQty: item.goodQty,
+        defectQty: item.defectQty, sourceTraceId: item.sourceTraceId,
+        batchNo: item.batchNo ?? null, serialNumbers: this.json(item.serialNumbers),
+        operationCode: item.operationCode ?? null, operatorId: item.operatorId ?? null,
+        qualityRecordId: item.qualityRecordId ?? null,
+        materialConsumptions: this.json(item.materialConsumptions),
+        reportedAt: new Date(item.reportedAt), createdAt: new Date(item.reportedAt),
+      },
+      update: {
+        deviceId: item.deviceId, quantity: item.quantity, goodQty: item.goodQty,
+        defectQty: item.defectQty, batchNo: item.batchNo ?? null,
+        serialNumbers: this.json(item.serialNumbers), operationCode: item.operationCode ?? null,
+        operatorId: item.operatorId ?? null, qualityRecordId: item.qualityRecordId ?? null,
+        materialConsumptions: this.json(item.materialConsumptions),
+        reportedAt: new Date(item.reportedAt),
+      },
+    }));
   }
 
   async deleteFactory(id: string): Promise<void> { await this.write('factory deletion', () => this.prisma.factory.delete({ where: { id } })); }
@@ -72,7 +92,14 @@ export class CorePersistenceService {
   private device(item: any): PersistedDevice { return { ...item, lastSeenAt: item.lastSeenAt?.toISOString() ?? null, createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() }; }
   private order(item: any): PersistedOrder { return { ...item, dueAt: item.dueAt.toISOString(), createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() }; }
   private workOrder(item: any): PersistedWorkOrder { return { ...item, dueAt: item.dueAt.toISOString(), createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() }; }
-  private report(item: any): PersistedReport { return { ...item, reportedAt: item.reportedAt.toISOString() }; }
+  private report(item: any): PersistedReport {
+    return {
+      ...item,
+      serialNumbers: item.serialNumbers ?? null,
+      materialConsumptions: item.materialConsumptions ?? null,
+      reportedAt: item.reportedAt.toISOString(),
+    };
+  }
   private empty(): CorePersistenceSnapshot { return { factories: [], lines: [], devices: [], orders: [], workOrders: [], reports: [] }; }
   private failure(operation: string, error: unknown): void { this.logger.error(`${operation} failed; memory mode remains available: ${error instanceof Error ? error.message : String(error)}`); }
 }

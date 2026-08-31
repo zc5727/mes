@@ -118,5 +118,14 @@ describe('AgentApiService', () => {
     });
     expect(history.ok).toBe(true);
     expect((history.data as unknown[]).length).toBe(1);
+
+    const outOfScope = service.execute({
+      tool: 'get_line_status', arguments: { lineId: 'line-cnc' }, tenantId: 'tenant-demo',
+      traceId: 'trace-auth-4', authorization: { ...authorization, role: 'production_supervisor', scope: 'line-not-allowed' },
+    });
+    expect(outOfScope).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({ code: 'AUTHORIZATION_DENIED', message: expect.stringContaining('RESOURCE_SCOPE_DENIED') }),
+    }));
   });
 });

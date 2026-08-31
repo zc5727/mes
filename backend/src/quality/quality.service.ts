@@ -1,20 +1,27 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { createId, timestamp } from '../common/mock.types';
 import { DevicesService } from '../devices/devices.service';
 import { ProductionLinesService } from '../production-lines/production-lines.service';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import type { CreateQualityRecordDto, QualityTransitionDto, UpdateQualityDraftDto } from './dto/quality-record.dto';
 import type { QualityRecord, QualityRecordStatus, QualityTraceEvent } from './quality.types';
+import { FoundationPersistenceService } from '../database/foundation-persistence.service';
 
 @Injectable()
-export class QualityService {
+export class QualityService implements OnModuleInit {
   private readonly records = new Map<string, QualityRecord[]>();
 
   constructor(
     @Optional() private readonly workOrders?: WorkOrdersService,
     @Optional() private readonly lines?: ProductionLinesService,
     @Optional() private readonly devices?: DevicesService,
+    @Optional() private readonly persistence?: FoundationPersistenceService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    const snapshot = await this.persistence?.restore();
+    if (snapshot?.quality.length) snapshot.quality.forEach((record) => this.records.set(record.tenantId, [...(this.records.get(record.tenantId) ?? []), record]));
+  }
 
   list(tenantId: string): QualityRecord[] {
     return [...(this.records.get(tenantId) ?? [])].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
@@ -39,6 +46,7 @@ export class QualityService {
     };
     this.validateReferences(tenantId, record, false);
     this.records.set(tenantId, [...(this.records.get(tenantId) ?? []), record]);
+    void this.persistence?.saveQuality(record);
     return record;
   }
 
@@ -98,6 +106,7 @@ export class QualityService {
 
   private replace(record: QualityRecord): QualityRecord {
     this.records.set(record.tenantId, (this.records.get(record.tenantId) ?? []).map((item) => item.id === record.id ? record : item));
+    void this.persistence?.saveQuality(record);
     return record;
   }
 }

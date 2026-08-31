@@ -1,4 +1,5 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
+import { FoundationPersistenceService } from '../database/foundation-persistence.service';
 import { createId, timestamp } from '../common/mock.types';
 import { DevicesService } from '../devices/devices.service';
 import { ProductionLinesService } from '../production-lines/production-lines.service';
@@ -11,13 +12,19 @@ const transitions: Record<MaintenanceStatus, MaintenanceStatus[]> = {
 };
 
 @Injectable()
-export class MaintenanceService {
+export class MaintenanceService implements OnModuleInit {
   private readonly orders = new Map<string, MaintenanceWorkOrder>();
 
   constructor(
     private readonly devices: DevicesService,
     private readonly lines: ProductionLinesService,
+    @Optional() private readonly persistence?: FoundationPersistenceService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    const snapshot = await this.persistence?.restore();
+    snapshot?.maintenance.forEach((item) => this.orders.set(item.id, item));
+  }
 
   list(tenantId: string): MaintenanceWorkOrder[] { return [...this.orders.values()].filter((item) => item.tenantId === tenantId); }
 
@@ -34,6 +41,7 @@ export class MaintenanceService {
     const now = timestamp();
     const item: MaintenanceWorkOrder = { id: createId('maintenance'), tenantId, lineId: dto.lineId, deviceId: dto.deviceId, type: dto.type, title: dto.title, description: dto.description ?? '', status: 'draft', plannedAt: dto.plannedAt, completedAt: null, createdAt: now, updatedAt: now };
     this.orders.set(item.id, item);
+    void this.persistence?.saveMaintenance(item);
     return item;
   }
 
@@ -43,6 +51,7 @@ export class MaintenanceService {
     if ((dto.status === 'cancelled' || dto.status === 'completed') && !dto.reason?.trim()) throw new ConflictException('A reason is required for maintenance completion or cancellation');
     const updated = { ...current, status: dto.status, completedAt: dto.status === 'completed' ? timestamp() : current.completedAt, updatedAt: timestamp() };
     this.orders.set(id, updated);
+    void this.persistence?.saveMaintenance(updated);
     return updated;
   }
 }

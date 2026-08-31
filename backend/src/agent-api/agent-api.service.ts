@@ -68,6 +68,7 @@ export class AgentApiService {
   private dispatch(tool: AgentReadOnlyTool, tenantId: string, args: Record<string, unknown>, context?: StrategyRequestContext): unknown {
     switch (tool) {
       case 'get_production_overview':
+        this.assertFactoryOverviewAccess(tenantId, context);
         return this.dashboardService.getOverview(tenantId);
       case 'get_line_status':
         return this.lineStatus(tenantId, this.requiredArg(args, 'lineId'), context);
@@ -84,9 +85,9 @@ export class AgentApiService {
       case 'get_strategy_result':
         return this.strategyResult(tenantId, this.requiredArg(args, 'simulationId'), context);
       case 'get_strategy_history':
-        return this.governance?.listCalls(tenantId) ?? [];
+        return this.governance && context ? this.governance.listCallsForContext(tenantId, context) : [];
       case 'get_strategy_approval_status':
-        return this.governance?.listApprovalsForSimulation(tenantId, this.requiredArg(args, 'simulationId')) ?? [];
+        return this.strategyApprovals(tenantId, this.requiredArg(args, 'simulationId'), context);
     }
   }
 
@@ -111,7 +112,8 @@ export class AgentApiService {
     if (typeof args.lineId === 'string') filters.lineId = args.lineId;
     if (typeof args.deviceId === 'string') filters.deviceId = args.deviceId;
     if (args.level === 'info' || args.level === 'warning' || args.level === 'critical') filters.level = args.level;
-    return this.alarmsService.findAll(tenantId, filters);
+    return this.alarmsService.findAll(tenantId, filters)
+      .filter((alarm) => !context || this.canReadAlarm(context, alarm.lineId, alarm.sourceId));
   }
 
   private workOrderProgress(tenantId: string, workOrderId: string, context?: StrategyRequestContext) {
@@ -152,6 +154,29 @@ export class AgentApiService {
     this.authorization.assertResourceAccess(context, kind, id, lineId);
   }
 
+  private assertFactoryOverviewAccess(tenantId: string, context?: StrategyRequestContext): void {
+    if (!context || !this.authorization) return;
+    this.productionLinesService.findAll(tenantId).forEach((line) => {
+      this.authorization?.assertResourceAccess(context, 'line', line.id);
+    });
+  }
+
+  private canReadAlarm(context: StrategyRequestContext, lineId: string, deviceId: string): boolean {
+    try {
+      this.authorization?.assertResourceAccess(context, 'line', lineId);
+      return true;
+    } catch (error: unknown) {
+      if (!(error instanceof ForbiddenException)) throw error;
+      try {
+        this.authorization?.assertResourceAccess(context, 'device', deviceId, lineId);
+        return true;
+      } catch (deviceError: unknown) {
+        if (deviceError instanceof ForbiddenException) return false;
+        throw deviceError;
+      }
+    }
+  }
+
   private delayRisk(tenantId: string, workOrderId: string, context?: StrategyRequestContext) {
     const order = this.workOrdersService.findOne(tenantId, workOrderId);
     this.assertResource(context, 'workOrder', workOrderId, order.lineId);
@@ -174,10 +199,10 @@ export class AgentApiService {
       if (!snapshot) throw new NotFoundException(`Simulation ${requestedId} not found`);
       return { simulationId: requestedId, ...snapshot };
     }
-    const snapshot = this.buildSnapshot(tenantId);
+    const snapshot = this.buildSnapshot(tenantId, context);
     if (context && this.authorization) this.authorization.assertSnapshotAccess(context, snapshot);
     const result = this.strategyEngine.simulate(snapshot);
-    this.governance?.recordSimulation(tenantId, 'nanobot', snapshot, result);
+    this.governance?.recordSimulation(tenantId, context?.userId ?? 'nanobot', snapshot, result, context);
     this.snapshots.set(result.simulationId, snapshot);
     this.simulations.set(result.simulationId, result);
     this.simulationTenants.set(result.simulationId, tenantId);
@@ -192,19 +217,27 @@ export class AgentApiService {
     }
     const cached = this.simulations.get(simulationId);
     if (cached && this.simulationTenants.get(simulationId) === tenantId) return cached;
-    const result = this.strategyEngine.simulate(this.buildSnapshot(tenantId));
+    const result = this.strategyEngine.simulate(this.buildSnapshot(tenantId, context));
     if (result.simulationId !== simulationId) throw new NotFoundException(`Simulation ${simulationId} not found`);
     this.simulations.set(result.simulationId, result);
     this.simulationTenants.set(result.simulationId, tenantId);
     return result;
   }
 
-  private buildSnapshot(tenantId: string): StrategySnapshot {
+  private strategyApprovals(tenantId: string, simulationId: string, context?: StrategyRequestContext) {
+    if (!this.governance) return [];
+    const tracked = this.governance.getSimulation(tenantId, simulationId);
+    if (context && this.authorization) this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
+    return this.governance.listApprovalsForSimulation(tenantId, simulationId);
+  }
+
+  private buildSnapshot(tenantId: string, context?: StrategyRequestContext): StrategySnapshot {
     const lines = this.productionLinesService.findAll(tenantId);
     const devices = this.devicesService.findAll(tenantId);
     const workOrders = this.workOrdersService.findAll(tenantId);
     return {
       timestamp: new Date().toISOString(),
+      factoryId: context?.factoryId,
       lines: lines.map((line) => ({ id: line.id, name: line.name, capacityPerHour: 10, active: line.status === 'active' })),
       devices: devices.map((device) => ({ id: device.id, lineId: device.lineId, status: device.status, capacityPerHour: 10 })),
       workOrders: workOrders.map((order) => ({

@@ -89,6 +89,8 @@ CREATE TABLE "production_orders" (
     "due_at" TIMESTAMP(3) NOT NULL,
     "priority" "WorkOrderPriority" NOT NULL,
     "status" "ProductionOrderStatus" NOT NULL DEFAULT 'planned',
+    "external_id" VARCHAR(80),
+    "external_system" VARCHAR(40),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -110,6 +112,10 @@ CREATE TABLE "work_orders" (
     "priority" "WorkOrderPriority" NOT NULL DEFAULT 'normal',
     "status" "WorkOrderStatus" NOT NULL DEFAULT 'draft',
     "status_reason" VARCHAR(200) NOT NULL DEFAULT '',
+    "external_id" VARCHAR(80),
+    "external_system" VARCHAR(40),
+    "bom_id" VARCHAR(40),
+    "routing_id" VARCHAR(40),
     "version" INTEGER NOT NULL DEFAULT 1,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
@@ -127,6 +133,12 @@ CREATE TABLE "work_order_reports" (
     "good_qty" INTEGER NOT NULL,
     "defect_qty" INTEGER NOT NULL,
     "source_trace_id" VARCHAR(100) NOT NULL,
+    "batch_no" VARCHAR(80),
+    "serial_numbers" JSONB,
+    "operation_code" VARCHAR(40),
+    "operator_id" VARCHAR(40),
+    "quality_record_id" VARCHAR(40),
+    "material_consumptions" JSONB,
     "reported_at" TIMESTAMP(3) NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -188,6 +200,76 @@ CREATE TABLE "mqtt_alarm_states" (
     "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "mqtt_alarm_states_pkey" PRIMARY KEY ("tenant_id","alarm_id")
+);
+
+-- CreateTable
+CREATE TABLE "quality_records" (
+    "id" VARCHAR(40) NOT NULL,
+    "tenant_id" VARCHAR(40) NOT NULL,
+    "form_key" VARCHAR(80) NOT NULL,
+    "form_version" VARCHAR(40) NOT NULL,
+    "status" VARCHAR(30) NOT NULL,
+    "work_order_id" VARCHAR(40),
+    "batch_no" VARCHAR(80) NOT NULL,
+    "line_id" VARCHAR(40) NOT NULL,
+    "device_id" VARCHAR(40),
+    "operator_id" VARCHAR(80) NOT NULL,
+    "values" JSONB NOT NULL,
+    "trace_id" VARCHAR(120) NOT NULL,
+    "trace" JSONB NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "quality_records_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "maintenance_work_orders" (
+    "id" VARCHAR(40) NOT NULL,
+    "tenant_id" VARCHAR(40) NOT NULL,
+    "line_id" VARCHAR(40) NOT NULL,
+    "device_id" VARCHAR(40) NOT NULL,
+    "type" VARCHAR(30) NOT NULL,
+    "title" VARCHAR(120) NOT NULL,
+    "description" VARCHAR(500) NOT NULL DEFAULT '',
+    "status" VARCHAR(30) NOT NULL,
+    "planned_at" TIMESTAMP(3) NOT NULL,
+    "completed_at" TIMESTAMP(3),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "maintenance_work_orders_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "document_records" (
+    "id" VARCHAR(40) NOT NULL,
+    "tenant_id" VARCHAR(40) NOT NULL,
+    "document_key" VARCHAR(120) NOT NULL,
+    "file_name" VARCHAR(255) NOT NULL,
+    "content_type" VARCHAR(120) NOT NULL,
+    "extension" VARCHAR(20) NOT NULL,
+    "size" INTEGER NOT NULL,
+    "file_hash" VARCHAR(128) NOT NULL,
+    "version" INTEGER NOT NULL,
+    "supersedes_id" VARCHAR(40),
+    "storage_key" VARCHAR(255) NOT NULL,
+    "storage_provider" VARCHAR(40) NOT NULL,
+    "status" VARCHAR(30) NOT NULL,
+    "line_id" VARCHAR(40),
+    "work_order_id" VARCHAR(40),
+    "product_code" VARCHAR(80),
+    "uploaded_by" VARCHAR(80) NOT NULL,
+    "uploaded_at" TIMESTAMP(3) NOT NULL,
+    "analysis_status" VARCHAR(30) NOT NULL,
+    "analysisDraft" JSONB,
+    "analysis_confirmed_by" VARCHAR(80),
+    "analysis_confirmed_at" TIMESTAMP(3),
+    "trace" JSONB NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "document_records_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -264,6 +346,65 @@ CREATE TABLE "strategy_candidates" (
     CONSTRAINT "strategy_candidates_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "products" (
+    "id" VARCHAR(40) NOT NULL,
+    "tenant_id" VARCHAR(40) NOT NULL,
+    "code" VARCHAR(40) NOT NULL,
+    "name" VARCHAR(120) NOT NULL,
+    "unit" VARCHAR(20),
+    "description" VARCHAR(500),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "products_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "operations" (
+    "id" VARCHAR(40) NOT NULL,
+    "tenant_id" VARCHAR(40) NOT NULL,
+    "code" VARCHAR(40) NOT NULL,
+    "name" VARCHAR(100) NOT NULL,
+    "standard_seconds" INTEGER,
+    "workstation" VARCHAR(80),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "operations_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "boms" (
+    "id" VARCHAR(40) NOT NULL,
+    "tenant_id" VARCHAR(40) NOT NULL,
+    "code" VARCHAR(40) NOT NULL,
+    "name" VARCHAR(100) NOT NULL,
+    "product_code" VARCHAR(40) NOT NULL,
+    "version" VARCHAR(20) NOT NULL,
+    "items" JSONB NOT NULL,
+    "operation_codes" JSONB NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "boms_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "routings" (
+    "id" VARCHAR(40) NOT NULL,
+    "tenant_id" VARCHAR(40) NOT NULL,
+    "code" VARCHAR(40) NOT NULL,
+    "name" VARCHAR(100) NOT NULL,
+    "product_code" VARCHAR(40) NOT NULL,
+    "version" VARCHAR(20) NOT NULL,
+    "operation_codes" JSONB NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "routings_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE INDEX "factories_tenant_id_idx" ON "factories"("tenant_id");
 
@@ -322,6 +463,18 @@ CREATE INDEX "mqtt_device_states_tenant_id_event_time_idx" ON "mqtt_device_state
 CREATE INDEX "mqtt_alarm_states_tenant_id_active_event_time_idx" ON "mqtt_alarm_states"("tenant_id", "active", "event_time");
 
 -- CreateIndex
+CREATE INDEX "quality_records_tenant_id_status_updated_at_idx" ON "quality_records"("tenant_id", "status", "updated_at");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "quality_records_tenant_id_trace_id_key" ON "quality_records"("tenant_id", "trace_id");
+
+-- CreateIndex
+CREATE INDEX "maintenance_work_orders_tenant_id_status_planned_at_idx" ON "maintenance_work_orders"("tenant_id", "status", "planned_at");
+
+-- CreateIndex
+CREATE INDEX "document_records_tenant_id_document_key_version_idx" ON "document_records"("tenant_id", "document_key", "version");
+
+-- CreateIndex
 CREATE INDEX "device_events_tenant_id_device_id_event_time_idx" ON "device_events"("tenant_id", "device_id", "event_time");
 
 -- CreateIndex
@@ -341,6 +494,24 @@ CREATE UNIQUE INDEX "strategy_runs_tenant_id_simulation_id_key" ON "strategy_run
 
 -- CreateIndex
 CREATE INDEX "strategy_candidates_strategy_run_id_score_idx" ON "strategy_candidates"("strategy_run_id", "score");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "products_tenant_id_code_key" ON "products"("tenant_id", "code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "operations_tenant_id_code_key" ON "operations"("tenant_id", "code");
+
+-- CreateIndex
+CREATE INDEX "boms_tenant_id_product_code_idx" ON "boms"("tenant_id", "product_code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "boms_tenant_id_code_version_key" ON "boms"("tenant_id", "code", "version");
+
+-- CreateIndex
+CREATE INDEX "routings_tenant_id_product_code_idx" ON "routings"("tenant_id", "product_code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "routings_tenant_id_code_version_key" ON "routings"("tenant_id", "code", "version");
 
 -- AddForeignKey
 ALTER TABLE "factories" ADD CONSTRAINT "factories_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -389,6 +560,15 @@ ALTER TABLE "alarms" ADD CONSTRAINT "alarms_line_id_fkey" FOREIGN KEY ("line_id"
 
 -- AddForeignKey
 ALTER TABLE "alarms" ADD CONSTRAINT "alarms_device_id_fkey" FOREIGN KEY ("device_id") REFERENCES "devices"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "quality_records" ADD CONSTRAINT "quality_records_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "maintenance_work_orders" ADD CONSTRAINT "maintenance_work_orders_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "document_records" ADD CONSTRAINT "document_records_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "strategy_runs" ADD CONSTRAINT "strategy_runs_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

@@ -17,6 +17,7 @@ for arg in "$@"; do
 done
 MQTT_URL="${MQTT_URL:-mqtt://localhost:1883}"
 TENANT_ID="${MES_TENANT_ID:-tenant-demo}"
+DATABASE_ENABLED_VALUE="${DATABASE_ENABLED:-false}"
 STARTED_PID_FILES=()
 
 cleanup_on_failure() {
@@ -122,10 +123,10 @@ start_service() {
   STARTED_PID_FILES+=("$pid_file")
   echo "$name 已启动，PID=$(cat "$pid_file")，日志：$LOG_DIR/${name}.log"
 }
-backend_command="npm run build && npm run start:prod"
+backend_command="DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' npm run build && DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' npm run start:prod"
 simulator_command="npm run dev"
 if [[ "$MQTT" == true ]]; then
-  backend_command="MQTT_ENABLED=true MQTT_URL='$MQTT_URL' npm run build && MQTT_ENABLED=true MQTT_URL='$MQTT_URL' npm run start:prod"
+  backend_command="DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' MQTT_ENABLED=true MQTT_URL='$MQTT_URL' npm run build && DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' MQTT_ENABLED=true MQTT_URL='$MQTT_URL' npm run start:prod"
   simulator_command="npm run dev -- --mqtt '$MQTT_URL' --tenant '$TENANT_ID'"
 fi
 start_service backend backend "$backend_command" 3000
