@@ -7,11 +7,13 @@ mkdir -p "$LOG_DIR"
 INFRA=false
 MQTT=false
 FRONTEND=true
+SIMULATOR_UI=true
 for arg in "$@"; do
   case "$arg" in
     --infra) INFRA=true ;;
     --mqtt) MQTT=true ;;
     --no-frontend) FRONTEND=false ;;
+    --no-simulator-ui) SIMULATOR_UI=false ;;
     *) echo "未知参数：$arg" >&2; exit 2 ;;
   esac
 done
@@ -145,6 +147,10 @@ if [[ "$FRONTEND" == true ]]; then
   start_service frontend third_party/threejs-factory-demo "npm run dev" 5173
   wait_for_http http://localhost:5173 Frontend "$RUNTIME_DIR/frontend.pid" frontend
 fi
+if [[ "$SIMULATOR_UI" == true ]]; then
+  start_service simulator-ui simulator-ui "npm run dev -- --port 5174" 5174
+  wait_for_http http://localhost:5174 "仿真控制台" "$RUNTIME_DIR/simulator-ui.pid" simulator-ui
+fi
 start_service simulator simulator "$simulator_command"
 if [[ "$MQTT" == true ]]; then
   sleep 1
@@ -157,6 +163,7 @@ cat <<EOF
 
 MES 演示环境已启动并通过 readiness 检查：
   前端：  http://localhost:5173
+  仿真控制台：http://localhost:5174
   后端：  http://localhost:3000/api/v1/health
   MQTT：  $([[ "$MQTT" == true ]] && echo "$MQTT_URL" || echo "未启用")
   日志：  $LOG_DIR
