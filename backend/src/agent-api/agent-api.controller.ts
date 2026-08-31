@@ -85,7 +85,12 @@ export class AgentApiController {
   }
 
   private assertServiceAccountRole(role: string | undefined, serviceAccountId: string | undefined): void {
-    if (!serviceAccountId?.trim() || process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT !== 'true') return;
+    if (process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT !== 'true') return;
+    if (!serviceAccountId?.trim()) {
+      throw new UnauthorizedException(
+        'SERVICE_ACCOUNT_REQUIRED: Agent service account is required',
+      );
+    }
     const allowed = (process.env.MES_AGENT_ALLOWED_ROLES ?? 'auditor')
       .split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
     const normalizedRole = role?.trim().toLowerCase() ?? '';

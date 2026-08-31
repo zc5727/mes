@@ -52,3 +52,11 @@ test("rejects invalid protocol frames and does not expose control operations", (
   const output = adaptOpcUaTelemetry({ tenantId: data.tenantId, lineId: data.lineId, deviceId: data.deviceId, timestamp: data.timestamp, values: data });
   assert.deepEqual(Object.keys(output.payload), ["event", "data"]);
 });
+
+test("fails closed on identity and count invariant violations", () => {
+  assert.throws(() => adaptMqttTelemetry(
+    "mes/simulator/tenant-demo/lines/line-cnc/devices/cnc-01/telemetry",
+    JSON.stringify({ event: "device.telemetry", data: { ...data, deviceId: "other-device" } }),
+  ), /deviceId does not match protocol identity/);
+  assert.throws(() => adaptHttpEvent({ event: "device.telemetry", data: { ...data, goodCount: 97 } }), /goodCount plus defectCount/);
+});

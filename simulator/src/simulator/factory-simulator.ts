@@ -46,6 +46,7 @@ export class FactorySimulator {
     agvDefinitions: AgvDefinition[] = AGV_DEFINITIONS,
     private readonly emitAgvTelemetry = false,
     networkOptions?: NetworkSimulationOptions,
+    private readonly seed?: number,
   ) {
     this.definitions = definitions;
     this.random = random;
@@ -54,12 +55,13 @@ export class FactorySimulator {
     this.lines = definitions.map((definition) => new ProductionLineSimulator(definition, tenantId, random));
     this.agvs = this.agvDefinitions.map((definition) => new AgvSimulator(definition));
     if (networkOptions) {
-      this.network = new NetworkSimulator(networkOptions, createSeededRandom(networkOptions.seed));
+      const networkSeed = networkOptions.seed ?? seed;
+      this.network = new NetworkSimulator({ ...networkOptions, seed: networkSeed }, createSeededRandom(networkSeed));
     }
   }
 
   private readonly definitions: typeof LINE_DEFINITIONS;
-  private readonly random: () => number;
+  private random: () => number;
 
   public start(): void {
     this.stopped = false;
@@ -101,6 +103,7 @@ export class FactorySimulator {
   }
   public getTimeScale(): number { return this.timeScale; }
   public reset(): void {
+    if (this.seed !== undefined) this.random = createSeededRandom(this.seed);
     this.lines = this.definitions.map((definition) => new ProductionLineSimulator(definition, this.tenantId, this.random));
     this.agvs = this.agvDefinitions.map((definition) => new AgvSimulator(definition));
     this.agvAlarms.clear();
@@ -128,6 +131,7 @@ export class FactorySimulator {
       tenantId: this.tenantId,
       intervalMs: this.intervalMs,
       timeScale: this.timeScale,
+      seed: this.seed,
       scenario: this.getScenario().events,
       frames: this.getReplayFrames(),
     };

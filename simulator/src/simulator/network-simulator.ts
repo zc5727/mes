@@ -11,7 +11,8 @@ export class NetworkSimulator {
   private readonly latencyMs: number;
   private readonly duplicateRate: number;
   private readonly dropRate: number;
-  private readonly random: () => number;
+  private random: () => number;
+  private readonly seed?: number;
   private readonly pending: PendingMessage[] = [];
   private sequence = 0;
 
@@ -20,6 +21,7 @@ export class NetworkSimulator {
     this.duplicateRate = validateRateOrLatency(options.duplicateRate ?? 0, "duplicateRate", true);
     this.dropRate = validateRateOrLatency(options.dropRate ?? 0, "dropRate", true);
     this.random = random;
+    this.seed = options.seed;
   }
 
   public enqueue(messages: SimulationMessage[], timestamp: Date): SimulationMessage[] {
@@ -49,6 +51,7 @@ export class NetworkSimulator {
   public reset(): void {
     this.pending.length = 0;
     this.sequence = 0;
+    if (this.seed !== undefined) this.random = createSeededRandom(this.seed);
   }
 
   private add(message: SimulationMessage, deliverAtMs: number): void {
@@ -68,4 +71,12 @@ function validateRateOrLatency(value: number, field: string, rate: boolean): num
 
 function cloneMessage(message: SimulationMessage): SimulationMessage {
   return JSON.parse(JSON.stringify(message)) as SimulationMessage;
+}
+
+function createSeededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
 }

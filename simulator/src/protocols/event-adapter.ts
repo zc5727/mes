@@ -131,11 +131,16 @@ function canonicalize(
   const lineId = stringValue(identity.lineId ?? value.lineId, "lineId");
   const deviceId = stringValue(identity.deviceId ?? value.deviceId, "deviceId");
   const timestamp = stringValue(identity.timestamp ?? value.timestamp, "timestamp");
+  validateIdentity(value, identity, { tenantId, lineId, deviceId, timestamp });
   if (Number.isNaN(Date.parse(timestamp))) throw new Error("timestamp must be a valid ISO date");
   const status = value.status;
   if (!isDeviceStatus(status)) throw new Error(`unsupported device status: ${String(status)}`);
   const activeFaults = value.activeFaults ?? [];
   if (!Array.isArray(activeFaults) || !activeFaults.every(isFaultType)) throw new Error("activeFaults contains an unsupported fault type");
+  const totalCount = nonNegativeInteger(value.totalCount, "totalCount");
+  const goodCount = nonNegativeInteger(value.goodCount, "goodCount");
+  const defectCount = nonNegativeInteger(value.defectCount, "defectCount");
+  if (goodCount + defectCount !== totalCount) throw new Error("goodCount plus defectCount must equal totalCount");
   const telemetry: CanonicalDeviceEvent = {
     tenantId,
     lineId,
@@ -144,15 +149,27 @@ function canonicalize(
     status,
     temperatureCelsius: finiteNumber(value.temperatureCelsius, "temperatureCelsius"),
     cycleTimeSeconds: finiteNumber(value.cycleTimeSeconds, "cycleTimeSeconds"),
-    totalCount: nonNegativeInteger(value.totalCount, "totalCount"),
-    goodCount: nonNegativeInteger(value.goodCount, "goodCount"),
-    defectCount: nonNegativeInteger(value.defectCount, "defectCount"),
+    totalCount,
+    goodCount,
+    defectCount,
     activeFaults: [...activeFaults],
   };
   if (typeof value.profileId === "string" && value.profileId.trim()) {
     telemetry.profileId = value.profileId;
   }
   return telemetry;
+}
+
+function validateIdentity(
+  value: Record<string, unknown>,
+  identity: Partial<Pick<CanonicalDeviceEvent, "tenantId" | "lineId" | "deviceId" | "timestamp">>,
+  resolved: Pick<CanonicalDeviceEvent, "tenantId" | "lineId" | "deviceId" | "timestamp">,
+): void {
+  for (const field of ["tenantId", "lineId", "deviceId", "timestamp"] as const) {
+    if (identity[field] !== undefined && value[field] !== undefined && value[field] !== resolved[field]) {
+      throw new Error(`${field} does not match protocol identity`);
+    }
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }

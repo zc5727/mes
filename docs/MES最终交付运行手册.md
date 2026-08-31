@@ -1,7 +1,7 @@
 # MES 最终交付运行手册
 
 **负责人：** 赵丞  
-**适用版本：** 核心 MES 试点版 v1.5 / 提交 `91125c6e`
+**适用版本：** 核心 MES 试点版 v1.5 / 以当前 Git 提交和实际验证输出为准
 **适用范围：** 单工厂、单车间、四条模拟产线；不包含 SaaS、Nanobot 原生集成和真实 PLC 控制。
 
 ## 1. 交付边界
@@ -27,8 +27,17 @@
 在仓库根目录执行：
 
 ```bash
+# 演示模式：使用内存适配器，DATABASE_ENABLED 默认为 false。
 ./scripts/dev-up.sh --infra --mqtt
 ./scripts/dev-status.sh
+```
+
+需要启用 PostgreSQL、迁移和真实运行时 readiness 时，使用统一运行入口，
+不要把上面的演示启动命令当作持久化验收：
+
+```bash
+./scripts/mes-runtime.sh start --object-storage
+./scripts/mes-runtime.sh ready --object-storage
 ```
 
 访问：
@@ -80,10 +89,14 @@ npm --prefix third_party/threejs-factory-demo run build
 ### 4.2 运行时和 MQTT 验证
 
 ```bash
-./scripts/verify-runtime.sh --object-storage
+./scripts/verify-runtime.sh
 ```
 
-该脚本覆盖服务启动、健康检查、浏览器 smoke、API、MQTT、故障闭环和 PostgreSQL 容器重启。最近一次实测在 `DATABASE_ENABLED=true` 下完成依赖 readiness、14 张表校验、迁移回滚和业务 smoke，但 PostgreSQL 重启后 Backend 健康检查失败，退出码 7；因此不能把该命令记为真实运行闭环通过。
+该脚本固定覆盖 PostgreSQL、MQTT、MinIO、迁移、健康检查、浏览器
+smoke、API、MQTT、故障闭环和 PostgreSQL 容器重启。历史实测曾在
+`DATABASE_ENABLED=true` 下完成依赖 readiness、14 张表校验、迁移回滚和
+业务 smoke，但 PostgreSQL 重启后 Backend 健康检查失败，退出码 7；在
+新的实际输出归档前，不能把该命令记为真实运行闭环通过。
 
 ### 4.3 浏览器/桌面验收
 
@@ -110,7 +123,8 @@ scripts/verify-desktop-release.sh \
 
 ### 5.1 设备故障闭环
 
-1. 启动 `./scripts/dev-up.sh --infra --mqtt`。
+1. 生产持久化演练启动 `./scripts/mes-runtime.sh start --object-storage`；仅做
+   内存演示时才使用 `./scripts/dev-up.sh --infra --mqtt`。
 2. 在页面或测试接口选择产线和设备，注入故障。
 3. 验证 `telemetry`、`alarm.created`、设备状态、产线状态和看板高亮。
 4. 恢复同一设备，验证 `alarm.cleared`、状态恢复和其他产线不变。
@@ -146,11 +160,13 @@ scripts/verify-desktop-release.sh \
 - 数据库迁移、备份恢复、回滚和权限拒绝测试结果。
 - 操作者、时间、环境、产线、设备、工单、`traceId` 和证据文件路径。
 
-### 7.1 提交 91125c6e 已具备的代码/测试证据
+### 7.1 历史基线具备的代码/测试证据
 
 下表只记录仓库中确实存在的实现或测试文件，不等同于现场生产通过。本基线新增审计持久化边界、维修/质量/工单状态约束、策略治理 E2E、数据库运行时检查、迁移回滚检查入口和停机清理收口；它们仍需按第 8 节完成真实依赖与现场验收。
 
-本轮 `./scripts/verify-all.sh` 当前 exit 2（工作树 `scripts/verify-all.sh` 在 `on_exit` 附近存在 Bash 语法错误）：Backend unit 41 suites / 132 tests、E2E 8 suites / 26 tests、Simulator 48 tests；后端构建、数据库 schema 校验、前端构建、前端契约 smoke 和 Tauri desktop smoke 均通过。`./scripts/mes-runtime.sh preflight` 通过；`verify --object-storage` 已完成 PostgreSQL/MQTT/MinIO readiness、14 张表校验、迁移回滚及 API/MQTT/故障/数字孪生 smoke，但 PostgreSQL 重启后 Backend 健康检查失败，退出码 7；不得宣称真实运行闭环通过。
+下表保留历史代码和测试证据，旧提交号、测试数量和运行结果不作为当前
+工作树的通过声明。当前交付必须以本轮实际命令输出、日志和证据归档为准；
+尤其要单独记录数据库启用、重启恢复和四条产线隔离结果。
 
 | 能力 | 代码证据 | 测试/验证证据 | 当前判定 |
 |---|---|---|---|
@@ -166,7 +182,10 @@ scripts/verify-desktop-release.sh \
 
 ## 8. 生产化缺口清单与退出证据
 
-以下清单按当前提交 `91125c6e` 的代码和脚本核对；“基础接口/演示”不等于生产完成。每一项只有在右栏证据归档后才能关闭。本基线收口了运行时停机清理，并保留主数据/告警控制边界、维修模块装配、维修/质量/工单状态约束、策略治理 E2E、数据库 seed/运行时检查和迁移回滚检查入口；这些证据仍不能替代现场生产验收。
+以下清单按当前代码和脚本核对；“基础接口/演示”不等于生产完成。每一项
+只有在右栏证据归档后才能关闭。本基线收口了运行时停机清理，并保留主数据/
+告警控制边界、维修模块装配、维修/质量/工单状态约束、策略治理 E2E、
+数据库 seed/运行时检查和迁移回滚检查入口；这些证据仍不能替代现场生产验收。
 
 | 缺口 | 当前真实状态 | 关闭所需退出证据 |
 |---|---|---|
@@ -204,19 +223,27 @@ scripts/verify-desktop-release.sh \
 
 ## 9. 当前未完成事项
 
-截至提交 `91125c6e`，质量/维修约束、基础持久化恢复、策略治理和运行时依赖门禁已有代码/测试证据，但以下事项仍不能标记为完成：ERPNext 真实旁路与四线对账、PostgreSQL 生产事务/重启恢复、ThingsBoard/Gateway 运行接入、库存扣减、IQC/IPQC/OQC/NCR/CAPA 完整闭环、对象存储、正式身份/TLS 与不可篡改审计、Tauri `.app/.dmg` 实机升级回滚。具体退出标准以 `docs/MES里程碑计划.md` 和 `docs/MES成熟功能域路线与端到端验收.md` 为准。
+截至本轮收尾审查，质量/维修约束、基础持久化恢复、策略治理和运行时
+依赖门禁已有代码/测试证据，但以下事项仍不能标记为完成：ERPNext 真实
+旁路与四线对账、PostgreSQL 生产事务/重启恢复、ThingsBoard/Gateway 运行
+接入、库存扣减、IQC/IPQC/OQC/NCR/CAPA 完整闭环、对象存储、正式身份/TLS
+与不可篡改审计、Tauri `.app/.dmg` 实机升级回滚。具体退出标准以
+`docs/MES里程碑计划.md` 和 `docs/MES成熟功能域路线与端到端验收.md` 为准。
 
-## 10. 91125c6e 终极审计补充
+## 10. 收尾审计补充
 
 本基线新增 Modbus TCP/OPC UA 协议桥接。它们仅作为可重复的隔离适配器，不包含真实 PLC 写入，也不能替代现场协议、网络、证书、权限和断线恢复验收。
 
-本轮 `./scripts/verify-all.sh` 当前 exit 2（工作树 `scripts/verify-all.sh` 在 `on_exit` 附近存在 Bash 语法错误）：Backend unit 41 suites / 132 tests、E2E 8 suites / 26 tests、Simulator 48 tests，以及后端/前端构建和 Tauri desktop smoke 均通过。该结果只证明代码和隔离环境门禁通过；ERPNext、ThingsBoard/Gateway、真实设备、生产恢复和桌面实机仍需单独验收。
+`./scripts/verify-all.sh`、后端和模拟器测试的数量与结果必须以当前工作树
+实际输出为准，不得沿用历史计数。即使代码门禁通过，也只证明代码和隔离
+环境可验证；ERPNext、ThingsBoard/Gateway、真实设备、生产恢复和桌面实机
+仍需单独验收。
 
 ### 10.1 当前已验证 / 仍待现场总表
 
 | 当前已验证 | 仍待现场或外部依赖 |
 |---|---|
 | 四产线模拟、MQTT telemetry/alarm、故障恢复、数字孪生 SSE/REST、Modbus/OPC UA 隔离桥接 | ThingsBoard/Gateway、真实 PLC/OPC UA/Modbus 设备、TLS/ACL 和断线恢复 |
-| Backend unit 123、E2E 26、Simulator 48、构建、迁移校验、Tauri 结构 smoke | ERPNext 旁路对账、生产 PostgreSQL 重启恢复、备份恢复和并发压测 |
+| Backend unit/E2E/Simulator 的当前实际输出、构建、迁移校验、Tauri 结构 smoke | ERPNext 旁路对账、生产 PostgreSQL 重启恢复、备份恢复和并发压测 |
 | 质量/维修/追溯/库存/策略治理基础接口和授权边界 | IQC/IPQC/OQC/NCR/CAPA 完整闭环、备件扣减、对象存储、正式身份和不可篡改审计 |
 | 启停、readiness、单实例、逆序清理脚本级验证 | `.app/.dmg` 双击安装、签名、公证、窗口三维交互、升级回滚和生产发布 |

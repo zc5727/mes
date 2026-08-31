@@ -184,7 +184,12 @@ export class AgentApiService {
   }
 
   private assertServiceAccountMinimumPrivilege(input: AgentAuthorizationContext, role: string): void {
-    if (!input.serviceAccountId || process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT !== 'true') return;
+    if (process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT !== 'true') return;
+    if (!input.serviceAccountId?.trim()) {
+      throw new UnauthorizedException(
+        'SERVICE_ACCOUNT_REQUIRED: Agent service account is required',
+      );
+    }
     const allowedRoles = (process.env.MES_AGENT_ALLOWED_ROLES ?? 'auditor')
       .split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
     if (!allowedRoles.includes(role)) {

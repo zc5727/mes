@@ -80,10 +80,12 @@ export function getDeviceProfile(profileId: string): DeviceProfile {
 export function validateDeviceProfile(value: unknown, index = 0): asserts value is DeviceProfile {
   if (!isRecord(value) || typeof value.id !== "string" || typeof value.mechanicalType !== "string"
     || typeof value.controller !== "string" || !isProtocol(value.protocol) || !Array.isArray(value.deviceKinds)
-    || value.deviceKinds.length === 0 || typeof value.sampleIntervalMs !== "number"
+    || value.deviceKinds.length === 0 || !value.deviceKinds.every(isDeviceKind) || typeof value.sampleIntervalMs !== "number"
     || !Number.isInteger(value.sampleIntervalMs) || value.sampleIntervalMs < 100
     || typeof value.modelKey !== "string" || !Array.isArray(value.dataPoints) || !Array.isArray(value.controls)
-    || !Array.isArray(value.faultTypes) || value.compatibility !== "SIMULATED_CONTRACT_ONLY") {
+    || !value.controls.every((control) => typeof control === "string" && control.length > 0)
+    || !Array.isArray(value.faultTypes) || !value.faultTypes.every(isFaultType)
+    || value.compatibility !== "SIMULATED_CONTRACT_ONLY") {
     throw new Error(`Invalid device profile at index ${index}`);
   }
   const keys = new Set<string>();
@@ -105,6 +107,12 @@ function isDataType(value: unknown): value is ProfileDataPoint["dataType"] {
 }
 function isAccess(value: unknown): value is ProfileAccess {
   return ["READ", "WRITE", "READ_WRITE"].includes(value as string);
+}
+function isDeviceKind(value: unknown): value is DeviceKind {
+  return ["CNC", "ROBOT", "WELDER", "VISION", "CONVEYOR"].includes(value as string);
+}
+function isFaultType(value: unknown): value is FaultType {
+  return ["OVERHEAT", "JAM", "COMMUNICATION_LOSS", "QUALITY_DRIFT", "EMERGENCY_STOP", "MATERIAL_SHORTAGE", "QUALITY_ANOMALY"].includes(value as string);
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

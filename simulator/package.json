@@ -11,7 +11,7 @@
     "protocols:smoke:modbus": "npm run build && node dist/protocols/protocol-runner.js modbus-tcp",
     "protocols:smoke:opcua": "npm run build && node dist/protocols/protocol-runner.js opc-ua",
     "protocols:smoke:mtconnect": "npm run build && node dist/protocols/protocol-runner.js mtconnect",
-    "test": "npm run build && node --test dist/*.test.js dist/metrics/*.test.js dist/protocols/*.test.js dist/simulator/*.test.js dist/strategy/*.test.js dist/twin/*.test.js",
+    "test": "npm run build && node --test --test-concurrency=1 dist/*.test.js dist/metrics/*.test.js dist/protocols/*.test.js dist/simulator/*.test.js dist/strategy/*.test.js dist/twin/*.test.js",
     "check": "npm run build && npm test"
   },
   "dependencies": {

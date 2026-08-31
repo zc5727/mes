@@ -87,4 +87,33 @@ describe('AgentApiController identity boundary', () => {
     )).toThrow('IDENTITY_MISMATCH');
     expect(service.execute).not.toHaveBeenCalled();
   });
+
+  it('requires a service account when the deployment enables that boundary', () => {
+    const previous = process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT;
+    process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT = 'true';
+    try {
+      const service = { execute: jest.fn() } as unknown as AgentApiService;
+      const controller = new AgentApiController(service);
+
+      expect(() => controller.execute(
+        {
+          tool: 'get_production_overview',
+          arguments: {},
+          tenantId: 'tenant-demo',
+          traceId: 'trace-service-account',
+        },
+        'tenant-demo',
+        'user-1',
+        'auditor',
+        'factory-demo',
+        '*',
+        'session-1',
+        'trace-service-account',
+      )).toThrow(UnauthorizedException);
+      expect(service.execute).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT;
+      else process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT = previous;
+    }
+  });
 });

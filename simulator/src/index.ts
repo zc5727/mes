@@ -37,6 +37,7 @@ async function main(): Promise<void> {
     simulatorConfig.agvs,
     options.emitAgvTelemetry,
     options.network,
+    options.seed,
   );
   simulator.setTimeScale(options.timeScale ?? 1);
   simulator.setPaused(options.paused);

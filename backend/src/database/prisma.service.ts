@@ -47,7 +47,8 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       const rows = await this.$queryRaw<Array<{ table_name: string }>>`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN (${Prisma.join(this.requiredTables)})`;
       const actual = new Set(rows.map((row) => row.table_name));
       return { enabled: true, status: this.requiredTables.every((table) => actual.has(table)) ? 'ready' : 'unavailable' };
-    } catch {
+    } catch (error: unknown) {
+      this.logger.warn(`PostgreSQL readiness query failed: ${this.errorMessage(error)}`);
       return { enabled: true, status: 'unavailable' };
     }
   }

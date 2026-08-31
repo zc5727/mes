@@ -145,4 +145,32 @@ describe('AgentApiService', () => {
       error: expect.objectContaining({ code: 'AUTHORIZATION_DENIED', message: expect.stringContaining('RESOURCE_SCOPE_DENIED') }),
     }));
   });
+
+  it('fails closed when a governed Agent call omits the required service account', () => {
+    const previous = process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT;
+    process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT = 'true';
+    try {
+      const response = createGovernedService().execute({
+        tool: 'get_production_overview',
+        arguments: {},
+        tenantId: 'tenant-demo',
+        traceId: 'trace-service-account',
+        authorization: {
+          userId: 'auditor-1',
+          role: 'auditor',
+          factoryId: 'factory-demo',
+          scope: '*',
+          sessionId: 'session-service-account',
+        },
+      });
+
+      expect(response).toEqual(expect.objectContaining({
+        ok: false,
+        error: expect.objectContaining({ code: 'AUTH_REQUIRED' }),
+      }));
+    } finally {
+      if (previous === undefined) delete process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT;
+      else process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT = previous;
+    }
+  });
 });

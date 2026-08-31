@@ -44,7 +44,7 @@ test("Modbus TCP rejects a bad function frame and surfaces disconnects", async (
 });
 
 test("separate Modbus endpoints keep device telemetry isolated", async () => {
-  const second = { ...values, deviceId: "cnc-02", totalCount: 200 };
+  const second = { ...values, deviceId: "cnc-02", totalCount: 200, goodCount: 198 };
   const firstServer = new ModbusTcpSimulatorServer(values, "127.0.0.1", 16004);
   const secondServer = new ModbusTcpSimulatorServer(second, "127.0.0.1", 16005);
   await Promise.all([firstServer.start(), secondServer.start()]);

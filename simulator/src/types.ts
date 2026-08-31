@@ -181,6 +181,7 @@ export interface ReplayDocument {
   tenantId: string;
   intervalMs: number;
   timeScale: number;
+  seed?: number;
   scenario?: ScenarioEvent[];
   frames: ReplayFrame[];
 }

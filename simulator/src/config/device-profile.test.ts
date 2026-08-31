@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEVICE_PROFILES } from "./device-profile";
+import { DEVICE_PROFILES, validateDeviceProfile } from "./device-profile";
 import { LINE_DEFINITIONS, loadLineDefinitions, loadSimulatorConfig } from "./line-config";
 
 test("built-in line devices resolve to synthetic, contract-only profiles", () => {
@@ -41,4 +41,15 @@ test("rejects a profile that cannot drive the declared device kind", () => {
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("rejects a profile with an undeclared kind or fault", () => {
+  assert.throws(() => validateDeviceProfile({
+    ...DEVICE_PROFILES[0],
+    deviceKinds: ["UNKNOWN"],
+  }), /Invalid device profile/);
+  assert.throws(() => validateDeviceProfile({
+    ...DEVICE_PROFILES[0],
+    faultTypes: ["UNKNOWN"],
+  }), /Invalid device profile/);
 });

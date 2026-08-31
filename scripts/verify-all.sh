@@ -24,6 +24,7 @@ run() {
 }
 
 run git -C "$ROOT_DIR" diff --check
+run "$ROOT_DIR/scripts/verify-runtime-unavailable.sh"
 run npm --prefix "$ROOT_DIR/backend" run verify:env
 run npm --prefix "$ROOT_DIR/backend" run verify:mock
 run npm --prefix "$ROOT_DIR/backend" test -- --runInBand
