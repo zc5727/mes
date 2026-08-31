@@ -107,6 +107,23 @@ describe('quality, maintenance and traceability contracts (e2e)', () => {
     expect((await request(app.getHttpServer()).get('/api/v1/master-data/batches').set(headers)).body.data.find((item: { batchNo: string }) => item.batchNo === 'B-E2E-001').quantity).toBe(10);
   });
 
+  it('hard-blocks direct completion while a linked quality record is not released', async () => {
+    const headers = { 'x-tenant-id': 'tenant-demo' };
+    const workOrder = await request(app.getHttpServer()).post('/api/v1/work-orders').set(headers).send({
+      orderNo: 'WO-QUALITY-GATE-E2E', productCode: 'P-QUALITY', productName: '质量闸门测试件',
+      lineId: 'line-cnc', plannedQty: 2, dueAt: '2026-09-05T12:00:00.000Z',
+    }).expect(201);
+    const workOrderId = workOrder.body.data.id;
+    await request(app.getHttpServer()).patch(`/api/v1/work-orders/${workOrderId}/status`).set(headers).send({ status: 'released' }).expect(200);
+    await request(app.getHttpServer()).patch(`/api/v1/work-orders/${workOrderId}/status`).set(headers).send({ status: 'in_progress' }).expect(200);
+    await request(app.getHttpServer()).post('/api/v1/foundation/quality-records').set(headers).send({
+      batchNo: 'FG-QUALITY-GATE-E2E', lineId: 'line-cnc', workOrderId,
+      operatorId: 'inspector-e2e', values: {}, traceId: 'quality-gate-e2e',
+    }).expect(201);
+    await request(app.getHttpServer()).patch(`/api/v1/work-orders/${workOrderId}/status`).set(headers)
+      .send({ status: 'completed' }).expect(409);
+  });
+
   it('creates one repair work order per alarm and closes it only after point inspection', async () => {
     const headers = { 'x-tenant-id': 'tenant-demo' };
     const alarms = await request(app.getHttpServer()).get('/api/v1/alarms?deviceId=device-welding-01').set(headers).expect(200);
