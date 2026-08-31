@@ -4,6 +4,14 @@ set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${MES_RUNTIME_COMPOSE_FILE:-$ROOT_DIR/backend/docker-compose.yml}"
 export COMPOSE_PROJECT_NAME="${MES_RUNTIME_PROJECT_NAME:-mes-runtime-$$}"
+POSTGRES_HOST_PORT="${MES_POSTGRES_HOST_PORT:-5432}"
+MQTT_HOST_PORT="${MES_MQTT_HOST_PORT:-1883}"
+MINIO_HOST_PORT="${MES_MINIO_HOST_PORT:-9000}"
+export MES_POSTGRES_HOST_PORT="$POSTGRES_HOST_PORT"
+export MES_MQTT_HOST_PORT="$MQTT_HOST_PORT"
+export MES_MINIO_HOST_PORT="$MINIO_HOST_PORT"
+export MQTT_URL="${MQTT_URL:-mqtt://localhost:${MQTT_HOST_PORT}}"
+export DATABASE_URL="${DATABASE_URL:-postgresql://mes:mes_dev@localhost:${POSTGRES_HOST_PORT}/mes}"
 STARTED=false
 
 wait_for_http() {
@@ -50,7 +58,7 @@ if ! docker info >/dev/null 2>&1; then
   exit 2
 fi
 
-for port in 3000 5173 5174 5432 1883 9000; do
+for port in 3000 5173 5174 "$POSTGRES_HOST_PORT" "$MQTT_HOST_PORT" "$MINIO_HOST_PORT"; do
   if nc -z localhost "$port" >/dev/null 2>&1; then
     echo "BLOCKED: localhost:$port 已被占用，无法保证本次 runtime 的实例隔离。" >&2
     if command -v lsof >/dev/null 2>&1; then
@@ -72,7 +80,7 @@ if ! "${COMPOSE[@]}" --profile infra --profile object-storage up -d postgres mqt
   exit 2
 fi
 STARTED=true
-for port in 5432 1883 9000; do
+for port in "$POSTGRES_HOST_PORT" "$MQTT_HOST_PORT" "$MINIO_HOST_PORT"; do
   for _ in $(seq 1 30); do
     nc -z localhost "$port" >/dev/null 2>&1 && break
     sleep 1
@@ -85,7 +93,7 @@ done
 
 minio_ready=false
 for _ in $(seq 1 30); do
-  if curl --fail --silent --show-error http://localhost:9000/minio/health/live >/dev/null 2>&1; then
+  if curl --fail --silent --show-error "http://localhost:${MINIO_HOST_PORT}/minio/health/live" >/dev/null 2>&1; then
     minio_ready=true
     break
   fi
@@ -113,7 +121,7 @@ echo "PASS PostgreSQL protocol readiness"
 
 echo "执行真实数据库迁移"
 npm --prefix "$ROOT_DIR/backend" run db:init
-DATABASE_URL="${DATABASE_URL:-postgresql://mes:mes_dev@localhost:5432/mes}" npm --prefix "$ROOT_DIR/backend" run db:verify-runtime
+npm --prefix "$ROOT_DIR/backend" run db:verify-runtime
 "$ROOT_DIR/scripts/verify-migration-rollback.sh" "${COMPOSE[@]}"
 
 if [[ -z "${MES_API_KEY:-}" && -f "$ROOT_DIR/backend/.env" ]]; then
@@ -121,6 +129,8 @@ if [[ -z "${MES_API_KEY:-}" && -f "$ROOT_DIR/backend/.env" ]]; then
 fi
 export MES_API_KEY
 
+DATABASE_URL="$DATABASE_URL" \
+MQTT_URL="$MQTT_URL" \
 MES_RUNTIME_COMPOSE_FILE="$COMPOSE_FILE" DATABASE_ENABLED=true DATABASE_REQUIRED=true MQTT_ENABLED=true MES_OBJECT_STORAGE=true "$ROOT_DIR/scripts/dev-up.sh" --mqtt
 
 readiness="$(curl -fsS http://localhost:3000/api/v1/health/readiness)"
@@ -139,10 +149,10 @@ MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="$MES_API_KEY" MES_TENANT_ID="${M
 echo "检查 PostgreSQL 重启后的 TCP/服务可用性"
 "${COMPOSE[@]}" restart postgres
 for _ in $(seq 1 30); do
-  if nc -z localhost 5432 >/dev/null 2>&1; then break; fi
+  if nc -z localhost "$POSTGRES_HOST_PORT" >/dev/null 2>&1; then break; fi
   sleep 1
 done
-nc -z localhost 5432
+nc -z localhost "$POSTGRES_HOST_PORT"
 "${COMPOSE[@]}" exec -T postgres pg_isready -U mes -d mes >/dev/null
 wait_for_http "http://localhost:3000/api/v1/health" "PostgreSQL 重启后的后端健康检查"
 echo "检查数据库迁移状态"
@@ -157,6 +167,8 @@ for _ in $(seq 1 30); do
   if ! kill -0 "$backend_pid" 2>/dev/null; then break; fi
   sleep 1
 done
+DATABASE_URL="$DATABASE_URL" \
+MQTT_URL="$MQTT_URL" \
 MES_RUNTIME_COMPOSE_FILE="$COMPOSE_FILE" DATABASE_ENABLED=true DATABASE_REQUIRED=true MQTT_ENABLED=true MES_OBJECT_STORAGE=true "$ROOT_DIR/scripts/dev-up.sh" --mqtt --no-frontend
 readiness="$(curl -fsS http://localhost:3000/api/v1/health/readiness)"
 echo "$readiness" | grep -q '"enabled":true' || { echo "FAIL: 数据库未以 enabled=true 运行：$readiness" >&2; exit 1; }
@@ -191,8 +203,8 @@ node "$ROOT_DIR/scripts/desktop-smoke.mjs" --app-dir "$ROOT_DIR/desktop"
 
 echo "停止并验证服务清理"
 MES_RUNTIME_COMPOSE_FILE="$COMPOSE_FILE" "$ROOT_DIR/scripts/dev-down.sh" --infra
-if nc -z localhost 3000 >/dev/null 2>&1 || nc -z localhost 5173 >/dev/null 2>&1 || nc -z localhost 5174 >/dev/null 2>&1 || nc -z localhost 1883 >/dev/null 2>&1 || nc -z localhost 5432 >/dev/null 2>&1 || nc -z localhost 9000 >/dev/null 2>&1; then
-  echo "FAIL: 停止后仍有 MES 端口监听（3000/5173/5174/1883/5432/9000）" >&2
+if nc -z localhost 3000 >/dev/null 2>&1 || nc -z localhost 5173 >/dev/null 2>&1 || nc -z localhost 5174 >/dev/null 2>&1 || nc -z localhost "$MQTT_HOST_PORT" >/dev/null 2>&1 || nc -z localhost "$POSTGRES_HOST_PORT" >/dev/null 2>&1 || nc -z localhost "$MINIO_HOST_PORT" >/dev/null 2>&1; then
+  echo "FAIL: 停止后仍有 MES 端口监听（3000/5173/5174/${MQTT_HOST_PORT}/${POSTGRES_HOST_PORT}/${MINIO_HOST_PORT}）" >&2
   exit 1
 fi
 if [[ -d "$ROOT_DIR/.runtime" ]] && compgen -G "$ROOT_DIR/.runtime/*.pid" >/dev/null; then

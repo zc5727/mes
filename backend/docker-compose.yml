@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: mes_dev
       POSTGRES_DB: mes
     ports:
-      - "5432:5432"
+      - "${MES_POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - mes_postgres:/var/lib/postgresql/data
     healthcheck:
@@ -19,8 +19,8 @@ services:
     profiles: ["infra"]
     image: eclipse-mosquitto:2
     ports:
-      - "1883:1883"
-      - "9001:9001"
+      - "${MES_MQTT_HOST_PORT:-1883}:1883"
+      - "${MES_MQTT_WS_HOST_PORT:-9001}:9001"
     volumes:
       - ./infra/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
     healthcheck:
@@ -36,8 +36,8 @@ services:
       MINIO_ROOT_USER: mes_dev
       MINIO_ROOT_PASSWORD: mes_dev_secret
     ports:
-      - "9000:9000"
-      - "9002:9001"
+      - "${MES_MINIO_HOST_PORT:-9000}:9000"
+      - "${MES_MINIO_CONSOLE_HOST_PORT:-9002}:9001"
     volumes:
       - mes_minio:/data
     healthcheck:

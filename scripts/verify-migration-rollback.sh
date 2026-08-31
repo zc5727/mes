@@ -20,6 +20,7 @@ else
   exit 2
 fi
 DATABASE_NAME="mes_rollback_${RANDOM}_$$"
+POSTGRES_HOST_PORT="${MES_POSTGRES_HOST_PORT:-5432}"
 cleanup() {
   "${COMPOSE[@]}" exec -T postgres psql -U mes -d postgres -v ON_ERROR_STOP=1 \
     -c "DROP DATABASE IF EXISTS \"$DATABASE_NAME\";" >/dev/null 2>&1 || true
@@ -31,7 +32,7 @@ echo "创建一次性迁移回滚数据库：$DATABASE_NAME"
   -c "CREATE DATABASE \"$DATABASE_NAME\";" >/dev/null
 
 echo "在一次性数据库执行真实迁移"
-DATABASE_URL="postgresql://mes:mes_dev@localhost:5432/$DATABASE_NAME" \
+DATABASE_URL="postgresql://mes:mes_dev@localhost:${POSTGRES_HOST_PORT}/$DATABASE_NAME" \
   npm --prefix "$ROOT_DIR/backend" run db:migrate
 
 echo "删除一次性数据库，完成回滚演练"
