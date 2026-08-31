@@ -16,6 +16,8 @@ describe('digital twin SSE stream', () => {
     expect(received).toHaveLength(2);
     listener?.('tenant-other');
     expect(received).toHaveLength(2);
+    listener?.('*');
+    expect(received).toHaveLength(3);
     subscription.unsubscribe();
   });
 });

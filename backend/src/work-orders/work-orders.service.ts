@@ -192,7 +192,7 @@ export class WorkOrdersService implements OnModuleInit {
     return workOrder;
   }
 
-  create(tenantId: string, dto: CreateWorkOrderDto): WorkOrder {
+  create(tenantId: string, dto: CreateWorkOrderDto, actorId = 'system'): WorkOrder {
     const duplicate = this.findAll(tenantId).some((order) => order.orderNo === dto.orderNo);
     if (duplicate) {
       throw new ConflictException(`Work order ${dto.orderNo} already exists`);
@@ -231,7 +231,7 @@ export class WorkOrdersService implements OnModuleInit {
     this.workOrders.set(workOrder.id, workOrder);
     void this.persistence?.saveWorkOrder(workOrder);
     this.productionLinesService.registerWorkOrder(tenantId, workOrder.lineId);
-    this.auditService?.record(tenantId, 'system', {
+    this.auditService?.record(tenantId, actorId.trim() || 'system', {
       action: 'work_order.created',
       resource: 'work_order',
       resourceId: workOrder.id,
@@ -241,7 +241,7 @@ export class WorkOrdersService implements OnModuleInit {
     return workOrder;
   }
 
-  update(tenantId: string, id: string, dto: UpdateWorkOrderDto): WorkOrder {
+  update(tenantId: string, id: string, dto: UpdateWorkOrderDto, actorId = 'system'): WorkOrder {
     const current = this.findOne(tenantId, id);
     if (current.status === 'completed' || current.status === 'cancelled') {
       throw new ConflictException(`Work orders in ${current.status} status cannot be edited`);
@@ -272,7 +272,7 @@ export class WorkOrdersService implements OnModuleInit {
     }
     this.workOrders.set(id, updated);
     void this.persistence?.saveWorkOrder(updated);
-    this.auditService?.record(tenantId, 'system', {
+    this.auditService?.record(tenantId, actorId.trim() || 'system', {
       action: 'work_order.updated',
       resource: 'work_order',
       resourceId: id,
@@ -283,7 +283,7 @@ export class WorkOrdersService implements OnModuleInit {
     return updated;
   }
 
-  report(tenantId: string, id: string, dto: ReportWorkOrderDto): { workOrder: WorkOrder; report: WorkOrderReport } {
+  report(tenantId: string, id: string, dto: ReportWorkOrderDto, actorId = 'system'): { workOrder: WorkOrder; report: WorkOrderReport } {
     const current = this.findOne(tenantId, id);
     if (current.status !== 'in_progress') throw new ConflictException('Only in-progress work orders can report production');
     const reportTraceId = dto.sourceTraceId?.trim() || createId('trace');
@@ -339,7 +339,7 @@ export class WorkOrdersService implements OnModuleInit {
       void this.persistence?.saveWorkOrder(workOrder);
     }
     if (workOrder.orderId) this.syncOrderProgress(tenantId, workOrder.orderId);
-    this.auditService?.record(tenantId, dto.operatorId ?? 'system', {
+    this.auditService?.record(tenantId, dto.operatorId?.trim() || actorId.trim() || 'system', {
       action: 'work_order.report', resource: 'work_order', resourceId: id,
       details: { reportId: report.id, quantity: report.quantity, sourceTraceId: report.sourceTraceId, operationCode: report.operationCode, batchNo: report.batchNo },
       traceId: report.sourceTraceId,
@@ -348,11 +348,11 @@ export class WorkOrdersService implements OnModuleInit {
   }
 
   /** Records a fully traceable production event without changing the legacy report contract. */
-  reportTrace(tenantId: string, id: string, dto: ReportWorkOrderDto): { workOrder: WorkOrder; report: WorkOrderReport } {
+  reportTrace(tenantId: string, id: string, dto: ReportWorkOrderDto, actorId = 'system'): { workOrder: WorkOrder; report: WorkOrderReport } {
     if (!dto.batchNo?.trim() || !dto.operationCode?.trim() || !dto.deviceId?.trim()) {
       throw new ConflictException('Traceable report requires batchNo, operationCode and deviceId');
     }
-    return this.report(tenantId, id, dto);
+    return this.report(tenantId, id, dto, actorId);
   }
 
   executionSummary(tenantId: string, id: string) {
@@ -442,7 +442,7 @@ export class WorkOrdersService implements OnModuleInit {
     this.ordersService.recordProgress(tenantId, orderId, completedQty);
   }
 
-  updateStatus(tenantId: string, id: string, dto: UpdateWorkOrderStatusDto): WorkOrder {
+  updateStatus(tenantId: string, id: string, dto: UpdateWorkOrderStatusDto, actorId = 'system'): WorkOrder {
     const current = this.findOne(tenantId, id);
     if (!allowedTransitions[current.status].includes(dto.status)) {
       throw new ConflictException(`Cannot change work order from ${current.status} to ${dto.status}`);
@@ -468,11 +468,11 @@ export class WorkOrdersService implements OnModuleInit {
     };
     this.workOrders.set(id, updated);
     void this.persistence?.saveWorkOrder(updated);
-    this.auditService?.record(tenantId, 'system', { action: 'work_order.status', resource: 'work_order', resourceId: id, details: { from: current.status, to: updated.status, reason: updated.statusReason } });
+    this.auditService?.record(tenantId, actorId.trim() || 'system', { action: 'work_order.status', resource: 'work_order', resourceId: id, details: { from: current.status, to: updated.status, reason: updated.statusReason } });
     return updated;
   }
 
-  remove(tenantId: string, id: string): { id: string; deleted: true } {
+  remove(tenantId: string, id: string, actorId = 'system'): { id: string; deleted: true } {
     const workOrder = this.findOne(tenantId, id);
     if (workOrder.status === 'in_progress') {
       throw new ConflictException('In-progress work orders cannot be deleted');
@@ -484,7 +484,7 @@ export class WorkOrdersService implements OnModuleInit {
     this.workOrders.delete(id);
     void this.persistence?.deleteWorkOrder(id);
     this.productionLinesService.unregisterWorkOrder(tenantId, workOrder.lineId);
-    this.auditService?.record(tenantId, 'system', {
+    this.auditService?.record(tenantId, actorId.trim() || 'system', {
       action: 'work_order.deleted',
       resource: 'work_order',
       resourceId: id,

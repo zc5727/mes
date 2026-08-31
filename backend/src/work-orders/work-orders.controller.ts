@@ -1,5 +1,5 @@
 import { RequireCapability } from '../common/route-capability.decorator';
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Query } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { CreateWorkOrderDto } from './dto/create-work-order.dto';
 import { UpdateWorkOrderStatusDto } from './dto/update-work-order-status.dto';
@@ -33,28 +33,28 @@ export class WorkOrdersController {
   }
 
   @Post()
-  create(@TenantId() tenantId: string, @Body() dto: CreateWorkOrderDto) {
-    return { data: this.workOrdersService.create(tenantId, dto), tenantId };
+  create(@TenantId() tenantId: string, @Body() dto: CreateWorkOrderDto, @Headers('x-user-id') userId?: string) {
+    return { data: this.workOrdersService.create(tenantId, dto, userId), tenantId };
   }
 
   @Patch(':id/status')
-  updateStatus(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateWorkOrderStatusDto) {
-    return { data: this.workOrdersService.updateStatus(tenantId, id, dto), tenantId };
+  updateStatus(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateWorkOrderStatusDto, @Headers('x-user-id') userId?: string) {
+    return { data: this.workOrdersService.updateStatus(tenantId, id, dto, userId), tenantId };
   }
 
   @Post(':id/report')
-  report(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: ReportWorkOrderDto) {
-    return { data: this.workOrdersService.report(tenantId, id, dto), tenantId };
+  report(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: ReportWorkOrderDto, @Headers('x-user-id') userId?: string) {
+    return { data: this.workOrdersService.report(tenantId, id, dto, userId), tenantId };
   }
 
   @Post(':id/traceability/report')
-  traceabilityReport(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: ReportWorkOrderDto) {
-    return { data: this.workOrdersService.reportTrace(tenantId, id, dto), tenantId };
+  traceabilityReport(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: ReportWorkOrderDto, @Headers('x-user-id') userId?: string) {
+    return { data: this.workOrdersService.reportTrace(tenantId, id, dto, userId), tenantId };
   }
 
   @Post(':id/operations/:operationCode/report')
-  operationReport(@TenantId() tenantId: string, @Param('id') id: string, @Param('operationCode') operationCode: string, @Body() dto: ReportWorkOrderDto) {
-    return { data: this.workOrdersService.report(tenantId, id, { ...dto, operationCode }), tenantId };
+  operationReport(@TenantId() tenantId: string, @Param('id') id: string, @Param('operationCode') operationCode: string, @Body() dto: ReportWorkOrderDto, @Headers('x-user-id') userId?: string) {
+    return { data: this.workOrdersService.report(tenantId, id, { ...dto, operationCode }, userId), tenantId };
   }
 
   @Get(':id/reports')
@@ -73,12 +73,12 @@ export class WorkOrdersController {
   }
 
   @Patch(':id')
-  update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateWorkOrderDto) {
-    return { data: this.workOrdersService.update(tenantId, id, dto), tenantId };
+  update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateWorkOrderDto, @Headers('x-user-id') userId?: string) {
+    return { data: this.workOrdersService.update(tenantId, id, dto, userId), tenantId };
   }
 
   @Delete(':id')
-  remove(@TenantId() tenantId: string, @Param('id') id: string) {
-    return { data: this.workOrdersService.remove(tenantId, id), tenantId };
+  remove(@TenantId() tenantId: string, @Param('id') id: string, @Headers('x-user-id') userId?: string) {
+    return { data: this.workOrdersService.remove(tenantId, id, userId), tenantId };
   }
 }

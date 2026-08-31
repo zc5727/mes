@@ -20,7 +20,7 @@ export class DigitalTwinRealtimeService {
       };
       emit();
       const unsubscribe = this.mqtt.onProjection((changedTenant) => {
-        if (changedTenant === tenantId) emit();
+        if (changedTenant === tenantId || changedTenant === '*') emit();
       });
       const heartbeat = setInterval(emit, 15_000);
       return () => {

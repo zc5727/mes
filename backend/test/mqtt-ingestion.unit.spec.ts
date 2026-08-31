@@ -211,6 +211,20 @@ describe('simulator MQTT ingestion', () => {
     }]);
   });
 
+  it('publishes broker lifecycle changes to realtime subscribers without letting one listener break ingestion', () => {
+    const client = new FakeMqttClient();
+    const { service } = createService(client);
+    const failingListener = jest.fn(() => { throw new Error('subscriber failed'); });
+    const healthyListener = jest.fn();
+    service.onProjection(failingListener);
+    service.onProjection(healthyListener);
+
+    expect(() => client.emit('connect')).not.toThrow();
+    expect(() => client.emit('close')).not.toThrow();
+    expect(healthyListener).toHaveBeenCalledWith('*');
+    expect(healthyListener.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('accepts a normalized HTTP gateway event and maps common point aliases', () => {
     const client = new FakeMqttClient();
     const { service } = createService(client);

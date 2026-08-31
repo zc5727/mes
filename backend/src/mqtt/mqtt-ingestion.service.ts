@@ -113,6 +113,7 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     this.state = 'disconnected';
     const client = this.client;
     this.client = undefined;
+    this.notifyProjection(this.connectionProjectionTenant());
     if (!client) return;
 
     try {
@@ -244,6 +245,7 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     client.on('connect', () => {
       this.connected = true;
       this.state = 'connected'; this.lastHeartbeatAt = new Date().toISOString(); this.lastError = null; this.lastErrorCode = null;
+      this.notifyProjection(this.connectionProjectionTenant());
       this.persistSafely(
         'MQTT connected event',
         this.persistence?.recordConnection?.(this.connectionTenantId(), 'connected', { broker: this.resolveOptions().url ?? null, gatewayId: this.resolveOptions().gatewayId ?? null }),
@@ -257,18 +259,21 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     client.on('reconnect', () => {
       this.connected = false;
       this.state = 'starting'; this.reconnectAttempts += 1;
+      this.notifyProjection(this.connectionProjectionTenant());
       this.persistSafely('MQTT reconnecting event', this.persistence?.recordConnection?.(this.connectionTenantId(), 'reconnecting', {}));
       this.logger.log('MQTT broker reconnecting');
     });
     client.on('close', () => {
       this.connected = false;
       this.state = 'disconnected';
+      this.notifyProjection(this.connectionProjectionTenant());
       this.persistSafely('MQTT closed event', this.persistence?.recordConnection?.(this.connectionTenantId(), 'closed', {}));
       this.logger.warn('MQTT broker connection closed; cached state is retained and reconnect will be attempted');
     });
     client.on('offline', () => {
       this.connected = false;
       this.state = 'disconnected'; this.setError('MQTT broker is offline', 'MQTT_OFFLINE');
+      this.notifyProjection(this.connectionProjectionTenant());
       this.persistSafely('MQTT offline event', this.persistence?.recordConnection?.(this.connectionTenantId(), 'offline', {}));
       this.logger.warn('MQTT broker is offline; check Mosquitto/process status and MQTT_URL');
     });
@@ -352,7 +357,13 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
   }
 
   private notifyProjection(tenantId: string): void {
-    this.projectionListeners.forEach((listener) => listener(tenantId));
+    this.projectionListeners.forEach((listener) => {
+      try {
+        listener(tenantId);
+      } catch (error: unknown) {
+        this.logger.error(`Realtime projection listener failed: ${this.errorMessage(error)}`);
+      }
+    });
   }
 
   private resolveOptions(): Required<Pick<MqttIngestionOptions, 'enabled'>> & MqttIngestionOptions {
@@ -393,6 +404,11 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
 
   private connectionTenantId(): string {
     return this.resolveOptions().tenantId ?? process.env.MES_TENANT_ID ?? 'tenant-demo';
+  }
+
+  /** Broadcast lifecycle changes when no single tenant is configured. */
+  private connectionProjectionTenant(): string {
+    return this.resolveOptions().tenantId ?? '*';
   }
 
   private normalizeStatus(value: unknown): SimulatorTelemetry['status'] {

@@ -254,7 +254,7 @@ export class DashboardService {
 
       emit('snapshot');
       const unsubscribe = this.mqttIngestionService?.onProjection((changedTenant) => {
-        if (changedTenant === tenantId) emit('updated');
+        if (changedTenant === tenantId || changedTenant === '*') emit('updated');
       }) ?? (() => undefined);
       const heartbeat = setInterval(() => emit('heartbeat'), 15_000);
 

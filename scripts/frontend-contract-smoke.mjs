@@ -20,13 +20,15 @@ const contracts = [
   ['components/layout/OperationsPanel.vue', [
     '@submit.prevent="submit"', 'apiEnabled', 'qualityRecords', 'maintenanceOrders',
     '新建工单', '新增设备', '编辑设备', '删除设备', '设为维护', '恢复上线',
-    '新建维修', '图纸登记', '质量记录', '策略评估', 'type="file"',
+    '新建维修', '图纸登记', '质量记录', '策略评估', 'type="file"', '设备仿真控制',
+    '故障类型', 'injectFault', 'recoverDevice', 'controlSimulator',
     'openDeviceCreate', 'openDeviceEdit', 'removeDevice', 'setDeviceStatus',
     'canWrite: boolean', 'canControl: boolean', 'writeDisabledReason', 'controlDisabledReason',
     ':disabled="!apiEnabled || !canWrite"', ':disabled="!apiEnabled || !canControl || !selectedDevice"',
   ]],
   ['components/layout/RightPanel.vue', [
-    'view-work-order', 'create-inspection', '查看工单（未接入）', '创建点检（未接入）',
+    'view-work-order', 'create-inspection', '查看工单', '创建点检',
+    'canViewWorkOrders', 'canCreateInspection', 'actionBusy',
   ]],
   ['components/layout/FactoryAssistant.vue', [
     'toggleCollapsed', '向厂长智能助手提问', 'Nanobot 尚未接入',
@@ -38,7 +40,7 @@ const contracts = [
   ['api/mesApi.ts', [
     'VITE_MES_FACADE_URL', 'VITE_API_BASE_URL', 'VITE_TENANT_ID', 'VITE_USER_ROLE',
     "'x-tenant-id': TENANT_ID", "'x-user-role': USER_ROLE", "'x-role': USER_ROLE",
-    'REQUEST_TIMEOUT_MS', 'fetchFactorySnapshot', 'canMesCapability', 'mesCapabilityReason',
+    'REQUEST_TIMEOUT_MS', 'fetchFactorySnapshot', 'listWorkOrders', 'controlSimulator', 'canMesCapability', 'mesCapabilityReason',
   ]],
   ['websocket/WebSocketService.ts', [
     'EventSource', 'new WebSocket', 'reconnecting', 'setConnectionState(\'offline\')',

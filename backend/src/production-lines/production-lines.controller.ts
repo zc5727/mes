@@ -1,5 +1,5 @@
 import { RequireCapability } from '../common/route-capability.decorator';
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, Patch, Post, Query } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { CreateProductionLineDto } from './dto/create-production-line.dto';
 import { UpdateLineStatusDto } from './dto/update-line-status.dto';
@@ -27,22 +27,22 @@ export class ProductionLinesController {
   }
 
   @Post()
-  create(@TenantId() tenantId: string, @Body() dto: CreateProductionLineDto) {
-    return { data: this.linesService.create(tenantId, dto), tenantId };
+  create(@TenantId() tenantId: string, @Body() dto: CreateProductionLineDto, @Headers('x-user-id') userId?: string) {
+    return { data: this.linesService.create(tenantId, dto, userId), tenantId };
   }
 
   @Patch(':id/status')
-  updateStatus(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateLineStatusDto) {
-    return { data: this.linesService.updateStatus(tenantId, id, dto), tenantId };
+  updateStatus(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateLineStatusDto, @Headers('x-user-id') userId?: string) {
+    return { data: this.linesService.updateStatus(tenantId, id, dto, userId), tenantId };
   }
 
   @Patch(':id')
-  update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateProductionLineDto) {
-    return { data: this.linesService.update(tenantId, id, dto), tenantId };
+  update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateProductionLineDto, @Headers('x-user-id') userId?: string) {
+    return { data: this.linesService.update(tenantId, id, dto, userId), tenantId };
   }
 
   @Delete(':id')
-  remove(@TenantId() tenantId: string, @Param('id') id: string) {
-    return { data: this.linesService.remove(tenantId, id), tenantId };
+  remove(@TenantId() tenantId: string, @Param('id') id: string, @Headers('x-user-id') userId?: string) {
+    return { data: this.linesService.remove(tenantId, id, userId), tenantId };
   }
 }

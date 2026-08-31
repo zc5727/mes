@@ -83,7 +83,7 @@ export class ProductionLinesService implements OnModuleInit {
     return line;
   }
 
-  create(tenantId: string, dto: CreateProductionLineDto): ProductionLine {
+  create(tenantId: string, dto: CreateProductionLineDto, actorId = 'system'): ProductionLine {
     this.factoriesService.findOne(tenantId, dto.factoryId);
     const duplicate = this.findAll(tenantId).some((line) => line.code === dto.code);
     if (duplicate) {
@@ -106,7 +106,7 @@ export class ProductionLinesService implements OnModuleInit {
     };
     this.lines.set(line.id, line);
     void this.persistence?.saveLine(lineToPersistence(line));
-    this.audit?.record(tenantId, 'system', {
+    this.audit?.record(tenantId, actorId.trim() || 'system', {
       action: 'production_line.created',
       resource: 'production_line',
       resourceId: line.id,
@@ -116,7 +116,7 @@ export class ProductionLinesService implements OnModuleInit {
     return line;
   }
 
-  update(tenantId: string, id: string, dto: UpdateProductionLineDto): ProductionLine {
+  update(tenantId: string, id: string, dto: UpdateProductionLineDto, actorId = 'system'): ProductionLine {
     const current = this.findOne(tenantId, id);
     if (dto.factoryId && dto.factoryId !== current.factoryId) {
       this.factoriesService.findOne(tenantId, dto.factoryId);
@@ -138,7 +138,7 @@ export class ProductionLinesService implements OnModuleInit {
     };
     this.lines.set(id, updated);
     void this.persistence?.saveLine(lineToPersistence(updated));
-    this.audit?.record(tenantId, 'system', {
+    this.audit?.record(tenantId, actorId.trim() || 'system', {
       action: 'production_line.updated',
       resource: 'production_line',
       resourceId: id,
@@ -149,7 +149,7 @@ export class ProductionLinesService implements OnModuleInit {
     return updated;
   }
 
-  updateStatus(tenantId: string, id: string, dto: UpdateLineStatusDto): ProductionLine {
+  updateStatus(tenantId: string, id: string, dto: UpdateLineStatusDto, actorId = 'system'): ProductionLine {
     const current = this.findOne(tenantId, id);
     if (dto.status !== 'active' && !dto.reason?.trim()) {
       throw new ConflictException(`A reason is required when line is ${dto.status}`);
@@ -162,7 +162,7 @@ export class ProductionLinesService implements OnModuleInit {
     };
     this.lines.set(id, updated);
     void this.persistence?.saveLine(lineToPersistence(updated));
-    this.audit?.record(tenantId, 'system', {
+    this.audit?.record(tenantId, actorId.trim() || 'system', {
       action: 'production_line.status',
       resource: 'production_line',
       resourceId: id,
@@ -173,7 +173,7 @@ export class ProductionLinesService implements OnModuleInit {
     return updated;
   }
 
-  remove(tenantId: string, id: string): { id: string; deleted: true } {
+  remove(tenantId: string, id: string, actorId = 'system'): { id: string; deleted: true } {
     const line = this.findOne(tenantId, id);
     if (line.status !== 'inactive') {
       throw new ConflictException('Only inactive production lines can be deleted');
@@ -183,7 +183,7 @@ export class ProductionLinesService implements OnModuleInit {
     }
     this.lines.delete(id);
     void this.persistence?.deleteLine(id);
-    this.audit?.record(tenantId, 'system', {
+    this.audit?.record(tenantId, actorId.trim() || 'system', {
       action: 'production_line.deleted',
       resource: 'production_line',
       resourceId: id,

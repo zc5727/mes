@@ -55,7 +55,7 @@ export class OrdersService implements OnModuleInit {
     return order;
   }
 
-  create(tenantId: string, dto: CreateOrderDto): ProductionOrder {
+  create(tenantId: string, dto: CreateOrderDto, actorId = 'system'): ProductionOrder {
     if (this.findAll(tenantId).some((order) => order.orderNo === dto.orderNo)) {
       throw new ConflictException(`Order ${dto.orderNo} already exists`);
     }
@@ -68,7 +68,7 @@ export class OrdersService implements OnModuleInit {
     };
     this.orders.set(order.id, order);
     void this.persistence?.saveOrder(order);
-    this.auditService?.record(tenantId, 'system', { action: 'order.create', resource: 'production_order', resourceId: order.id, details: { orderNo: order.orderNo, plannedQty: order.plannedQty } });
+    this.auditService?.record(tenantId, actorId.trim() || 'system', { action: 'order.create', resource: 'production_order', resourceId: order.id, details: { orderNo: order.orderNo, plannedQty: order.plannedQty } });
     return order;
   }
 

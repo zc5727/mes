@@ -64,6 +64,12 @@
       :online-rate="selectedLineOnlineRate"
       :selected-line="selectedLine"
       :production-summary="productionSummary"
+      :api-enabled="true"
+      :can-view-work-orders="canWrite"
+      :can-create-inspection="canControl"
+      :work-order-disabled-reason="writeDisabledReason"
+      :inspection-disabled-reason="controlDisabledReason"
+      :action-busy="objectActionBusy"
       @view-work-order="handleViewWorkOrder"
       @create-inspection="handleCreateInspection"
     />
@@ -103,7 +109,7 @@ import OperationsPanel from '@/components/layout/OperationsPanel.vue';
 import RightPanel from '@/components/layout/RightPanel.vue';
 import TopBar from '@/components/layout/TopBar.vue';
 import ThreeFactoryViewport from '@/components/scene/ThreeFactoryViewport.vue';
-import { acknowledgeAlarm, canMesCapability, closeAlarm, createProductionLine, deleteProductionLine, fetchFactorySnapshot, mesCapabilityReason, updateProductionLine } from '@/api/mesApi';
+import { acknowledgeAlarm, canMesCapability, closeAlarm, createMaintenance, createProductionLine, deleteProductionLine, fetchFactorySnapshot, listWorkOrders, mesCapabilityReason, updateProductionLine } from '@/api/mesApi';
 import { useFactoryStore } from '@/store/factoryStore';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
 import { toBackendDeviceId, toBackendLineId } from '@/api/identityMap';
@@ -118,6 +124,7 @@ const loadError = ref(false);
 const connectionState = ref<RealtimeConnectionState>('idle');
 const dataBusy = ref(false);
 const alarmSubmitting = ref(false);
+const objectActionBusy = ref<'work-order' | 'inspection' | null>(null);
 const dataNotice = ref('');
 const viewScope = ref<'line' | 'factory'>('line');
 const canWrite = canMesCapability('write');
@@ -354,12 +361,40 @@ const submitLine = async () => {
   }
 };
 
-const handleViewWorkOrder = (deviceId: string) => {
-  dataNotice.value = `设备 ${deviceId} 的工单详情接口尚未配置`;
+const handleViewWorkOrder = async (deviceId: string) => {
+  if (!canWrite) { dataNotice.value = writeDisabledReason; return; }
+  objectActionBusy.value = 'work-order';
+  dataNotice.value = '';
+  try {
+    const orders = await listWorkOrders();
+    const backendDeviceId = toBackendDeviceId(deviceId);
+    const related = orders.filter((order) => String(order.deviceId ?? '') === deviceId || String(order.deviceId ?? '') === backendDeviceId);
+    dataNotice.value = related.length ? `已查询设备 ${deviceId} 的 ${related.length} 条工单` : `设备 ${deviceId} 暂无关联工单`;
+  } catch (cause) {
+    dataNotice.value = cause instanceof Error ? `工单查询失败：${cause.message}` : '工单查询失败，请检查后端服务和当前角色权限';
+  } finally { objectActionBusy.value = null; }
 };
 
-const handleCreateInspection = (deviceId: string) => {
-  dataNotice.value = `设备 ${deviceId} 的点检提交接口尚未配置，未创建虚假记录`;
+const handleCreateInspection = async (deviceId: string) => {
+  if (!canControl) { dataNotice.value = controlDisabledReason; return; }
+  const line = selectedLine.value;
+  const device = devices.value.find((item) => item.id === deviceId);
+  if (!line.id || !device) { dataNotice.value = '未找到当前设备或产线，未提交点检任务'; return; }
+  objectActionBusy.value = 'inspection';
+  dataNotice.value = '';
+  try {
+    await createMaintenance({
+      lineId: toBackendLineId(line.id),
+      deviceId: toBackendDeviceId(deviceId),
+      type: 'inspection',
+      title: `${device.name} 点检任务`,
+      description: '由数字孪生对象详情发起的点检任务',
+      plannedAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+    dataNotice.value = `点检任务已创建：${device.name}`;
+  } catch (cause) {
+    dataNotice.value = cause instanceof Error ? `点检创建失败：${cause.message}` : '点检创建失败，请检查后端服务和当前角色权限';
+  } finally { objectActionBusy.value = null; }
 };
 
 const ensureLineSelection = () => {

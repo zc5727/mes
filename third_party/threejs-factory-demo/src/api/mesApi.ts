@@ -265,6 +265,23 @@ export function createWorkOrder(input: CreateWorkOrderInput) {
   return post<Record<string, unknown>>('/work-orders', input);
 }
 
+export interface WorkOrderRecord {
+  id: string;
+  orderNo?: string;
+  productName?: string;
+  deviceId?: string;
+  lineId?: string;
+  status?: string;
+  plannedQty?: number;
+  completedQty?: number;
+  dueAt?: string;
+  [key: string]: unknown;
+}
+
+export function listWorkOrders() {
+  return get<WorkOrderRecord[]>('/work-orders');
+}
+
 export interface CreateDeviceInput {
   lineId: string;
   code: string;

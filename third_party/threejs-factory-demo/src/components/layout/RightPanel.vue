@@ -40,8 +40,8 @@
         <div class="detail-grid"><span>温度</span><strong>{{ selectedDevice.temperature.toFixed(1) }}℃</strong><span>功率</span><strong>{{ selectedDevice.power.toFixed(1) }}kW</strong><span>当前工单</span><strong>后端未返回</strong></div>
         <div v-if="selectedDevice.warning" class="selected-warning">{{ selectedDevice.warning }}，建议安排点检。</div>
         <div class="object-actions">
-          <button type="button" disabled title="后端工单详情接口尚未接入">查看工单（未接入）</button>
-          <button type="button" disabled title="后端点检接口尚未接入">创建点检（未接入）</button>
+          <button type="button" :disabled="!apiEnabled || !canViewWorkOrders || actionBusy !== null" :title="!canViewWorkOrders ? workOrderDisabledReason : actionBusy === 'work-order' ? '正在查询工单' : '查询后端工单'" @click="$emit('view-work-order', selectedDevice.id)">{{ actionBusy === 'work-order' ? '查询中…' : '查看工单' }}</button>
+          <button type="button" :disabled="!apiEnabled || !canCreateInspection || actionBusy !== null" :title="!canCreateInspection ? inspectionDisabledReason : actionBusy === 'inspection' ? '正在创建点检' : '创建后端点检任务'" @click="$emit('create-inspection', selectedDevice.id)">{{ actionBusy === 'inspection' ? '创建中…' : '创建点检' }}</button>
         </div>
       </div>
       <div v-else class="empty-state">点击三维场景或左侧设备，查看对象详情。</div>
@@ -83,6 +83,12 @@ defineProps<{
   onlineRate: number;
   selectedLine: ProductionLineTelemetry;
   productionSummary?: ProductionSummary;
+  apiEnabled: boolean;
+  canViewWorkOrders: boolean;
+  canCreateInspection: boolean;
+  workOrderDisabledReason: string;
+  inspectionDisabledReason: string;
+  actionBusy: 'work-order' | 'inspection' | null;
 }>();
 
 defineEmits<{

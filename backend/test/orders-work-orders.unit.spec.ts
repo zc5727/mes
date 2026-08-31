@@ -116,17 +116,19 @@ describe('production execution flow', () => {
     const order = orders.create('tenant-demo', {
       orderNo: 'PO-AUDIT-001', productCode: 'P', productName: '产品', plannedQty: 1,
       dueAt: '2026-08-29T18:00:00.000Z', priority: 'normal',
-    });
+    }, 'planner-01');
     const workOrder = workOrders.create('tenant-demo', {
       orderId: order.id, orderNo: 'WO-AUDIT-001', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1,
       dueAt: '2026-08-29T18:00:00.000Z',
-    });
-    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' });
-    workOrders.update('tenant-demo', workOrder.id, { productName: '更新后的产品' });
-    workOrders.remove('tenant-demo', workOrder.id);
+    }, 'planner-01');
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' }, 'supervisor-01');
+    workOrders.update('tenant-demo', workOrder.id, { productName: '更新后的产品' }, 'planner-01');
+    workOrders.remove('tenant-demo', workOrder.id, 'planner-01');
     expect(audit.list('tenant-demo').map((item) => item.action)).toEqual(expect.arrayContaining([
       'order.create', 'work_order.created', 'work_order.status', 'work_order.updated', 'work_order.deleted',
     ]));
+    expect(audit.list('tenant-demo').find((item) => item.action === 'order.create')?.actor).toBe('planner-01');
+    expect(audit.list('tenant-demo').find((item) => item.action === 'work_order.status')?.actor).toBe('supervisor-01');
   });
 
   it('does not report against a device occupied by maintenance', () => {

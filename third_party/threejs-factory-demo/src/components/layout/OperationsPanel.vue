@@ -14,6 +14,14 @@
       <button type="button" :disabled="!apiEnabled || !canControl" :title="!canControl ? controlDisabledReason : '策略评估'" @click="active = 'strategy'">策略评估</button>
       <button v-if="pendingDocumentId" type="button" :disabled="!apiEnabled || !canWrite || submitting" :title="!canWrite ? writeDisabledReason : '确认图纸分析'" @click="confirmDocument">确认图纸分析</button>
     </div>
+    <div class="simulator-controls" aria-label="设备仿真控制">
+      <span>设备仿真控制 · 仅通过 MES API</span>
+      <select v-model="faultType" :disabled="!apiEnabled || !canControl || !selectedDevice || controlBusy !== null" aria-label="故障类型" :title="!canControl ? controlDisabledReason : !selectedDevice ? '请先选择设备' : '选择要提交的故障类型'">
+        <option v-for="option in faultOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+      </select>
+      <button type="button" :disabled="!apiEnabled || !canControl || !selectedDevice || controlBusy !== null" :title="!canControl ? controlDisabledReason : !selectedDevice ? '请先选择设备' : '提交故障注入命令'" @click="injectFault">{{ controlBusy === 'fault' ? '注入中…' : '注入故障' }}</button>
+      <button type="button" :disabled="!apiEnabled || !canControl || !selectedDevice || controlBusy !== null" :title="!canControl ? controlDisabledReason : !selectedDevice ? '请先选择设备' : '提交恢复设备命令'" @click="recoverDevice">{{ controlBusy === 'recover' ? '恢复中…' : '恢复设备' }}</button>
+    </div>
     <small v-if="notice" :class="{ error: error }">{{ notice }}</small>
     <pre v-if="resultPreview" class="result-preview">{{ resultPreview }}</pre>
     <div v-if="recordsLoading" class="record-status">正在读取工作台数据…</div>
@@ -74,11 +82,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { confirmDocumentAnalysis, confirmQualityRecord, createDevice, deleteDevice, createMaintenance, createQualityRecord, createWorkOrder, documentContentUrl, updateDevice, updateDeviceStatus, listDocuments, listMaintenanceWorkOrders, listQualityRecords, rejectQualityRecord, saveDocumentAnalysisDraft, submitQualityRecord, simulateStrategy, updateDocumentStatus, updateMaintenanceStatus, uploadDocument } from '@/api/mesApi';
+import { confirmDocumentAnalysis, confirmQualityRecord, controlSimulator, createDevice, deleteDevice, createMaintenance, createQualityRecord, createWorkOrder, documentContentUrl, updateDevice, updateDeviceStatus, listDocuments, listMaintenanceWorkOrders, listQualityRecords, rejectQualityRecord, saveDocumentAnalysisDraft, submitQualityRecord, simulateStrategy, updateDocumentStatus, updateMaintenanceStatus, uploadDocument } from '@/api/mesApi';
 import { toBackendDeviceId, toBackendLineId } from '@/api/identityMap';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
 
 type Operation = 'work-order' | 'device' | 'maintenance' | 'document' | 'quality' | 'strategy';
+type FaultType = NonNullable<import('@/api/mesApi').SimulatorControlCommand['faultType']>;
 const props = defineProps<{
   selectedLine: ProductionLineTelemetry;
   selectedDevice: DeviceTelemetry | null;
@@ -93,6 +102,7 @@ const props = defineProps<{
 const emit = defineEmits<{ (event: 'data-changed'): void }>();
 const active = ref<Operation | null>(null);
 const submitting = ref(false);
+const controlBusy = ref<'fault' | 'recover' | null>(null);
 const notice = ref('');
 const error = ref('');
 const resultPreview = ref('');
@@ -109,6 +119,16 @@ const editingDeviceId = ref<string | null>(null);
 const maintenance = ref({ type: 'repair' as const, title: '', plannedAt: '', description: '' });
 const quality = ref({ batchNo: '', result: 'pass', remark: '' });
 const strategy = ref({ comment: '' });
+const faultType = ref<FaultType>('OVERHEAT');
+const faultOptions: Array<{ value: FaultType; label: string }> = [
+  { value: 'OVERHEAT', label: '过热' },
+  { value: 'JAM', label: '卡料/堵转' },
+  { value: 'COMMUNICATION_LOSS', label: '通信中断' },
+  { value: 'QUALITY_DRIFT', label: '质量漂移' },
+  { value: 'EMERGENCY_STOP', label: '急停' },
+  { value: 'MATERIAL_SHORTAGE', label: '物料短缺' },
+  { value: 'QUALITY_ANOMALY', label: '质量异常' },
+];
 const title = computed(() => ({ 'work-order': '新建生产工单', device: editingDeviceId.value ? '编辑设备' : '新增设备', maintenance: '新建维修工单', document: '登记图纸', quality: '填报质量记录', strategy: '策略仿真评估' }[active.value ?? 'work-order']));
 const selectedDeviceName = computed(() => props.selectedDevice?.name ?? '未选择设备');
 
@@ -142,6 +162,28 @@ const previewDocument = (id: string) => { window.open(documentContentUrl(id), '_
 const confirmDocumentRecord = async (id: string) => { if (!props.apiEnabled || !props.canWrite || submitting.value) return; try { submitting.value = true; await updateDocumentStatus(id, 'reviewing'); await loadRecords(); notice.value = '图纸已送审'; } catch { error.value = '图纸送审失败，请检查当前状态和权限'; } finally { submitting.value = false; } };
 const transitionQuality = async (id: string, action: 'submit' | 'confirm' | 'reject') => { if (!props.apiEnabled || !props.canWrite || submitting.value) return; try { submitting.value = true; if (action === 'submit') await submitQualityRecord(id); if (action === 'confirm') await confirmQualityRecord(id); if (action === 'reject') await rejectQualityRecord(id); await loadRecords(); notice.value = `质量记录${action === 'reject' ? '已驳回' : action === 'confirm' ? '已确认' : '已提交'}`; } catch { error.value = '质量记录状态更新失败，请检查当前状态和权限'; } finally { submitting.value = false; } };
 const transitionMaintenance = async (id: string) => { if (!props.apiEnabled || !props.canControl || submitting.value) return; try { submitting.value = true; await updateMaintenanceStatus(id, 'assigned'); await loadRecords(); notice.value = '维修工单已接单'; } catch { error.value = '维修工单状态更新失败，请检查当前状态和权限'; } finally { submitting.value = false; } };
+
+const injectFault = async () => {
+  if (!props.apiEnabled || !props.canControl || !props.selectedDevice) { error.value = props.controlDisabledReason || '请先选择设备'; return; }
+  controlBusy.value = 'fault'; error.value = ''; notice.value = '';
+  try {
+    await controlSimulator({ action: 'fault', lineId: toBackendLineId(props.selectedLine.id), deviceId: toBackendDeviceId(props.selectedDevice.id), faultType: faultType.value, requestedBy: 'digital-twin-ui' });
+    emit('data-changed');
+    notice.value = `故障注入命令已提交：${faultOptions.find((item) => item.value === faultType.value)?.label ?? faultType.value}`;
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : '故障注入失败，请检查 MES API、MQTT 和权限'; }
+  finally { controlBusy.value = null; }
+};
+
+const recoverDevice = async () => {
+  if (!props.apiEnabled || !props.canControl || !props.selectedDevice) { error.value = props.controlDisabledReason || '请先选择设备'; return; }
+  controlBusy.value = 'recover'; error.value = ''; notice.value = '';
+  try {
+    await controlSimulator({ action: 'recover', lineId: toBackendLineId(props.selectedLine.id), deviceId: toBackendDeviceId(props.selectedDevice.id), requestedBy: 'digital-twin-ui' });
+    emit('data-changed');
+    notice.value = '恢复设备命令已提交，等待实时状态回传';
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : '恢复设备失败，请检查 MES API、MQTT 和权限'; }
+  finally { controlBusy.value = null; }
+};
 
 const openDeviceCreate = () => { if (!props.apiEnabled || !props.canWrite) { error.value = props.writeDisabledReason; return; } editingDeviceId.value = null; device.value = { code: '', name: '', model: '', protocol: 'simulator' }; active.value = 'device'; };
 const openDeviceEdit = () => { if (!props.selectedDevice) return; if (!props.canWrite) { error.value = props.writeDisabledReason; return; } editingDeviceId.value = props.selectedDevice.id; device.value = { code: props.selectedDevice.code ?? props.selectedDevice.id, name: props.selectedDevice.name, model: '', protocol: 'simulator' }; active.value = 'device'; };
@@ -216,5 +258,6 @@ const confirmDocument = async () => {
 .record-status { margin-top:7px; color:#7898b6; font-size:10px; }.document-list { display:flex; gap:5px; margin-top:5px; }.document-list button { font-size:9px; }
 .record-list { display:grid; gap:5px; max-height:96px; margin-top:5px; overflow:auto; }.record-row { display:flex; align-items:center; gap:4px; color:#9ec5e5; font-size:9px; }.record-row span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.record-row button { padding:3px 5px; font-size:9px; }
 .operations__actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }.operations button { padding:5px 8px; border:1px solid rgba(104,200,255,.3); background:rgba(29,143,255,.1); color:#cbe6ff; cursor:pointer; font-size:10px; }.operations button:hover { border-color:#68c8ff; }.operations small { display:block; margin-top:7px; }.operations small.error,.error { color:#ff8094; }.result-preview { max-height:110px; margin:8px 0 0; overflow:auto; color:#9ed2ff; font-size:9px; white-space:pre-wrap; }
+.simulator-controls { display:grid; grid-template-columns:1fr auto auto; gap:6px; align-items:center; margin-top:8px; padding-top:8px; border-top:1px solid rgba(111,183,255,.14); }.simulator-controls span { grid-column:1 / -1; color:#7898b6; font-size:10px; }.simulator-controls select { min-width:0; padding:5px 6px; border:1px solid rgba(111,183,255,.25); background:#07111f; color:#dcecff; font-size:10px; }.simulator-controls button { white-space:nowrap; }
 .operations__modal { position:fixed; inset:0; z-index:30; display:grid; place-items:center; background:rgba(2,8,16,.72); }.operations__form { display:grid; width:min(380px,calc(100vw - 32px)); gap:10px; padding:16px; border:1px solid rgba(104,200,255,.3); background:#0b1b2d; }.form-head strong { color:#eef8ff; }.form-head button { border:0; background:transparent; font-size:20px; }.operations label { display:grid; gap:4px; color:#9ec5e5; font-size:11px; }.operations input,.operations select,.operations textarea { padding:7px; border:1px solid rgba(111,183,255,.25); background:#07111f; color:#dcecff; }.operations textarea { min-height:60px; resize:vertical; }.form-actions { justify-content:flex-end; margin-top:4px; }.form-actions button:last-child { background:#1d8fff; color:#fff; }.operations button:disabled { cursor:wait; opacity:.5; }
 </style>
