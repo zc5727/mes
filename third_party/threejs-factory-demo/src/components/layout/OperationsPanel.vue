@@ -15,7 +15,12 @@
     <div v-if="recordsLoading" class="record-status">正在读取工作台数据…</div>
     <div v-else-if="recordsError" class="record-status error">工作台列表暂不可用，创建入口仍可提交</div>
     <div v-else class="record-status">文档 {{ documents.length }} · 质量 {{ qualityRecords.length }} · 维修 {{ maintenanceOrders.length }}</div>
-    <div v-if="documents.length" class="document-list"><button v-for="document in documents.slice(0, 2)" :key="document.id" type="button" @click="previewDocument(document.id)">预览 {{ String(document.fileName ?? document.id) }}</button></div>
+    <div class="record-list">
+      <div v-for="document in documents.slice(0, 2)" :key="`d-${document.id}`" class="record-row"><span>图纸 · {{ String(document.fileName ?? document.id) }}</span><button type="button" @click="previewDocument(document.id)">预览</button><button type="button" @click="confirmDocumentRecord(document.id)">确认</button></div>
+      <div v-for="record in qualityRecords.slice(0, 2)" :key="`q-${record.id}`" class="record-row"><span>质量 · {{ String(record.batchNo ?? record.id) }}</span><button type="button" @click="transitionQuality(record.id, 'submit')">提交</button><button type="button" @click="transitionQuality(record.id, 'confirm')">确认</button><button type="button" @click="transitionQuality(record.id, 'reject')">驳回</button></div>
+      <div v-for="order in maintenanceOrders.slice(0, 2)" :key="`m-${order.id}`" class="record-row"><span>维修 · {{ String(order.title ?? order.id) }}</span><button type="button" @click="transitionMaintenance(order.id)">接单</button></div>
+      <span v-if="!documents.length && !qualityRecords.length && !maintenanceOrders.length" class="hint">暂无文档、质量或维修记录</span>
+    </div>
     <div v-if="active" class="operations__modal" @click.self="active = null">
       <form class="operations__form" @submit.prevent="submit">
         <div class="form-head"><strong>{{ title }}</strong><button type="button" aria-label="关闭" @click="active = null">×</button></div>
@@ -64,7 +69,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { confirmDocumentAnalysis, createDevice, createMaintenance, createQualityRecord, createWorkOrder, documentContentUrl, listDocuments, listMaintenanceWorkOrders, listQualityRecords, saveDocumentAnalysisDraft, simulateStrategy, uploadDocument } from '@/api/mesApi';
+import { confirmDocumentAnalysis, confirmQualityRecord, createDevice, createMaintenance, createQualityRecord, createWorkOrder, documentContentUrl, listDocuments, listMaintenanceWorkOrders, listQualityRecords, rejectQualityRecord, saveDocumentAnalysisDraft, submitQualityRecord, simulateStrategy, updateDocumentStatus, updateMaintenanceStatus, uploadDocument } from '@/api/mesApi';
 import { toBackendLineId } from '@/api/identityMap';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
 
@@ -108,6 +113,9 @@ const loadRecords = async () => {
 onMounted(() => { void loadRecords(); });
 
 const previewDocument = (id: string) => { window.open(documentContentUrl(id), '_blank', 'noopener,noreferrer'); };
+const confirmDocumentRecord = async (id: string) => { try { await updateDocumentStatus(id, 'confirmed'); await loadRecords(); notice.value = '图纸已确认'; } catch { error.value = '图纸确认失败，请检查权限或接口状态'; } };
+const transitionQuality = async (id: string, action: 'submit' | 'confirm' | 'reject') => { try { if (action === 'submit') await submitQualityRecord(id); if (action === 'confirm') await confirmQualityRecord(id); if (action === 'reject') await rejectQualityRecord(id); await loadRecords(); notice.value = `质量记录${action === 'reject' ? '已驳回' : action === 'confirm' ? '已确认' : '已提交'}`; } catch { error.value = '质量记录状态更新失败，请检查当前状态和权限'; } };
+const transitionMaintenance = async (id: string) => { try { await updateMaintenanceStatus(id, 'assigned'); await loadRecords(); notice.value = '维修工单已接单'; } catch { error.value = '维修工单状态更新失败，请检查当前状态和权限'; } };
 
 const selectFile = (event: Event) => { selectedFile.value = (event.target as HTMLInputElement).files?.[0] ?? null; };
 const submit = async () => {
@@ -166,6 +174,7 @@ const confirmDocument = async () => {
 .operations__head,.form-head,.form-actions { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .operations__head strong { color:#eef8ff; font-size:12px; }.operations__head span,.operations small,.hint { color:#7898b6; font-size:10px; }
 .record-status { margin-top:7px; color:#7898b6; font-size:10px; }.document-list { display:flex; gap:5px; margin-top:5px; }.document-list button { font-size:9px; }
+.record-list { display:grid; gap:5px; max-height:96px; margin-top:5px; overflow:auto; }.record-row { display:flex; align-items:center; gap:4px; color:#9ec5e5; font-size:9px; }.record-row span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.record-row button { padding:3px 5px; font-size:9px; }
 .operations__actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }.operations button { padding:5px 8px; border:1px solid rgba(104,200,255,.3); background:rgba(29,143,255,.1); color:#cbe6ff; cursor:pointer; font-size:10px; }.operations button:hover { border-color:#68c8ff; }.operations small { display:block; margin-top:7px; }.operations small.error,.error { color:#ff8094; }.result-preview { max-height:110px; margin:8px 0 0; overflow:auto; color:#9ed2ff; font-size:9px; white-space:pre-wrap; }
 .operations__modal { position:fixed; inset:0; z-index:30; display:grid; place-items:center; background:rgba(2,8,16,.72); }.operations__form { display:grid; width:min(380px,calc(100vw - 32px)); gap:10px; padding:16px; border:1px solid rgba(104,200,255,.3); background:#0b1b2d; }.form-head strong { color:#eef8ff; }.form-head button { border:0; background:transparent; font-size:20px; }.operations label { display:grid; gap:4px; color:#9ec5e5; font-size:11px; }.operations input,.operations select,.operations textarea { padding:7px; border:1px solid rgba(111,183,255,.25); background:#07111f; color:#dcecff; }.operations textarea { min-height:60px; resize:vertical; }.form-actions { justify-content:flex-end; margin-top:4px; }.form-actions button:last-child { background:#1d8fff; color:#fff; }.operations button:disabled { cursor:wait; opacity:.5; }
 </style>

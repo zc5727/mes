@@ -23,6 +23,15 @@ export interface AgentToolRequest<TArguments extends Record<string, unknown> = R
   tenantId: string;
   requestedBy?: string;
   traceId: string;
+  authorization?: AgentAuthorizationContext;
+}
+
+export interface AgentAuthorizationContext {
+  userId: string;
+  role: string;
+  factoryId: string;
+  scope: string[] | string;
+  sessionId: string;
 }
 
 export interface ActiveAlarmsArguments {

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
 import { AlarmsService, AlarmFilters } from '../alarms/alarms.service';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { DevicesService } from '../devices/devices.service';
@@ -6,7 +6,8 @@ import { MqttIngestionService } from '../mqtt/mqtt-ingestion.service';
 import { ProductionLinesService } from '../production-lines/production-lines.service';
 import { StrategyEngineService } from '../strategies/strategy-engine.service';
 import { StrategyGovernanceService } from '../strategies/strategy-governance.service';
-import { StrategySnapshot, StrategySimulationResult } from '../strategies/strategy.types';
+import { StrategyAuthorizationService } from '../strategies/strategy-authorization.service';
+import { StrategyRequestContext, StrategySnapshot, StrategySimulationResult } from '../strategies/strategy.types';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import {
   AGENT_READ_ONLY_TOOLS,
@@ -14,6 +15,7 @@ import {
   AgentToolAudit,
   AgentToolRequest,
   AgentToolResponse,
+  AgentAuthorizationContext,
   ActiveAlarmsArguments,
   createToolError,
   isReadOnlyAgentTool,
@@ -36,6 +38,7 @@ export class AgentApiService {
     private readonly mqttIngestionService: MqttIngestionService,
     private readonly strategyEngine: StrategyEngineService,
     @Optional() private readonly governance?: StrategyGovernanceService,
+    @Optional() private readonly authorization?: StrategyAuthorizationService,
   ) {}
 
   execute(request: RawAgentRequest): AgentToolResponse {
@@ -50,7 +53,8 @@ export class AgentApiService {
     if (tenantId === 'unknown') return this.failure(request.tool, traceId, 'INVALID_REQUEST', '参数 tenantId 不能为空', audit);
 
     try {
-      const data = this.dispatch(request.tool, tenantId, args);
+      const context = this.authorize(request.authorization, tenantId, traceId);
+      const data = this.dispatch(request.tool, tenantId, args, context);
       return { ok: true, tool: request.tool, traceId, data, audit };
     } catch (error: unknown) {
       return this.failure(request.tool, traceId, this.errorCode(error), this.errorMessage(error), audit);
@@ -61,24 +65,24 @@ export class AgentApiService {
     return AGENT_READ_ONLY_TOOLS.map((name) => ({ name, readOnly: true }));
   }
 
-  private dispatch(tool: AgentReadOnlyTool, tenantId: string, args: Record<string, unknown>): unknown {
+  private dispatch(tool: AgentReadOnlyTool, tenantId: string, args: Record<string, unknown>, context?: StrategyRequestContext): unknown {
     switch (tool) {
       case 'get_production_overview':
         return this.dashboardService.getOverview(tenantId);
       case 'get_line_status':
-        return this.dashboardService.getLineOverview(tenantId, this.requiredArg(args, 'lineId'));
+        return this.lineStatus(tenantId, this.requiredArg(args, 'lineId'), context);
       case 'get_device_status':
-        return this.deviceStatus(tenantId, args);
+        return this.deviceStatus(tenantId, args, context);
       case 'get_active_alarms':
-        return this.activeAlarms(tenantId, args);
+        return this.activeAlarms(tenantId, args, context);
       case 'get_work_order_progress':
-        return this.workOrderProgress(tenantId, this.requiredArg(args, 'workOrderId'));
+        return this.workOrderProgress(tenantId, this.requiredArg(args, 'workOrderId'), context);
       case 'get_delay_risk':
-        return this.delayRisk(tenantId, this.requiredArg(args, 'workOrderId'));
+        return this.delayRisk(tenantId, this.requiredArg(args, 'workOrderId'), context);
       case 'get_simulation_snapshot':
-        return this.simulationSnapshot(tenantId, args);
-    case 'get_strategy_result':
-        return this.strategyResult(tenantId, this.requiredArg(args, 'simulationId'));
+        return this.simulationSnapshot(tenantId, args, context);
+      case 'get_strategy_result':
+        return this.strategyResult(tenantId, this.requiredArg(args, 'simulationId'), context);
       case 'get_strategy_history':
         return this.governance?.listCalls(tenantId) ?? [];
       case 'get_strategy_approval_status':
@@ -86,15 +90,23 @@ export class AgentApiService {
     }
   }
 
-  private deviceStatus(tenantId: string, args: Record<string, unknown>) {
+  private lineStatus(tenantId: string, lineId: string, context?: StrategyRequestContext) {
+    this.assertResource(context, 'line', lineId);
+    return this.dashboardService.getLineOverview(tenantId, lineId);
+  }
+
+  private deviceStatus(tenantId: string, args: Record<string, unknown>, context?: StrategyRequestContext) {
     const deviceId = this.requiredArg(args, 'deviceId');
     const device = this.devicesService.findOne(tenantId, deviceId);
+    this.assertResource(context, 'device', deviceId, device.lineId);
     const lineId = typeof args.lineId === 'string' ? args.lineId : device.lineId;
     if (lineId !== device.lineId) throw new NotFoundException(`Device ${deviceId} not found on line ${lineId}`);
     return this.mqttIngestionService.getDevice(tenantId, device.lineId, deviceId) ?? device;
   }
 
-  private activeAlarms(tenantId: string, args: Record<string, unknown>) {
+  private activeAlarms(tenantId: string, args: Record<string, unknown>, context?: StrategyRequestContext) {
+    if (typeof args.lineId === 'string') this.assertResource(context, 'line', args.lineId);
+    if (typeof args.deviceId === 'string') this.assertResource(context, 'device', args.deviceId, typeof args.lineId === 'string' ? args.lineId : undefined);
     const filters: AlarmFilters = { status: 'active' };
     if (typeof args.lineId === 'string') filters.lineId = args.lineId;
     if (typeof args.deviceId === 'string') filters.deviceId = args.deviceId;
@@ -102,8 +114,9 @@ export class AgentApiService {
     return this.alarmsService.findAll(tenantId, filters);
   }
 
-  private workOrderProgress(tenantId: string, workOrderId: string) {
+  private workOrderProgress(tenantId: string, workOrderId: string, context?: StrategyRequestContext) {
     const order = this.workOrdersService.findOne(tenantId, workOrderId);
+    this.assertResource(context, 'workOrder', workOrderId, order.lineId);
     const remainingQty = Math.max(0, order.plannedQty - order.completedQty);
     return {
       workOrderId: order.id,
@@ -119,8 +132,29 @@ export class AgentApiService {
     };
   }
 
-  private delayRisk(tenantId: string, workOrderId: string) {
+  private authorize(input: AgentAuthorizationContext | undefined, tenantId: string, traceId: string): StrategyRequestContext | undefined {
+    if (!this.governance || !this.authorization) return undefined;
+    if (!input) throw new UnauthorizedException('AUTH_REQUIRED: Agent authorization context is required');
+    const context = this.authorization.fromHeaders({
+      userId: input.userId,
+      role: input.role,
+      factoryId: input.factoryId,
+      scope: Array.isArray(input.scope) ? input.scope.join(',') : input.scope,
+      sessionId: input.sessionId,
+      traceId,
+    });
+    this.authorization.assertCanRead(context);
+    return context;
+  }
+
+  private assertResource(context: StrategyRequestContext | undefined, kind: string, id: string, lineId?: string): void {
+    if (!context || !this.authorization) return;
+    this.authorization.assertResourceAccess(context, kind, id, lineId);
+  }
+
+  private delayRisk(tenantId: string, workOrderId: string, context?: StrategyRequestContext) {
     const order = this.workOrdersService.findOne(tenantId, workOrderId);
+    this.assertResource(context, 'workOrder', workOrderId, order.lineId);
     const remainingQty = Math.max(0, order.plannedQty - order.completedQty);
     const hoursUntilDue = (Date.parse(order.dueAt) - Date.now()) / 3_600_000;
     const estimatedHours = remainingQty / 10;
@@ -128,16 +162,20 @@ export class AgentApiService {
     return { workOrderId: order.id, risk, hoursUntilDue: this.round(hoursUntilDue), estimatedHours: this.round(estimatedHours), remainingQty, dueAt: order.dueAt };
   }
 
-  private simulationSnapshot(tenantId: string, args: Record<string, unknown>) {
+  private simulationSnapshot(tenantId: string, args: Record<string, unknown>, context?: StrategyRequestContext) {
     const requestedId = typeof args.simulationId === 'string' ? args.simulationId : undefined;
     if (requestedId) {
       const governed = this.governance?.getSimulation(tenantId, requestedId);
-      if (governed) return { simulationId: requestedId, ...governed.result.snapshot };
+      if (governed) {
+        if (context && this.authorization) this.authorization.assertSnapshotAccess(context, governed.result.snapshot);
+        return { simulationId: requestedId, ...governed.result.snapshot };
+      }
       const snapshot = this.snapshots.get(requestedId);
       if (!snapshot) throw new NotFoundException(`Simulation ${requestedId} not found`);
       return { simulationId: requestedId, ...snapshot };
     }
     const snapshot = this.buildSnapshot(tenantId);
+    if (context && this.authorization) this.authorization.assertSnapshotAccess(context, snapshot);
     const result = this.strategyEngine.simulate(snapshot);
     this.governance?.recordSimulation(tenantId, 'nanobot', snapshot, result);
     this.snapshots.set(result.simulationId, snapshot);
@@ -146,9 +184,12 @@ export class AgentApiService {
     return { simulationId: result.simulationId, ...snapshot };
   }
 
-  private strategyResult(tenantId: string, simulationId: string) {
+  private strategyResult(tenantId: string, simulationId: string, context?: StrategyRequestContext) {
     const governed = this.governance?.getSimulation(tenantId, simulationId);
-    if (governed) return governed.result;
+    if (governed) {
+      if (context && this.authorization) this.authorization.assertSnapshotAccess(context, governed.result.snapshot);
+      return governed.result;
+    }
     const cached = this.simulations.get(simulationId);
     if (cached && this.simulationTenants.get(simulationId) === tenantId) return cached;
     const result = this.strategyEngine.simulate(this.buildSnapshot(tenantId));
@@ -202,6 +243,8 @@ export class AgentApiService {
 
   private errorCode(error: unknown): string {
     if (error instanceof NotFoundException) return 'NOT_FOUND';
+    if (error instanceof UnauthorizedException) return 'AUTH_REQUIRED';
+    if (error instanceof ForbiddenException) return 'AUTHORIZATION_DENIED';
     return 'TOOL_EXECUTION_ERROR';
   }
 

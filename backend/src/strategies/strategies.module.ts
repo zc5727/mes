@@ -9,6 +9,6 @@ import { StrategyEngineService } from './strategy-engine.service';
   imports: [AuditModule],
   controllers: [StrategiesController],
   providers: [StrategyEngineService, StrategyGovernanceService, StrategyAuthorizationService],
-  exports: [StrategyEngineService, StrategyGovernanceService],
+  exports: [StrategyEngineService, StrategyGovernanceService, StrategyAuthorizationService],
 })
 export class StrategiesModule {}

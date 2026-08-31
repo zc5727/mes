@@ -46,7 +46,7 @@ export interface WorkOrderReport {
   operationCode: string | null;
   operatorId: string | null;
   qualityRecordId: string | null;
-  materialConsumptions: Array<{ materialCode: string; quantity: number; unit?: string }>;
+  materialConsumptions: Array<{ materialCode: string; batchNo: string; quantity: number; unit?: string }>;
   reportedAt: string;
 }
 
@@ -236,9 +236,11 @@ export class WorkOrdersService implements OnModuleInit {
     const serialNumbers = dto.serialNumbers ?? [];
     if (serialNumbers.length && serialNumbers.length !== dto.quantity) throw new ConflictException('serialNumbers count must equal quantity');
     if (new Set(serialNumbers).size !== serialNumbers.length) throw new ConflictException('serialNumbers must be unique');
+    const existingSerialNumbers = new Set(this.reports.filter((item) => item.tenantId === tenantId && item.workOrderId === id).flatMap((item) => item.serialNumbers));
+    if (serialNumbers.some((serialNumber) => existingSerialNumbers.has(serialNumber))) throw new ConflictException('serialNumbers already reported for work order');
     const materialConsumptions = dto.materialConsumptions ?? [];
-    if (materialConsumptions.some((item) => !item.materialCode?.trim() || typeof item.quantity !== 'number' || !Number.isFinite(item.quantity) || item.quantity <= 0)) {
-      throw new ConflictException('material consumptions must have positive quantities and material codes');
+    if (materialConsumptions.some((item) => !item.materialCode?.trim() || !item.batchNo?.trim() || typeof item.quantity !== 'number' || !Number.isFinite(item.quantity) || item.quantity <= 0)) {
+      throw new ConflictException('material consumptions must have positive quantities, material codes and batch numbers');
     }
     const report: WorkOrderReport = {
       id: createId('report'), workOrderId: id, tenantId, quantity: dto.quantity,
@@ -266,14 +268,22 @@ export class WorkOrdersService implements OnModuleInit {
   executionSummary(tenantId: string, id: string) {
     const workOrder = this.findOne(tenantId, id);
     const reports = this.findReports(tenantId, id);
-    const materialTotals = new Map<string, number>();
-    reports.flatMap((report) => report.materialConsumptions).forEach((item) => materialTotals.set(item.materialCode, (materialTotals.get(item.materialCode) ?? 0) + item.quantity));
+    const materialTotals = new Map<string, { materialCode: string; batchNo: string; quantity: number }>();
+    reports.flatMap((report) => report.materialConsumptions).forEach((item) => {
+      const key = `${item.materialCode}:${item.batchNo}`;
+      const current = materialTotals.get(key) ?? { materialCode: item.materialCode, batchNo: item.batchNo, quantity: 0 };
+      materialTotals.set(key, { ...current, quantity: current.quantity + item.quantity });
+    });
+    const deviceIds = [...new Set(reports.map((report) => report.deviceId).filter((value): value is string => Boolean(value)))];
+    const qualityRecordIds = [...new Set(reports.map((report) => report.qualityRecordId).filter((value): value is string => Boolean(value)))];
     return {
       workOrderId: workOrder.id,
       operations: [...new Set(reports.map((report) => report.operationCode).filter((value): value is string => Boolean(value)))],
-      batches: [...new Set(reports.map((report) => report.batchNo).filter((value): value is string => Boolean(value)))],
+      devices: deviceIds,
+      qualityRecordIds,
+      finishedBatches: [...new Set(reports.map((report) => report.batchNo).filter((value): value is string => Boolean(value)))],
       serialNumbers: [...new Set(reports.flatMap((report) => report.serialNumbers))],
-      materialConsumptions: [...materialTotals.entries()].map(([materialCode, quantity]) => ({ materialCode, quantity })),
+      materialConsumptions: [...materialTotals.values()],
       reports: reports.length,
     };
   }

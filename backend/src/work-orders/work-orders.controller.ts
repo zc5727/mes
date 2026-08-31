@@ -40,6 +40,11 @@ export class WorkOrdersController {
     return { data: this.workOrdersService.report(tenantId, id, dto), tenantId };
   }
 
+  @Post(':id/operations/:operationCode/report')
+  operationReport(@TenantId() tenantId: string, @Param('id') id: string, @Param('operationCode') operationCode: string, @Body() dto: ReportWorkOrderDto) {
+    return { data: this.workOrdersService.report(tenantId, id, { ...dto, operationCode }), tenantId };
+  }
+
   @Get(':id/reports')
   reports(@TenantId() tenantId: string, @Param('id') id: string) {
     return { data: this.workOrdersService.findReports(tenantId, id), tenantId };

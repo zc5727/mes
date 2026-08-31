@@ -52,5 +52,5 @@ export class ReportWorkOrderDto {
   @IsOptional()
   @IsArray()
   @IsObject({ each: true })
-  materialConsumptions?: Array<{ materialCode: string; quantity: number; unit?: string }>;
+  materialConsumptions?: Array<{ materialCode: string; batchNo: string; quantity: number; unit?: string }>;
 }

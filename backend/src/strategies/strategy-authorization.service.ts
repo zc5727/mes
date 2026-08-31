@@ -121,6 +121,18 @@ export class StrategyAuthorizationService {
     }
   }
 
+  /** Apply the same scope rules to a single Agent resource lookup. */
+  assertResourceAccess(context: StrategyRequestContext, kind: string, id: string, lineId?: string): void {
+    const fullScope = context.scope.includes('*') || context.scope.includes(`factory:${context.factoryId}`);
+    if (fullScope && (context.role === 'system_admin' || context.role === 'plant_manager')) return;
+    const scope = new Set(context.scope);
+    const allowed = scope.has('*') && (context.role === 'system_admin' || context.role === 'plant_manager')
+      || scope.has(id)
+      || scope.has(`${kind}:${id}`)
+      || (lineId !== undefined && (scope.has(lineId) || scope.has(`line:${lineId}`)));
+    if (!allowed) throw new ForbiddenException(`RESOURCE_SCOPE_DENIED: ${kind} ${id} is outside the request scope`);
+  }
+
   private required(value: string | undefined, field: string): string {
     if (!value?.trim()) throw new UnauthorizedException(`AUTH_REQUIRED: ${field} is required`);
     return value.trim();

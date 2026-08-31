@@ -57,4 +57,29 @@ describe('MQTT state PostgreSQL persistence', () => {
       where: { id: expect.stringMatching(/^telemetry:[a-f0-9]{64}$/) },
     }));
   });
+
+  it('projects telemetry to the canonical device record and alarm lifecycle tables', async () => {
+    const prisma = {
+      ensureConnection: jest.fn().mockResolvedValue(undefined), isReady: () => true,
+      mqttDeviceState: { upsert: jest.fn().mockResolvedValue(undefined) },
+      currentState: { upsert: jest.fn().mockResolvedValue(undefined) },
+      device: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      alarm: { upsert: jest.fn().mockResolvedValue(undefined) },
+      deviceEvent: { upsert: jest.fn().mockResolvedValue(undefined) },
+      mqttAlarmState: { upsert: jest.fn().mockResolvedValue(undefined) },
+    } as unknown as PrismaService;
+    const persistence = new MqttStatePersistenceService(prisma);
+    await persistence.saveTelemetry({
+      tenantId: 'tenant-demo', lineId: 'line-cnc', deviceId: 'cnc-01', deviceName: 'CNC', status: 'FAULT',
+      temperatureCelsius: 90, cycleTimeSeconds: 1, totalCount: 2, goodCount: 1, defectCount: 1,
+      activeFaults: ['OVERHEAT'], timestamp: '2026-08-28T09:00:00.000Z', sourceTopic: 'mqtt', receivedAt: '2026-08-28T09:00:01.000Z',
+    });
+    await persistence.saveAlarm({
+      tenantId: 'tenant-demo', alarm: { id: 'alarm-1', lineId: 'line-cnc', deviceId: 'device-cnc-01', type: 'OVERHEAT', severity: 'CRITICAL', message: 'overheat', startedAt: '2026-08-28T09:00:00.000Z' },
+      active: true, lastEvent: 'alarm.created', updatedAt: '2026-08-28T09:00:01.000Z',
+    });
+
+    expect(prisma.device.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'alarm' }) }));
+    expect(prisma.alarm.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ status: 'open', level: 'critical' }) }));
+  });
 });
