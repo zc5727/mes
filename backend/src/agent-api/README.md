@@ -30,7 +30,7 @@
 | `get_delay_risk` | `workOrderId` |
 | `get_quality_records` | 可选 `lineId` |
 | `get_quality_issues` | 无 |
-| `get_maintenance_work_orders` | 无 |
+| `get_maintenance_work_orders` | 可选 `overdueOnly=true` |
 | `get_maintenance_plans` | 无 |
 | `get_inventory_batches` | 无 |
 | `get_spare_parts` | 无 |

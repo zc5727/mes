@@ -113,7 +113,7 @@ export class AgentApiService {
       case 'get_quality_issues':
         return this.qualityIssues(tenantId, args, context);
       case 'get_maintenance_work_orders':
-        return this.maintenanceWorkOrders(tenantId, context);
+        return this.maintenanceWorkOrders(tenantId, args, context);
       case 'get_maintenance_plans':
         return this.maintenancePlans(tenantId, context);
       case 'get_inventory_batches':
@@ -263,9 +263,12 @@ export class AgentApiService {
     });
   }
 
-  private maintenanceWorkOrders(tenantId: string, context?: StrategyRequestContext) {
+  private maintenanceWorkOrders(tenantId: string, args: Record<string, unknown>, context?: StrategyRequestContext) {
     if (!this.maintenanceService) return [];
-    return this.maintenanceService.list(tenantId).filter((item) => !context || this.canReadLine(context, item.lineId));
+    const orders = args.overdueOnly === true
+      ? this.maintenanceService.overdue(tenantId)
+      : this.maintenanceService.list(tenantId);
+    return orders.filter((item) => !context || this.canReadLine(context, item.lineId));
   }
 
   private maintenancePlans(tenantId: string, context?: StrategyRequestContext) {

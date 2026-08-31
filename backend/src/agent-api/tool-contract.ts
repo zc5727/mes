@@ -122,6 +122,11 @@ export interface ActiveAlarmsArguments {
   level?: 'info' | 'warning' | 'critical';
 }
 
+export interface MaintenanceWorkOrdersArguments {
+  /** When true, return only open orders whose planned time has elapsed. */
+  overdueOnly?: boolean;
+}
+
 export interface SimulationSnapshotArguments {
   simulationId?: string;
 }
