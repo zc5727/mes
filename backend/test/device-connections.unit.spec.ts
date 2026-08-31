@@ -8,10 +8,10 @@ describe('device connections', () => {
     new DeviceConnectionsService(probe, new DeviceProfilesService())
   );
 
-  it('keeps configurations tenant scoped and declares capabilities', () => {
+  it('keeps configurations tenant scoped and declares capabilities', async () => {
     const probe: DeviceConnectionProbe = { probe: jest.fn() };
     const service = createService(probe);
-    const connection = service.create('tenant-a', {
+    const connection = await service.create('tenant-a', {
       deviceId: 'device-01', name: 'HTTP采集', type: 'http', endpoint: 'http://localhost:3100/events',
       capabilities: ['telemetry', 'alarm', 'telemetry'],
     });
@@ -25,7 +25,7 @@ describe('device connections', () => {
   it('tests, starts, reports health and stops without touching a PLC', async () => {
     const probe: DeviceConnectionProbe = { probe: jest.fn().mockResolvedValue({ ok: true, latencyMs: 12 }) };
     const service = createService(probe);
-    const connection = service.create('tenant-a', {
+    const connection = await service.create('tenant-a', {
       deviceId: 'device-01', name: 'Webhook', type: 'webhook', endpoint: 'https://example.test/hook',
       capabilities: ['status'],
     });
@@ -35,14 +35,16 @@ describe('device connections', () => {
     expect(tested.connection.health.status).toBe('healthy');
     expect((await service.start('tenant-a', connection.id)).status).toBe('running');
     expect(service.health('tenant-a', connection.id).checkedAt).toEqual(expect.any(String));
-    expect(service.stop('tenant-a', connection.id).status).toBe('stopped');
+    expect((await service.stop('tenant-a', connection.id)).status).toBe('stopped');
+    expect(service.listStatusEvents('tenant-a', connection.id).map((event) => event.status))
+      .toEqual(['created', 'running', 'stopped']);
     expect(probe.probe).toHaveBeenCalledTimes(2);
   });
 
   it('stores a unified event only for a running connection and rejects duplicates', async () => {
     const probe: DeviceConnectionProbe = { probe: jest.fn().mockResolvedValue({ ok: true, latencyMs: 1 }) };
     const service = createService(probe);
-    const connection = service.create('tenant-a', {
+    const connection = await service.create('tenant-a', {
       deviceId: 'device-01', name: 'MQTT', type: 'mqtt', endpoint: 'mqtt://localhost:1883',
     });
     expect(() => service.ingestEvent('tenant-a', connection.id, { type: 'telemetry', eventId: 'event-1', payload: { temperature: 42 } })).toThrow(ConflictException);
@@ -56,8 +58,8 @@ describe('device connections', () => {
   it('records the last error and validates protocol endpoints', async () => {
     const probe: DeviceConnectionProbe = { probe: jest.fn().mockResolvedValue({ ok: false, latencyMs: 8, error: 'connection refused' }) };
     const service = createService(probe);
-    expect(() => service.create('tenant-a', { deviceId: 'd', name: 'Bad', type: 'mqtt', endpoint: 'https://example.test' })).toThrow(BadRequestException);
-    const connection = service.create('tenant-a', { deviceId: 'device-02', name: 'HTTP', type: 'http', endpoint: 'http://localhost:3100' });
+    await expect(service.create('tenant-a', { deviceId: 'd', name: 'Bad', type: 'mqtt', endpoint: 'https://example.test' })).rejects.toThrow(BadRequestException);
+    const connection = await service.create('tenant-a', { deviceId: 'device-02', name: 'HTTP', type: 'http', endpoint: 'http://localhost:3100' });
     const result = await service.test('tenant-a', connection.id);
     expect(result.test.error).toBe('connection refused');
     expect(result.connection.lastError).toBe('connection refused');
@@ -68,15 +70,15 @@ describe('device connections', () => {
     const probe: DeviceConnectionProbe = { probe: jest.fn() };
     const service = createService(probe);
 
-    expect(() => service.create('tenant-a', {
+    await expect(service.create('tenant-a', {
       deviceId: 'device-03',
       name: 'Modbus设备',
       type: 'modbus-tcp',
       profileKey: 'generic-cnc-opcua',
       endpoint: 'modbus-tcp://localhost:502',
-    })).toThrow(BadRequestException);
+    })).rejects.toThrow(BadRequestException);
 
-    const mtconnect = service.create('tenant-a', {
+    const mtconnect = await service.create('tenant-a', {
       deviceId: 'device-04',
       name: 'MTConnect设备',
       type: 'mtconnect',
@@ -96,9 +98,9 @@ describe('device connections', () => {
     expect(probe.probe).not.toHaveBeenCalled();
   });
 
-  it('binds a compatible profile and exposes it without crossing tenant boundaries', () => {
+  it('binds a compatible profile and exposes it without crossing tenant boundaries', async () => {
     const service = createService({ probe: jest.fn() });
-    const connection = service.create('tenant-a', {
+    const connection = await service.create('tenant-a', {
       deviceId: 'device-05',
       name: 'OPC UA设备',
       type: 'opc-ua',
@@ -110,7 +112,7 @@ describe('device connections', () => {
     expect(service.profile('tenant-a', connection.id)).toEqual(
       expect.objectContaining({ key: 'generic-cnc-opcua', protocol: 'opcua', verified: false }),
     );
-    const rebound = service.update('tenant-a', connection.id, { profileKey: 'generic-cnc-opcua' });
+    const rebound = await service.update('tenant-a', connection.id, { profileKey: 'generic-cnc-opcua' });
     expect(rebound.profileKey).toBe('generic-cnc-opcua');
     expect(() => service.profile('tenant-b', connection.id)).toThrow(NotFoundException);
   });

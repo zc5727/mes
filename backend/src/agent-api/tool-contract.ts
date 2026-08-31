@@ -1,3 +1,15 @@
+import 'reflect-metadata';
+import { Type } from 'class-transformer';
+import {
+  IsIn,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+  ValidateNested,
+} from 'class-validator';
+
 /**
  * Read-only tool contract reserved for the local nanobot adapter.
  * The contract intentionally contains no command that can mutate production state.
@@ -22,6 +34,67 @@ export const AGENT_READ_ONLY_TOOLS = [
 ] as const;
 
 export type AgentReadOnlyTool = (typeof AGENT_READ_ONLY_TOOLS)[number];
+
+export class AgentAuthorizationDto implements AgentAuthorizationContext {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  userId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(80)
+  role!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  factoryId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  scope!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(160)
+  sessionId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  serviceAccountId?: string;
+}
+
+/** Runtime-validated HTTP payload for the Agent read-only gateway. */
+export class AgentToolRequestDto {
+  @IsIn([...AGENT_READ_ONLY_TOOLS])
+  tool!: AgentReadOnlyTool;
+
+  @IsObject()
+  arguments!: Record<string, unknown>;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  tenantId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  requestedBy?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(160)
+  traceId!: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AgentAuthorizationDto)
+  authorization?: AgentAuthorizationDto;
+}
 
 export interface AgentToolRequest<TArguments extends Record<string, unknown> = Record<string, unknown>> {
   tool: AgentReadOnlyTool;

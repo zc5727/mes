@@ -108,6 +108,13 @@ export class StrategyAuthorizationService {
     this.assertAction(context, 'execute', 'simulated strategy execution is not permitted');
   }
 
+  /** Restrict direct audit writes to roles responsible for audit integrity. */
+  assertCanRecordAudit(context: StrategyRequestContext): void {
+    if (!new Set<StrategyRole>(['system_admin', 'plant_manager']).has(context.role)) {
+      throw new ForbiddenException('ROLE_FORBIDDEN: audit records are not writable by this role');
+    }
+  }
+
   private assertAction(context: StrategyRequestContext, action: 'read' | 'simulate' | 'approve' | 'execute' | 'rollback', message: string): void {
     if (!STRATEGY_ACTION_MATRIX[context.role]?.has(action)) throw new ForbiddenException(`ROLE_FORBIDDEN: ${message}`);
   }

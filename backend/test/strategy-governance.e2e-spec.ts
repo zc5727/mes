@@ -53,7 +53,7 @@ describe('strategy governance boundary (e2e)', () => {
     await request(server).patch(`/api/v1/audit/approvals/${approvalId}/approve`)
       .set(identity('supervisor', 'LINE-01,LINE-02')).expect(403);
     await request(server).post(`/api/v1/strategies/simulations/${simulationId}/approvals/${approvalId}/approve`)
-      .set(identity('supervisor', 'LINE-01,LINE-02')).expect(200);
+      .set(identity('plant_manager', 'LINE-01,LINE-02')).expect(200);
     await request(server).post(`/api/v1/strategies/simulations/${simulationId}/execute`)
       .set(identity('supervisor', 'LINE-01,LINE-02')).send({}).expect(409);
     const executed = await request(server).post(`/api/v1/strategies/simulations/${simulationId}/execute`)
@@ -114,7 +114,7 @@ describe('strategy governance boundary (e2e)', () => {
 
     const approvalId = first.body.audit.approvalIds[0];
     await request(server).post(`/api/v1/strategies/simulations/${first.body.data.simulationId}/revoke`)
-      .set(headers).expect(200);
+      .set(identity('plant_manager', 'LINE-01,LINE-02')).expect(200);
     const approvals = await request(server).get(`/api/v1/strategies/simulations/${first.body.data.simulationId}/approvals`)
       .set(headers).expect(200);
     expect(approvals.body.data).toEqual(expect.arrayContaining([
@@ -151,7 +151,7 @@ describe('strategy governance boundary (e2e)', () => {
 
     const rejected = await request(server)
       .post(`/api/v1/strategies/simulations/${simulationId}/approvals/${approvalId}/reject`)
-      .set({ ...identity('supervisor', 'LINE-01,LINE-02'), 'x-trace-id': 'trace-reject-e2e' })
+      .set({ ...identity('plant_manager', 'LINE-01,LINE-02'), 'x-trace-id': 'trace-reject-e2e' })
       .expect(200);
     expect(rejected.body.traceId).toBe('trace-reject-e2e');
     expect(rejected.body.data.audit.lifecycleStatus).toBe('rejected');

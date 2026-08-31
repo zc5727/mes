@@ -17,7 +17,7 @@ describe('device connection DTO', () => {
 
   it('rejects malformed endpoint syntax before service-level protocol checks', async () => {
     const dto = Object.assign(new CreateDeviceConnectionDto(), {
-      deviceId: 'device-01', name: '设备连接', type: 'modbus-tcp', endpoint: 'not-an-endpoint',
+      deviceId: 'device-01', name: '设备连接', type: 'modbus-tcp', endpoint: 'not an endpoint',
     });
 
     await expect(validate(dto)).resolves.toEqual(expect.arrayContaining([

@@ -1,6 +1,7 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Sse } from '@nestjs/common';
+import type { Observable } from 'rxjs';
 import { TenantId } from '../common/tenant.decorator';
-import { DashboardService } from './dashboard.service';
+import { DashboardRealtimeMessage, DashboardService } from './dashboard.service';
 
 @Controller('dashboard')
 export class DashboardController {
@@ -9,6 +10,11 @@ export class DashboardController {
   @Get('overview')
   overview(@TenantId() tenantId: string) {
     return { data: this.dashboardService.getOverview(tenantId), tenantId };
+  }
+
+  @Sse('stream')
+  stream(@TenantId() tenantId: string): Observable<DashboardRealtimeMessage> {
+    return this.dashboardService.stream(tenantId);
   }
 
   @Get('production-metrics')

@@ -68,6 +68,7 @@ model Tenant {
   documents        DocumentRecord[]
   batchInventories BatchInventory[]
   foundationAuxRecords FoundationAuxRecord[]
+  deviceConnections DeviceConnection[]
 
   @@map("tenants")
 }
@@ -135,6 +136,65 @@ model Device {
   @@unique([tenantId, code])
   @@index([tenantId, lineId, status])
   @@map("devices")
+}
+
+model DeviceProfile {
+  key       String   @id @db.VarChar(120)
+  name      String   @db.VarChar(160)
+  protocol  String   @db.VarChar(40)
+  verified  Boolean  @default(false)
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([protocol, verified])
+  @@map("device_profiles")
+}
+
+model DeviceConnection {
+  id                String   @id @db.VarChar(80)
+  tenantId          String   @map("tenant_id") @db.VarChar(40)
+  deviceId          String   @map("device_id") @db.VarChar(80)
+  name              String   @db.VarChar(120)
+  type              String   @db.VarChar(40)
+  profileKey        String?  @map("profile_key") @db.VarChar(120)
+  driverVerification String @map("driver_verification") @db.VarChar(30)
+  endpoint          String   @db.VarChar(500)
+  config            Json
+  capabilities      Json
+  enabled           Boolean  @default(true)
+  status            String   @db.VarChar(30)
+  health            Json
+  lastError         String?  @map("last_error") @db.VarChar(500)
+  lastErrorCode     String?  @map("last_error_code") @db.VarChar(80)
+  lastEventAt       DateTime? @map("last_event_at")
+  lastHeartbeatAt   DateTime? @map("last_heartbeat_at")
+  startedAt         DateTime? @map("started_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  statusEvents DeviceConnectionStatusEvent[]
+
+  @@unique([tenantId, deviceId, type])
+  @@index([tenantId, status])
+  @@index([tenantId, profileKey])
+  @@map("device_connections")
+}
+
+model DeviceConnectionStatusEvent {
+  id           String   @id @db.VarChar(80)
+  tenantId     String   @map("tenant_id") @db.VarChar(40)
+  connectionId String   @map("connection_id") @db.VarChar(80)
+  status       String   @db.VarChar(30)
+  eventTime    DateTime @map("event_time")
+  errorCode    String?  @map("error_code") @db.VarChar(80)
+  details      Json
+
+  connection DeviceConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, connectionId, eventTime])
+  @@map("device_connection_status_events")
 }
 
 model ProductionOrder {

@@ -104,4 +104,55 @@ describe('StrategyGovernanceService', () => {
       expect.objectContaining({ action: 'STRATEGY_REPLAY', resourceId: result.simulationId }),
     ]));
   });
+
+  it('does not reuse an approval across simulations or allow self-approval', () => {
+    const audit = new AuditService();
+    const governance = new StrategyGovernanceService(audit);
+    const engine = new StrategyEngineService();
+    const firstResult = engine.simulate(snapshot);
+    const secondResult = engine.simulate({
+      ...snapshot,
+      timestamp: '2026-08-30T09:00:00.000Z',
+    });
+
+    const firstCall = governance.recordSimulation(
+      'tenant-a',
+      'creator-1',
+      snapshot,
+      firstResult,
+    );
+    const secondCall = governance.recordSimulation(
+      'tenant-a',
+      'creator-2',
+      { ...snapshot, timestamp: '2026-08-30T09:00:00.000Z' },
+      secondResult,
+    );
+
+    expect(firstCall.approvalIds).not.toEqual(secondCall.approvalIds);
+    expect(() => governance.decideApproval(
+      'tenant-a',
+      firstResult.simulationId,
+      firstCall.approvalIds[0],
+      'approved',
+      'creator-1',
+      'trace-self-approval',
+    )).toThrow('APPROVAL_SEPARATION_REQUIRED');
+    governance.decideApproval(
+      'tenant-a',
+      firstResult.simulationId,
+      firstCall.approvalIds[0],
+      'approved',
+      'approver-1',
+      'trace-approval',
+    );
+    expect(governance.listApprovalsForSimulation(
+      'tenant-a',
+      firstResult.simulationId,
+    )).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: firstCall.approvalIds[0],
+        status: 'approved',
+      }),
+    ]));
+  });
 });

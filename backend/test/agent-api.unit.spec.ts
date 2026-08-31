@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { AGENT_READ_ONLY_TOOLS, createToolError, isReadOnlyAgentTool } from '../src/agent-api/tool-contract';
 
 describe('nanobot read-only tool contract', () => {

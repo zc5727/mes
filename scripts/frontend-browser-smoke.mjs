@@ -31,14 +31,16 @@ page.on('dialog', (dialog) => dialog.accept());
 
 try {
   await page.goto(frontendUrl, { waitUntil: 'networkidle' });
-  await page.locator('select[aria-label="控制模式"]').selectOption({ label: '本地仿真' });
-  await page.waitForTimeout(400);
-
   const body = await page.locator('body').innerText();
   for (const line of ['CNC加工线', '装配线', '焊接线', '视觉检测线']) {
     require(body.includes(line), `缺少产线: ${line}`);
   }
   require(await page.locator('canvas').count() > 0, '三维场景未渲染');
+
+  const lineCards = page.locator('.line-card');
+  require(await lineCards.count() >= 4, '四条产线卡片未渲染');
+  await lineCards.nth(2).click();
+  require((await page.locator('.breadcrumb').innerText()).includes('焊接'), '产线切换未更新当前车间');
 
   const navigation = page.locator('.shop-block');
   const before = await navigation.evaluate((element) => element.scrollTop);
@@ -56,13 +58,6 @@ try {
     await page.mouse.up();
     await page.mouse.wheel(0, -240);
   }
-  await page.getByRole('button', { name: '注入故障' }).click();
-  require((await page.locator('body').innerText()).includes('故障指令已受理'), '故障注入未受理');
-  await page.getByRole('button', { name: '恢复设备' }).click();
-  require((await page.locator('body').innerText()).includes('恢复指令已受理'), '设备恢复未受理');
-
-  await page.locator('select[aria-label="控制模式"]').selectOption({ label: 'API 控制' });
-  await page.waitForTimeout(200);
   const addLine = page.getByRole('button', { name: /新增产线/ });
   require(await addLine.isEnabled(), 'API 模式新增产线按钮不可用');
   await addLine.click();

@@ -11,13 +11,13 @@ export class DeviceConnectionsController {
   list(@TenantId() tenantId: string) { return { data: this.service.list(tenantId), tenantId }; }
 
   @Post()
-  create(@TenantId() tenantId: string, @Body() dto: CreateDeviceConnectionDto) { return { data: this.service.create(tenantId, dto), tenantId }; }
+  async create(@TenantId() tenantId: string, @Body() dto: CreateDeviceConnectionDto) { return { data: await this.service.create(tenantId, dto), tenantId }; }
 
   @Get(':id')
   findOne(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.findOne(tenantId, id), tenantId }; }
 
   @Patch(':id')
-  update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateDeviceConnectionDto) { return { data: this.service.update(tenantId, id, dto), tenantId }; }
+  async update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateDeviceConnectionDto) { return { data: await this.service.update(tenantId, id, dto), tenantId }; }
 
   @Post(':id/test')
   async test(@TenantId() tenantId: string, @Param('id') id: string) { return { data: await this.service.test(tenantId, id), tenantId }; }
@@ -26,13 +26,16 @@ export class DeviceConnectionsController {
   async start(@TenantId() tenantId: string, @Param('id') id: string) { return { data: await this.service.start(tenantId, id), tenantId }; }
 
   @Post(':id/stop')
-  stop(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.stop(tenantId, id), tenantId }; }
+  async stop(@TenantId() tenantId: string, @Param('id') id: string) { return { data: await this.service.stop(tenantId, id), tenantId }; }
 
   @Get(':id/health')
   health(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.health(tenantId, id), tenantId }; }
 
   @Get(':id/profile')
   profile(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.profile(tenantId, id), tenantId }; }
+
+  @Get(':id/status-events')
+  statusEvents(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.listStatusEvents(tenantId, id), tenantId }; }
 
   @Get(':id/events')
   events(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.listEvents(tenantId, id), tenantId }; }

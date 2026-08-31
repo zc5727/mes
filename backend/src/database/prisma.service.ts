@@ -13,6 +13,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     'factories', 'production_lines', 'devices', 'production_orders', 'work_orders',
     'work_order_reports', 'alarms', 'device_events', 'current_states', 'connection_events',
     'quality_records', 'maintenance_work_orders', 'document_records', 'batch_inventories', 'foundation_aux_records',
+    'device_profiles', 'device_connections', 'device_connection_status_events',
   ];
 
   async onModuleInit(): Promise<void> {

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Observable } from 'rxjs';
 import { Agv, AgvsService } from '../agvs/agvs.service';
 import { Device, DevicesService } from '../devices/devices.service';
 import { Alarm, AlarmsService } from '../alarms/alarms.service';
@@ -93,6 +94,15 @@ export interface DashboardOverview {
   generatedAt: string;
 }
 
+export interface DashboardRealtimeMessage {
+  data: {
+    type: 'snapshot' | 'updated' | 'heartbeat';
+    tenantId: string;
+    overview: DashboardOverview;
+    generatedAt: string;
+  };
+}
+
 @Injectable()
 export class DashboardService {
   constructor(
@@ -133,6 +143,35 @@ export class DashboardService {
       temperatureTrend: this.temperatureTrend(devices),
       generatedAt: new Date().toISOString(),
     };
+  }
+
+  stream(tenantId: string): Observable<DashboardRealtimeMessage> {
+    return new Observable((subscriber) => {
+      let closed = false;
+      const emit = (type: DashboardRealtimeMessage['data']['type']) => {
+        if (closed) return;
+        subscriber.next({
+          data: {
+            type,
+            tenantId,
+            overview: this.getOverview(tenantId),
+            generatedAt: new Date().toISOString(),
+          },
+        });
+      };
+
+      emit('snapshot');
+      const unsubscribe = this.mqttIngestionService?.onProjection((changedTenant) => {
+        if (changedTenant === tenantId) emit('updated');
+      }) ?? (() => undefined);
+      const heartbeat = setInterval(() => emit('heartbeat'), 15_000);
+
+      return () => {
+        closed = true;
+        unsubscribe();
+        clearInterval(heartbeat);
+      };
+    });
   }
 
   getProductionMetrics(tenantId: string, lineId?: string): ProductionMetrics {

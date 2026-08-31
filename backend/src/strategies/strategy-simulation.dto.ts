@@ -4,9 +4,11 @@ import {
   IsBoolean,
   IsDateString,
   IsIn,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -106,4 +108,13 @@ export class StrategySimulationDto {
   @ValidateNested({ each: true })
   @Type(() => MaterialShortageDto)
   materialShortages?: MaterialShortageDto[];
+}
+
+/** Request body required to enter the non-production simulated execution path. */
+export class StrategyExecutionDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  confirmationId?: string;
 }

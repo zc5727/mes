@@ -99,7 +99,12 @@ describe('core production loop smoke', () => {
     const devicesService = new DevicesService();
     const alarmsService = new AlarmsService(devicesService, ingestion);
     const alarmsController = new AlarmsController(alarmsService);
-    const alarmResponse = alarmsController.findAll(tenantId, 'critical', lineId, deviceId, 'active');
+    const alarmResponse = alarmsController.findAll(tenantId, {
+      level: 'critical',
+      lineId,
+      deviceId,
+      status: 'active',
+    });
 
     expect(ingestion.listDevices(tenantId)).toHaveLength(1);
     expect(ingestion.getDevice(tenantId, lineId, deviceId)?.status).toBe('FAULT');

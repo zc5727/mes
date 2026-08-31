@@ -6,6 +6,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
+import { Observable } from 'rxjs';
 import { Device, DevicesService } from '../devices/devices.service';
 import { MqttIngestionService } from '../mqtt/mqtt-ingestion.service';
 import { MaintenanceService } from '../maintenance/maintenance.service';
@@ -33,6 +34,15 @@ export interface AlarmFilters {
   lineId?: string;
   deviceId?: string;
   status?: AlarmStatus;
+}
+
+export interface AlarmRealtimeMessage {
+  data: {
+    type: 'snapshot' | 'updated' | 'heartbeat';
+    tenantId: string;
+    alarms: Alarm[];
+    generatedAt: string;
+  };
 }
 
 /**
@@ -73,6 +83,35 @@ export class AlarmsService {
     const alarm = this.alarms.get(this.alarmKey(tenantId, id));
     if (!alarm) throw new NotFoundException(`Alarm ${id} not found`);
     return alarm;
+  }
+
+  stream(tenantId: string): Observable<AlarmRealtimeMessage> {
+    return new Observable((subscriber) => {
+      let closed = false;
+      const emit = (type: AlarmRealtimeMessage['data']['type']) => {
+        if (closed) return;
+        subscriber.next({
+          data: {
+            type,
+            tenantId,
+            alarms: this.findAll(tenantId),
+            generatedAt: new Date().toISOString(),
+          },
+        });
+      };
+
+      emit('snapshot');
+      const unsubscribe = this.mqttIngestionService?.onProjection((changedTenant) => {
+        if (changedTenant === tenantId) emit('updated');
+      }) ?? (() => undefined);
+      const heartbeat = setInterval(() => emit('heartbeat'), 15_000);
+
+      return () => {
+        closed = true;
+        unsubscribe();
+        clearInterval(heartbeat);
+      };
+    });
   }
 
   acknowledge(tenantId: string, id: string): Alarm {

@@ -1,4 +1,5 @@
 import { parseCliArgs } from "./config";
+import { readFileSync } from "node:fs";
 import { loadSimulatorConfig } from "./config/line-config";
 import { ConsolePublisher, MqttPublisher, MessagePublisher } from "./mqtt/publisher";
 import { FactorySimulator } from "./simulator/factory-simulator";
@@ -39,6 +40,7 @@ async function main(): Promise<void> {
   );
   simulator.setTimeScale(options.timeScale ?? 1);
   simulator.setPaused(options.paused);
+  if (options.scenarioPath) simulator.loadScenarioDocument(readFileSync(options.scenarioPath, "utf8"));
   for (const fault of options.faults) {
     simulator.injectFault(fault.lineId, fault.deviceId, fault.type);
   }

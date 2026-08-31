@@ -121,7 +121,7 @@ export class StrategyGovernanceService implements OnModuleInit {
         executionAllowed: false,
       },
     });
-    const approvalIds = this.createHighRiskApprovals(tenantId, result);
+    const approvalIds = this.createHighRiskApprovals(tenantId, requestedBy, result);
     const record: StrategyCallRecord = {
       callId: auditEntry.id,
       simulationId: result.simulationId,
@@ -301,7 +301,7 @@ export class StrategyGovernanceService implements OnModuleInit {
   decideApproval(tenantId: string, simulationId: string, approvalId: string, status: 'approved' | 'rejected', actor: string, traceId: string): TrackedStrategySimulation {
     const tracked = this.getSimulation(tenantId, simulationId);
     if (!tracked.audit.approvalIds.includes(approvalId)) throw new NotFoundException(`Approval ${approvalId} not found for simulation ${simulationId}`);
-    this.auditService.decide(tenantId, approvalId, status);
+    this.auditService.decide(tenantId, approvalId, status, undefined, actor);
     const lifecycleStatus = status === 'rejected' ? 'rejected' : this.lifecycleFor(tenantId, simulationId);
     return this.updateLifecycle(tenantId, simulationId, lifecycleStatus, actor, traceId, `策略建议审批${status === 'approved' ? '通过' : '拒绝'}`);
   }
@@ -313,8 +313,9 @@ export class StrategyGovernanceService implements OnModuleInit {
       throw new ConflictException(`STRATEGY_NOT_REVOCABLE: strategy is already ${lifecycle}`);
     }
     const approvals = this.listApprovalsForSimulation(tenantId, simulationId);
-    approvals.filter((approval) => approval.status === 'pending' || approval.status === 'approved')
-      .forEach((approval) => this.auditService.revoke(tenantId, approval.id));
+    approvals
+      .filter((approval) => approval.status === 'pending' || approval.status === 'approved')
+      .forEach((approval) => this.auditService.revoke(tenantId, approval.id, undefined, actor));
     return this.updateLifecycle(tenantId, simulationId, 'revoked', actor, traceId, '撤销策略建议，不执行任何生产写入');
   }
 
@@ -337,18 +338,23 @@ export class StrategyGovernanceService implements OnModuleInit {
     return this.updateLifecycle(tenantId, simulationId, 'simulated_execution', actor, traceId, '仅执行仿真副本，不控制真实设备或修改工单', sessionId, confirmation.id);
   }
 
-  private createHighRiskApprovals(tenantId: string, result: StrategySimulationResult): string[] {
-    return result.candidates
-      .filter((candidate) => candidate.requiresApproval)
-      .map((candidate) => {
-        const existing = this.auditService.listApprovals(tenantId)
-          .find((approval) => approval.resource === 'strategy-candidate' && approval.resourceId === candidate.id && approval.status === 'pending');
-        return existing?.id ?? this.auditService.createApproval(tenantId, {
-          resource: 'strategy-candidate',
-          resourceId: candidate.id,
-          comment: '高风险策略候选，执行前必须由授权审批人审批',
-        }).id;
-      });
+  private createHighRiskApprovals(
+    tenantId: string,
+    requestedBy: string,
+    result: StrategySimulationResult,
+  ): string[] {
+    const candidate = result.recommended;
+    if (!candidate?.requiresApproval) return [];
+    const resourceId = `${result.simulationId}:${candidate.id}`;
+    const existing = this.auditService.listApprovals(tenantId)
+      .find((approval) => approval.resource === 'strategy-candidate'
+        && approval.resourceId === resourceId
+        && approval.status === 'pending');
+    return [existing?.id ?? this.auditService.createApproval(tenantId, {
+      resource: 'strategy-candidate',
+      resourceId,
+      comment: '高风险策略候选，执行前必须由授权审批人审批',
+    }, requestedBy).id];
   }
 
   private key(tenantId: string, simulationId: string): string {

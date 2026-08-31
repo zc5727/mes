@@ -1,15 +1,25 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import type { DeviceProfile } from './device-profile.types';
+import { DeviceProfilePersistenceService } from './device-profile-persistence.service';
 
 /** Versioned, declarative machine profiles. `verified=false` means no vendor compatibility claim. */
 @Injectable()
-export class DeviceProfilesService {
-  private readonly profiles: DeviceProfile[] = [
+export class DeviceProfilesService implements OnModuleInit {
+  private profiles: DeviceProfile[] = [
     this.profile('generic-cnc-opcua', '通用三轴铣床 OPC UA', '三轴铣床', 'Generic', 'opcua', 'cnc-generic'),
     this.profile('siemens-sinumerik-opcua', 'SINUMERIK OPC UA 适配模板', '加工中心', 'SINUMERIK', 'opcua', 'cnc-siemens'),
     this.profile('fanuc-cnc-mtconnect', 'FANUC MTConnect 适配模板', '数控车床', 'FANUC', 'mtconnect', 'cnc-fanuc'),
     this.profile('generic-cnc-modbus', '通用机床 Modbus TCP', '三轴铣床', 'Generic', 'modbus-tcp', 'cnc-generic'),
   ];
+
+  constructor(
+    @Optional() private readonly persistence?: DeviceProfilePersistenceService,
+  ) {}
+
+  async onModuleInit(): Promise<void> {
+    if (!this.persistence) return;
+    this.profiles = await this.persistence.restoreOrSeed(this.profiles);
+  }
 
   /** Return defensive copies of all supported device profiles. */
   list(): DeviceProfile[] {

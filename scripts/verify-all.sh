@@ -32,6 +32,7 @@ run npm --prefix "$ROOT_DIR/backend" run build
 run npm --prefix "$ROOT_DIR/backend" run db:validate
 run npm --prefix "$ROOT_DIR/simulator" run check
 run npm --prefix "$ROOT_DIR/simulator-ui" run build
+run node "$ROOT_DIR/scripts/simulator-ui-contract-smoke.mjs"
 run npm --prefix "$ROOT_DIR/third_party/threejs-factory-demo" run build
 run node "$ROOT_DIR/scripts/frontend-contract-smoke.mjs"
 run node "$ROOT_DIR/scripts/desktop-smoke.mjs" --app-dir "$ROOT_DIR/desktop"

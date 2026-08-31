@@ -12,7 +12,17 @@ export interface GovernedAuditEntry extends AuditEntry {
   traceId: string;
   result: AuditResult;
 }
-export interface Approval { id: string; tenantId: string; resource: string; resourceId: string; status: 'pending' | 'approved' | 'rejected' | 'revoked'; comment: string; createdAt: string; decidedAt?: string; }
+export interface Approval {
+  id: string;
+  tenantId: string;
+  resource: string;
+  resourceId: string;
+  status: 'pending' | 'approved' | 'rejected' | 'revoked';
+  comment: string;
+  createdAt: string;
+  createdBy?: string;
+  decidedAt?: string;
+}
 @Injectable()
 export class AuditService {
   private readonly audit = new Map<string, AuditEntry[]>();
@@ -61,9 +71,109 @@ export class AuditService {
     if (this.listApprovals(item.tenantId).some((approval) => approval.id === item.id)) return;
     this.approvals.set(item.tenantId, [...this.listApprovals(item.tenantId), item]);
   }
-  createApproval(tenantId: string, dto: CreateApprovalDto): Approval { const item: Approval = { id: createId('approval'), tenantId, resource: dto.resource, resourceId: dto.resourceId, status: 'pending', comment: dto.comment ?? '', createdAt: timestamp() }; this.approvals.set(tenantId, [...this.listApprovals(tenantId), item]); return item; }
-  decide(tenantId: string, id: string, status: 'approved' | 'rejected', comment?: string): Approval { const item = this.listApprovals(tenantId).find((approval) => approval.id === id); if (!item) throw new NotFoundException(`Approval ${id} not found`); if (item.status !== 'pending') throw new ConflictException(`Approval ${id} is already ${item.status}`); const updated = { ...item, status, comment: comment ?? item.comment, decidedAt: timestamp() }; this.approvals.set(tenantId, this.listApprovals(tenantId).map((approval) => approval.id === id ? updated : approval)); return updated; }
-  revoke(tenantId: string, id: string, comment?: string): Approval { const item = this.listApprovals(tenantId).find((approval) => approval.id === id); if (!item) throw new NotFoundException(`Approval ${id} not found`); if (item.status === 'rejected' || item.status === 'revoked') throw new ConflictException(`Approval ${id} is already ${item.status}`); const updated = { ...item, status: 'revoked' as const, comment: comment ?? item.comment, decidedAt: timestamp() }; this.approvals.set(tenantId, this.listApprovals(tenantId).map((approval) => approval.id === id ? updated : approval)); return updated; }
+  createApproval(
+    tenantId: string,
+    dto: CreateApprovalDto,
+    createdBy?: string,
+  ): Approval {
+    const item: Approval = {
+      id: createId('approval'),
+      tenantId,
+      resource: dto.resource,
+      resourceId: dto.resourceId,
+      status: 'pending',
+      comment: dto.comment ?? '',
+      createdAt: timestamp(),
+      createdBy: createdBy?.trim() || undefined,
+    };
+    this.approvals.set(tenantId, [...this.listApprovals(tenantId), item]);
+    return item;
+  }
+
+  decide(
+    tenantId: string,
+    id: string,
+    status: 'approved' | 'rejected',
+    comment?: string,
+    actor = 'system',
+  ): Approval {
+    const item = this.findApprovalOrThrow(tenantId, id);
+    this.assertNotSelfApproval(item, actor);
+    if (item.status !== 'pending') {
+      throw new ConflictException(`Approval ${id} is already ${item.status}`);
+    }
+    const updated = {
+      ...item,
+      status,
+      comment: comment ?? item.comment,
+      decidedAt: timestamp(),
+    };
+    this.approvals.set(
+      tenantId,
+      this.listApprovals(tenantId).map((approval) => (
+        approval.id === id ? updated : approval
+      )),
+    );
+    this.record(
+      tenantId,
+      actor,
+      {
+        action: `APPROVAL_${status.toUpperCase()}`,
+        resource: item.resource,
+        resourceId: item.resourceId,
+        reason: `审批${status === 'approved' ? '通过' : '拒绝'}`,
+        result: status === 'approved' ? 'success' : 'rejected',
+        details: { approvalId: id, status, createdBy: item.createdBy },
+      },
+    );
+    return updated;
+  }
+
+  revoke(
+    tenantId: string,
+    id: string,
+    comment?: string,
+    actor = 'system',
+  ): Approval {
+    const item = this.findApprovalOrThrow(tenantId, id);
+    this.assertNotSelfApproval(item, actor);
+    if (item.status === 'rejected' || item.status === 'revoked') {
+      throw new ConflictException(`Approval ${id} is already ${item.status}`);
+    }
+    const updated = {
+      ...item,
+      status: 'revoked' as const,
+      comment: comment ?? item.comment,
+      decidedAt: timestamp(),
+    };
+    this.approvals.set(
+      tenantId,
+      this.listApprovals(tenantId).map((approval) => (
+        approval.id === id ? updated : approval
+      )),
+    );
+    this.record(tenantId, actor, {
+      action: 'APPROVAL_REVOKED',
+      resource: item.resource,
+      resourceId: item.resourceId,
+      reason: '撤销审批',
+      result: 'success',
+      details: { approvalId: id, status: 'revoked', createdBy: item.createdBy },
+    });
+    return updated;
+  }
+
+  private findApprovalOrThrow(tenantId: string, id: string): Approval {
+    const item = this.findApproval(tenantId, id);
+    if (!item) throw new NotFoundException(`Approval ${id} not found`);
+    return item;
+  }
+
+  private assertNotSelfApproval(item: Approval, actor: string): void {
+    if (item.createdBy && item.createdBy === actor.trim()) {
+      throw new ConflictException('APPROVAL_SEPARATION_REQUIRED: creator cannot decide approval');
+    }
+  }
 
   private hash(entry: AuditEntry): string {
     const { hash: _hash, ...payload } = entry;

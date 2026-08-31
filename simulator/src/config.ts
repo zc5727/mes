@@ -8,6 +8,7 @@ const DEFAULT_TIME_SCALE = 1;
 export interface CliOptions extends SimulatorOptions {
   mqttUrl?: string;
   lineConfigPath?: string;
+  scenarioPath?: string;
   once: boolean;
   faults: FaultCommand[];
   clearFaults: FaultCommand[];
@@ -66,6 +67,7 @@ export function parseCliArgs(args: string[], env: NodeJS.ProcessEnv = process.en
     intervalMs,
     mqttUrl: getValue("--mqtt") ?? env.MQTT_URL,
     lineConfigPath: getValue("--config") ?? env.SIMULATOR_LINE_CONFIG,
+    scenarioPath: getValue("--scenario") ?? env.SIMULATOR_SCENARIO,
     once: args.includes("--once"),
     faults: parseFaultCommands("--fault"),
     clearFaults: parseFaultCommands("--clear-fault"),

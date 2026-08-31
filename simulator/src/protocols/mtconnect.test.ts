@@ -37,6 +37,34 @@ test("ProtocolRunner exposes MTConnect as a canonical contract entry", async () 
   assert.equal((message.payload.data as Record<string, unknown>).deviceId, "cnc-runner");
 });
 
+test("ProtocolRunner closes its endpoint so the configured port can be reused", async () => {
+  const port = 16009;
+  await new ProtocolRunner({ protocol: "mtconnect", host: "127.0.0.1", port, values: {
+    tenantId: "tenant-cleanup", lineId: "line-cnc", deviceId: "cnc-cleanup", timestamp: identity.timestamp,
+    status: "RUNNING", temperatureCelsius: 40, cycleTimeSeconds: 10, totalCount: 1, goodCount: 1, defectCount: 0,
+  } }).readTelemetry();
+  const reusable = new MtConnectTelemetrySimulator(identity, values, "127.0.0.1", port);
+  await reusable.start();
+  await reusable.close();
+});
+
+test("ProtocolRunner reports a port conflict without leaving an orphan endpoint", async () => {
+  const port = 16010;
+  const held = new MtConnectTelemetrySimulator(identity, values, "127.0.0.1", port);
+  await held.start();
+  try {
+    await assert.rejects(
+      () => new ProtocolRunner({ protocol: "mtconnect", host: "127.0.0.1", port }).readTelemetry(),
+      /EADDRINUSE|address already in use/i,
+    );
+  } finally {
+    await held.close();
+  }
+  const reusable = new MtConnectTelemetrySimulator(identity, values, "127.0.0.1", port);
+  await reusable.start();
+  await reusable.close();
+});
+
 test("profile protocol selects the contract runner without claiming vendor compatibility", async () => {
   const profile = DEVICE_PROFILES.find((item) => item.id === "fanuc-cnc-mtconnect");
   assert.ok(profile);

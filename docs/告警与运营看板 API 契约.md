@@ -12,6 +12,7 @@
 - `GET /alarms/:id`
 - `PATCH /alarms/:id/acknowledge`
 - `PATCH /alarms/:id/close`
+- `GET /alarms/stream`（SSE）
 
 `GET /alarms` 支持以下查询参数：
 
@@ -26,10 +27,13 @@
 
 非法 `level` 或 `status` 返回 HTTP 400，并包含 `code`：`INVALID_ALARM_LEVEL` 或 `INVALID_ALARM_STATUS`。不存在的告警返回 HTTP 404；已清除告警再次确认返回 HTTP 409，错误码为 `ALARM_ALREADY_CLOSED`。
 
+`GET /alarms/stream` 首次推送 `snapshot`，MQTT 或 HTTP 遥测投影发生变化时推送 `updated`，并每 15 秒推送 `heartbeat`。推送数据仍按当前租户过滤，连接断开后由客户端重连并重新接收快照。
+
 ## 运营看板
 
 - `GET /dashboard/overview`
 - `GET /dashboard/lines/:lineId`
+- `GET /dashboard/stream`（SSE）
 
 `overview` 保留 `lines`、`devices`、`alarms`、`workOrders` 等原有聚合字段，并提供：
 
@@ -41,3 +45,5 @@
 OEE 优先使用实时设备计数计算；没有计数遥测时返回产线目标 OEE，并通过 `oeeAvailable=false`、`oeeSource=target` 明确其来源。没有租户产线时 `oee` 为 `null`，不会借用其他租户数据。
 
 看板数据优先读取现有内存服务和 MQTT 缓存。产线详情不存在时返回 HTTP 404。看板接口为只读接口，不提供设备控制、PLC 控制或智能助手能力。
+
+`GET /dashboard/stream` 使用同样的 `snapshot`、`updated`、`heartbeat` 事件类型推送完整 overview。确认/清除告警是生命周期动作，不等同于设备控制，也不绕过审批流程。

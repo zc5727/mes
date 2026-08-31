@@ -4,6 +4,7 @@ import { AlarmsService } from '../src/alarms/alarms.service';
 import { DashboardService } from '../src/dashboard/dashboard.service';
 import { ProductionLinesService } from '../src/production-lines/production-lines.service';
 import { WorkOrdersService } from '../src/work-orders/work-orders.service';
+import { MqttIngestionService } from '../src/mqtt/mqtt-ingestion.service';
 
 describe('DashboardService', () => {
   it('aggregates the existing tenant-scoped MES services', () => {
@@ -63,5 +64,33 @@ describe('DashboardService', () => {
       temperatureTrend: [36, 37, 38],
       productionMetrics: { plannedQty: 0, completedQty: 0, completionRate: 0, oee: null },
     });
+  });
+
+  it('pushes overview snapshots when the tenant projection changes', () => {
+    const devicesService = new DevicesService();
+    const ingestion = new MqttIngestionService();
+    const service = new DashboardService(
+      new ProductionLinesService(),
+      devicesService,
+      new WorkOrdersService(),
+      new AgvsService(),
+      new AlarmsService(devicesService, ingestion),
+      ingestion,
+    );
+    const eventTypes: string[] = [];
+    const subscription = service.stream('tenant-demo').subscribe((event) => eventTypes.push(event.data.type));
+
+    expect(eventTypes).toEqual(['snapshot']);
+    ingestion.ingestHttpEvent('tenant-demo', {
+      eventId: 'dashboard-telemetry-001',
+      deviceId: 'cnc-01',
+      lineId: 'line-cnc',
+      eventType: 'telemetry',
+      eventTime: '2026-08-31T10:00:00.000Z',
+      status: 'FAULT',
+      payload: { temperatureCelsius: 99, totalCount: 20, goodCount: 18 },
+    });
+    expect(eventTypes).toEqual(['snapshot', 'updated']);
+    subscription.unsubscribe();
   });
 });

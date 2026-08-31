@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { createId, timestamp } from '../common/mock.types';
 import { DEVICE_CONNECTION_PROBE } from './device-connection.constants';
 import type { CreateDeviceConnectionDto, CreateUnifiedDeviceEventDto, UpdateDeviceConnectionDto } from './dto/device-connection.dto';
@@ -6,20 +6,38 @@ import type {
   ConnectionHealth,
   DeviceConnection,
   DeviceConnectionProbe,
+  DeviceConnectionStatusEvent,
   UnifiedDeviceEvent,
 } from './device-connection.types';
 import { DeviceProfilesService } from '../device-profiles/device-profiles.service';
+import { DeviceConnectionPersistenceService } from './device-connection-persistence.service';
 
 @Injectable()
-export class DeviceConnectionsService {
+export class DeviceConnectionsService implements OnModuleInit {
   private readonly connections = new Map<string, DeviceConnection[]>();
   private readonly events = new Map<string, UnifiedDeviceEvent[]>();
+  private readonly statusEvents = new Map<string, DeviceConnectionStatusEvent[]>();
 
   constructor(
     @Inject(DEVICE_CONNECTION_PROBE)
     private readonly probe: DeviceConnectionProbe,
     @Optional() private readonly profiles?: DeviceProfilesService,
+    @Optional() private readonly persistence?: DeviceConnectionPersistenceService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    if (!this.persistence) return;
+    const snapshot = await this.persistence.restore();
+    for (const connection of snapshot.connections) {
+      const validated = this.validateRestoredConnection(connection);
+      const tenantConnections = this.connections.get(connection.tenantId) ?? [];
+      this.connections.set(connection.tenantId, [...tenantConnections, validated]);
+    }
+    for (const event of snapshot.statusEvents) {
+      const key = this.eventKey(event.tenantId, event.connectionId);
+      this.statusEvents.set(key, [...(this.statusEvents.get(key) ?? []), event]);
+    }
+  }
 
   list(tenantId: string): DeviceConnection[] {
     return [...(this.connections.get(tenantId) ?? [])].sort((left, right) => left.name.localeCompare(right.name));
@@ -31,7 +49,7 @@ export class DeviceConnectionsService {
     return connection;
   }
 
-  create(tenantId: string, dto: CreateDeviceConnectionDto): DeviceConnection {
+  async create(tenantId: string, dto: CreateDeviceConnectionDto): Promise<DeviceConnection> {
     this.validateEndpoint(dto.type, dto.endpoint);
     this.validateProfile(dto.type, dto.profileKey);
     const duplicate = this.list(tenantId).some((item) => item.deviceId === dto.deviceId.trim() && item.type === dto.type);
@@ -49,11 +67,14 @@ export class DeviceConnectionsService {
       lastErrorCode: dto.type === 'mtconnect' ? 'PROTOCOL_UNIMPLEMENTED' : null,
       lastEventAt: null, lastHeartbeatAt: null, startedAt: null, createdAt: now, updatedAt: now,
     };
+    const createdEvent = this.statusEvent(connection, 'created', { initialStatus: connection.status });
+    await this.persistence?.save(connection, createdEvent);
     this.connections.set(tenantId, [...(this.connections.get(tenantId) ?? []), connection]);
+    this.appendStatusEvent(createdEvent);
     return connection;
   }
 
-  update(tenantId: string, id: string, dto: UpdateDeviceConnectionDto): DeviceConnection {
+  async update(tenantId: string, id: string, dto: UpdateDeviceConnectionDto): Promise<DeviceConnection> {
     const current = this.findOne(tenantId, id);
     const type = current.type;
     if (dto.endpoint) this.validateEndpoint(type, dto.endpoint);
@@ -70,6 +91,7 @@ export class DeviceConnectionsService {
       enabled: dto.enabled ?? current.enabled,
       updatedAt: timestamp(),
     };
+    await this.persistence?.save(updated);
     return this.replace(updated);
   }
 
@@ -80,32 +102,44 @@ export class DeviceConnectionsService {
       : await this.probe.probe(current);
     const checkedAt = timestamp();
     const health: ConnectionHealth = { status: this.healthStatus(result), checkedAt, latencyMs: result.latencyMs };
-    const updated = this.replace({ ...current, health, lastError: result.ok ? null : result.error ?? 'Connection probe failed', lastErrorCode: result.ok ? null : result.errorCode ?? 'CONNECTION_PROBE_FAILED', lastHeartbeatAt: result.ok ? checkedAt : current.lastHeartbeatAt, updatedAt: checkedAt });
+    const updated = { ...current, health, lastError: result.ok ? null : result.error ?? 'Connection probe failed', lastErrorCode: result.ok ? null : result.errorCode ?? 'CONNECTION_PROBE_FAILED', lastHeartbeatAt: result.ok ? checkedAt : current.lastHeartbeatAt, updatedAt: checkedAt };
+    await this.persistence?.save(updated);
+    this.replace(updated);
     return { connection: updated, test: { ok: result.ok, latencyMs: result.latencyMs, error: result.ok ? null : result.error ?? 'Connection probe failed' } };
   }
 
   async start(tenantId: string, id: string): Promise<DeviceConnection> {
     const current = this.findOne(tenantId, id);
     if (!current.enabled) throw new ConflictException('Disabled device connections cannot be started');
-    const starting = this.replace({ ...current, status: 'starting', lastError: null, updatedAt: timestamp() });
+    const starting = { ...current, status: 'starting' as const, lastError: null, updatedAt: timestamp() };
     const result = starting.type === 'mtconnect'
       ? this.unsupportedProbeResult()
       : await this.probe.probe(starting);
     const now = timestamp();
     const health: ConnectionHealth = { status: this.healthStatus(result), checkedAt: now, latencyMs: result.latencyMs };
-    return this.replace({
+    const updated = {
       ...starting,
       status: result.ok ? 'running' : this.statusForProbeFailure(result), health,
       lastError: result.ok ? null : result.error ?? 'Connection start failed',
       lastErrorCode: result.ok ? null : result.errorCode ?? 'CONNECTION_START_FAILED',
       lastHeartbeatAt: result.ok ? now : current.lastHeartbeatAt,
       startedAt: result.ok ? now : null, updatedAt: now,
-    });
+    };
+    const updatedEvent = this.statusEvent(updated, updated.status, { error: updated.lastError });
+    await this.persistence?.save(updated, updatedEvent);
+    this.replace(updated);
+    this.appendStatusEvent(updatedEvent);
+    return updated;
   }
 
-  stop(tenantId: string, id: string): DeviceConnection {
+  async stop(tenantId: string, id: string): Promise<DeviceConnection> {
     const current = this.findOne(tenantId, id);
-    return this.replace({ ...current, status: 'stopped', startedAt: null, updatedAt: timestamp() });
+    const updated = { ...current, status: 'stopped' as const, startedAt: null, updatedAt: timestamp() };
+    const stoppedEvent = this.statusEvent(updated, 'stopped');
+    await this.persistence?.save(updated, stoppedEvent);
+    this.replace(updated);
+    this.appendStatusEvent(stoppedEvent);
+    return updated;
   }
 
   health(tenantId: string, id: string): ConnectionHealth {
@@ -121,6 +155,11 @@ export class DeviceConnectionsService {
       throw new ConflictException('Device profile catalog is unavailable');
     }
     return this.profiles.findOne(connection.profileKey);
+  }
+
+  listStatusEvents(tenantId: string, connectionId: string): DeviceConnectionStatusEvent[] {
+    this.findOne(tenantId, connectionId);
+    return [...(this.statusEvents.get(this.eventKey(tenantId, connectionId)) ?? [])];
   }
 
   listEvents(tenantId: string, connectionId: string): UnifiedDeviceEvent[] {
@@ -153,6 +192,48 @@ export class DeviceConnectionsService {
   private replace(connection: DeviceConnection): DeviceConnection {
     this.connections.set(connection.tenantId, (this.connections.get(connection.tenantId) ?? []).map((item) => item.id === connection.id ? connection : item));
     return connection;
+  }
+
+  private appendStatusEvent(event: DeviceConnectionStatusEvent): void {
+    const key = this.eventKey(event.tenantId, event.connectionId);
+    this.statusEvents.set(key, [...(this.statusEvents.get(key) ?? []), event]);
+  }
+
+  private validateRestoredConnection(connection: DeviceConnection): DeviceConnection {
+    try {
+      this.validateEndpoint(connection.type, connection.endpoint);
+      this.validateProfile(connection.type, connection.profileKey ?? undefined);
+      return connection;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        ...connection,
+        status: connection.status === 'unsupported' ? 'unsupported' : 'error',
+        health: connection.status === 'unsupported'
+          ? connection.health
+          : { status: 'unhealthy', checkedAt: timestamp(), latencyMs: null },
+        lastError: `Invalid persisted connection configuration: ${message}`,
+        lastErrorCode: 'INVALID_CONNECTION_CONFIG',
+        startedAt: null,
+        updatedAt: timestamp(),
+      };
+    }
+  }
+
+  private statusEvent(
+    connection: DeviceConnection,
+    status: DeviceConnectionStatusEvent['status'],
+    details: Record<string, unknown> = {},
+  ): DeviceConnectionStatusEvent {
+    return {
+      id: createId('connection-event'),
+      tenantId: connection.tenantId,
+      connectionId: connection.id,
+      status,
+      eventTime: connection.updatedAt,
+      errorCode: connection.lastErrorCode,
+      details,
+    };
   }
 
   private eventKey(tenantId: string, connectionId: string): string {

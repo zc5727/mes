@@ -4,7 +4,10 @@ import { StrategyEngineService } from './strategy-engine.service';
 import { StrategyGovernanceService } from './strategy-governance.service';
 import { StrategyAuthorizationService } from './strategy-authorization.service';
 import { StrategyRequestContext, StrategySimulationResult, StrategySnapshot } from './strategy.types';
-import { StrategySimulationDto } from './strategy-simulation.dto';
+import {
+  StrategyExecutionDto,
+  StrategySimulationDto,
+} from './strategy-simulation.dto';
 
 @Controller('strategies')
 export class StrategiesController {
@@ -221,7 +224,7 @@ export class StrategiesController {
   @HttpCode(HttpStatus.OK)
   executeSimulation(
     @TenantId() tenantId: string, @Param('simulationId') simulationId: string,
-    @Body() body: { confirmationId?: string },
+    @Body() body: StrategyExecutionDto,
     @Headers('x-user-id') userId?: string, @Headers('x-role') role?: string, @Headers('x-factory-id') factoryId?: string,
     @Headers('x-scope') scope?: string, @Headers('x-session-id') sessionId?: string, @Headers('x-trace-id') traceId?: string,
   ) {

@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "events": [
+    {
+      "atSeconds": 2,
+      "command": {
+        "commandId": "demo-overheat",
+        "action": "fault",
+        "lineId": "line-cnc",
+        "deviceId": "cnc-01",
+        "faultType": "OVERHEAT"
+      }
+    },
+    {
+      "atSeconds": 6,
+      "command": {
+        "commandId": "demo-reset",
+        "action": "reset",
+        "lineId": "line-cnc",
+        "deviceId": "cnc-01",
+        "faultType": "OVERHEAT"
+      }
+    }
+  ]
+}

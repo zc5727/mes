@@ -24,23 +24,28 @@ export class ProtocolRunner {
     const values = this.options.values ?? VALUES;
     if (this.options.protocol === "modbus-tcp") {
       const server = new ModbusTcpSimulatorServer(values, this.options.host, this.options.port);
-      await server.start();
       try {
+        await server.start();
         return await new ModbusTcpTelemetryClient(identityOf(values), this.options.host, this.options.port).readTelemetry(2);
       } finally {
-        await server.close();
+        await server.close().catch(() => undefined);
       }
     }
     if (this.options.protocol === "opc-ua") {
       const server = new OpcUaTelemetrySimulator(values, this.options.port);
-      await server.start();
-      try { return await server.readTelemetry(2); }
-      finally { await server.close(); }
+      try {
+        await server.start();
+        return await server.readTelemetry(2);
+      }
+      finally { await server.close().catch(() => undefined); }
     }
     const server = new MtConnectTelemetrySimulator(identityOf(values), values, this.options.host, this.options.port);
-    await server.start();
-    try { return await server.readTelemetry(2); }
-    finally { await server.close(); }
+    try {
+      await server.start();
+      return await server.readTelemetry(2);
+    } finally {
+      await server.close().catch(() => undefined);
+    }
   }
 }
 

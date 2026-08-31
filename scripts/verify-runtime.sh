@@ -33,6 +33,17 @@ if ! docker info >/dev/null 2>&1; then
   exit 2
 fi
 
+for port in 3000 5173 5174 5432 1883 9000; do
+  if nc -z localhost "$port" >/dev/null 2>&1; then
+    echo "BLOCKED: localhost:$port 已被占用，无法保证本次 runtime 的实例隔离。" >&2
+    if command -v lsof >/dev/null 2>&1; then
+      lsof -nP -iTCP:"$port" -sTCP:LISTEN >&2 || true
+    fi
+    echo "请先执行：$ROOT_DIR/scripts/dev-down.sh --infra；确认端口属于本项目后再重试。" >&2
+    exit 2
+  fi
+done
+
 echo "检查 Docker Compose 配置"
 if ! "${COMPOSE[@]}" config >/dev/null; then
   echo "BLOCKED: Compose 配置校验失败：$COMPOSE_FILE" >&2
@@ -93,6 +104,7 @@ echo "$readiness" | grep -q '"status":"ready"' || { echo "FAIL: PostgreSQL readi
 echo "PASS backend readiness: DATABASE_ENABLED=true"
 
 node "$ROOT_DIR/scripts/browser-smoke.mjs"
+node "$ROOT_DIR/scripts/simulator-ui-smoke.mjs"
 MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="$MES_API_KEY" MES_TENANT_ID="${MES_TENANT_ID:-tenant-demo}" npm --prefix "$ROOT_DIR/backend" run smoke:api -- --no-start
 MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="$MES_API_KEY" MES_TENANT_ID="${MES_TENANT_ID:-tenant-demo}" npm --prefix "$ROOT_DIR/backend" run smoke:mqtt
 MES_BASE_URL=http://127.0.0.1:3000 MES_API_KEY="$MES_API_KEY" MES_TENANT_ID="${MES_TENANT_ID:-tenant-demo}" npm --prefix "$ROOT_DIR/backend" run smoke:fault
@@ -153,8 +165,8 @@ node "$ROOT_DIR/scripts/desktop-smoke.mjs" --app-dir "$ROOT_DIR/desktop"
 echo "停止并验证服务清理"
 MES_RUNTIME_COMPOSE_FILE="$COMPOSE_FILE" "$ROOT_DIR/scripts/dev-down.sh" --infra
 STARTED=false
-if nc -z localhost 3000 >/dev/null 2>&1 || nc -z localhost 1883 >/dev/null 2>&1 || nc -z localhost 5432 >/dev/null 2>&1 || nc -z localhost 9000 >/dev/null 2>&1; then
-  echo "FAIL: 停止后仍有 MES 端口监听（3000/1883/5432/9000）" >&2
+if nc -z localhost 3000 >/dev/null 2>&1 || nc -z localhost 5173 >/dev/null 2>&1 || nc -z localhost 5174 >/dev/null 2>&1 || nc -z localhost 1883 >/dev/null 2>&1 || nc -z localhost 5432 >/dev/null 2>&1 || nc -z localhost 9000 >/dev/null 2>&1; then
+  echo "FAIL: 停止后仍有 MES 端口监听（3000/5173/5174/1883/5432/9000）" >&2
   exit 1
 fi
 if [[ -d "$ROOT_DIR/.runtime" ]] && compgen -G "$ROOT_DIR/.runtime/*.pid" >/dev/null; then

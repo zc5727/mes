@@ -1,6 +1,18 @@
-import { Body, Controller, ForbiddenException, Get, Headers, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Headers,
+  Post,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AgentApiService } from './agent-api.service';
-import { AgentToolRequest } from './tool-contract';
+import {
+  AgentAuthorizationContext,
+  AgentToolRequest,
+  AgentToolRequestDto,
+} from './tool-contract';
 
 @Controller('agent-api')
 export class AgentApiController {
@@ -13,7 +25,7 @@ export class AgentApiController {
 
   @Post('tools/execute')
   execute(
-    @Body() request: AgentToolRequest,
+    @Body() request: AgentToolRequestDto,
     @Headers('x-tenant-id') tenantId?: string,
     @Headers('x-user-id') userId?: string,
     @Headers('x-role') role?: string,
@@ -23,36 +35,85 @@ export class AgentApiController {
     @Headers('x-trace-id') traceId?: string,
     @Headers('x-service-account-id') serviceAccountId?: string,
   ) {
-    if (tenantId && request.tenantId !== tenantId) {
+    const trustedTenantId = this.requiredHeader(tenantId, 'x-tenant-id');
+    const trustedAuthorization = this.trustedAuthorization({
+      userId,
+      role,
+      factoryId,
+      scope,
+      sessionId,
+      serviceAccountId,
+    });
+    const trustedTraceId = this.requiredHeader(traceId, 'x-trace-id');
+
+    if (request.tenantId !== trustedTenantId) {
       throw new ForbiddenException('TENANT_SCOPE_DENIED: request tenant differs from authenticated tenant');
     }
-    this.assertIdentityConsistency(request, { userId, role, factoryId, scope, sessionId });
-    const authorization = request.authorization
-      ? { ...request.authorization, serviceAccountId: request.authorization.serviceAccountId ?? serviceAccountId }
-      : { userId, role, factoryId, scope, sessionId, serviceAccountId };
+    this.assertIdentityConsistency(request, trustedAuthorization, trustedTraceId);
     return this.agentApiService.execute({
-      ...request, traceId: request.traceId || traceId || '', authorization,
+      ...request,
+      tenantId: trustedTenantId,
+      traceId: trustedTraceId,
+      authorization: trustedAuthorization,
     } as AgentToolRequest & { tool: unknown });
   }
 
+  private trustedAuthorization(headers: {
+    userId?: string;
+    role?: string;
+    factoryId?: string;
+    scope?: string;
+    sessionId?: string;
+    serviceAccountId?: string;
+  }): AgentAuthorizationContext {
+    return {
+      userId: this.requiredHeader(headers.userId, 'x-user-id'),
+      role: this.requiredHeader(headers.role, 'x-role'),
+      factoryId: this.requiredHeader(headers.factoryId, 'x-factory-id'),
+      scope: this.requiredHeader(headers.scope, 'x-scope'),
+      sessionId: this.requiredHeader(headers.sessionId, 'x-session-id'),
+      serviceAccountId: headers.serviceAccountId?.trim() || undefined,
+    };
+  }
+
+  private requiredHeader(value: string | undefined, name: string): string {
+    if (!value?.trim()) {
+      throw new UnauthorizedException(`AUTH_REQUIRED: ${name} is required`);
+    }
+    return value.trim();
+  }
+
   private assertIdentityConsistency(
-    request: AgentToolRequest,
-    headers: { userId?: string; role?: string; factoryId?: string; scope?: string; sessionId?: string },
+    request: AgentToolRequestDto,
+    headers: AgentAuthorizationContext,
+    traceId: string,
   ): void {
-    if (!request.authorization) return;
-    const checks: Array<[string, string | undefined, string | string[] | undefined]> = [
-      ['userId', headers.userId, request.authorization.userId],
-      ['role', headers.role, request.authorization.role],
-      ['factoryId', headers.factoryId, request.authorization.factoryId],
-      ['sessionId', headers.sessionId, request.authorization.sessionId],
-    ];
-    for (const [field, headerValue, bodyValue] of checks) {
-      if (headerValue && headerValue !== bodyValue) {
-        throw new ForbiddenException(`IDENTITY_MISMATCH: ${field} differs from authenticated header`);
+    const bodyAuthorization = request.authorization;
+    if (bodyAuthorization) {
+      const checks: Array<[string, string | string[], string | string[]]> = [
+        ['userId', headers.userId, bodyAuthorization.userId],
+        ['role', headers.role, bodyAuthorization.role],
+        ['factoryId', headers.factoryId, bodyAuthorization.factoryId],
+        ['scope', headers.scope, bodyAuthorization.scope],
+        ['sessionId', headers.sessionId, bodyAuthorization.sessionId],
+      ];
+      for (const [field, headerValue, bodyValue] of checks) {
+        if (headerValue !== bodyValue) {
+          throw new ForbiddenException(
+            `IDENTITY_MISMATCH: ${field} differs from authenticated header`,
+          );
+        }
+      }
+      if (bodyAuthorization.serviceAccountId !== headers.serviceAccountId) {
+        throw new ForbiddenException(
+          'IDENTITY_MISMATCH: serviceAccountId differs from authenticated header',
+        );
       }
     }
-    if (headers.scope && String(request.authorization.scope) !== headers.scope) {
-      throw new ForbiddenException('IDENTITY_MISMATCH: scope differs from authenticated header');
+    if (request.traceId !== traceId) {
+      throw new ForbiddenException(
+        'TRACE_MISMATCH: traceId differs from authenticated header',
+      );
     }
   }
 }

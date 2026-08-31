@@ -23,6 +23,21 @@ npm install
 npm run dev
 ```
 
+### 一键演示数据
+
+默认配置就是四条产线、每条 3 台设备和 4 台 AGV；以下命令会用固定种子启动稳定的 MQTT/JSON 遥测：
+
+```bash
+cd /Users/a1/Documents/ChatGPT/mes/simulator
+npm run dev -- --seed 20260828 --time-scale 5 --agv-telemetry
+```
+
+不配置 `MQTT_URL` 时消息只输出到 stdout；接入本地 Broker：
+
+```bash
+MQTT_URL=mqtt://127.0.0.1:1883 npm run dev -- --seed 20260828 --time-scale 5
+```
+
 只运行一个采样周期，适合检查消息格式：
 
 ```bash
@@ -66,6 +81,14 @@ npm run dev -- --config examples/line-config.json
 
 内置 Profile 包括 `generic-cnc-opcua`、`siemens-sinumerik-opcua`、`fanuc-cnc-mtconnect`、`generic-cnc-modbus` 和 `generic-machine-mqtt`。其中 Siemens/FANUC 仅是测试场景标签，所有地址和数据点都标记为 `SIMULATED_CONTRACT_ONLY`，不会伪造或宣称真实厂商 NodeID 兼容。
 
+加载可复现故障场景：
+
+```bash
+npm run dev -- --seed 20260828 --time-scale 1 --scenario examples/fault-replay-scenario.json
+```
+
+`--scenario` 接受 `version: 1` 的场景 JSON。场景中的命令按仿真秒数执行；示例会在第 2 秒注入过热、在第 6 秒按同一故障类型恢复。场景也可以通过 `FactorySimulator.exportScenario()` 保存、`loadScenarioDocument()` 加载。
+
 连接本地 MQTT Broker：
 
 ```bash
@@ -77,6 +100,7 @@ npm run dev -- --mqtt mqtt://localhost:1883
 ```bash
 npm run protocols:smoke:modbus
 npm run protocols:smoke:opcua
+npm run protocols:smoke:mtconnect
 SIMULATOR_PROTOCOL_PORT=5000 npm run dev -- --protocol mtconnect
 ```
 
@@ -171,6 +195,40 @@ mes/control/{tenantId}/twin/command
 ```
 
 故障注入会先发布 `alarm.created`，恢复会发布 `alarm.cleared`。
+
+### 故障注入与回放验收
+
+固定种子运行并使用 stdin 控制命令：
+
+```bash
+npm run dev -- --seed 20260828 --time-scale 1
+# 另一个终端输入到该进程：
+fault line-cnc:cnc-01:OVERHEAT
+snapshot
+replay
+reset line-cnc:cnc-01:OVERHEAT
+replay
+```
+
+验收时应看到 `alarm.created`，设备为 `FAULT`，产线 OEE/运行状态受影响；恢复后出现 `alarm.cleared`，设备和产线恢复。`replay` 输出包含 `version`、`scenario` 和带序号的 `frames`。相同 `--seed`、场景文件、时间尺度和操作顺序应产生相同的业务数据；建议固定测试时间戳以排除墙上时钟差异。
+
+### 端口、冲突与停止清理
+
+| 端点 | 默认端口 | 用途 |
+| --- | ---: | --- |
+| MQTT | 1883 | 现有遥测/控制链路 |
+| OPC UA | 4841 | 合同化只读协议入口 |
+| Modbus TCP | 1502 | 合同化 FC03 入口 |
+| MTConnect | 5000 | `/probe`、`/current`、`/sample` |
+
+协议 smoke 在退出时自动关闭本地 server；正常运行的产线模拟器用 `Ctrl+C` 触发 publisher 和 timer 清理。发现端口占用时先检查监听者，不要盲目杀进程：
+
+```bash
+lsof -nP -iTCP:5000 -sTCP:LISTEN
+SIMULATOR_PROTOCOL_PORT=15000 npm run dev -- --protocol mtconnect
+```
+
+若上次进程被强制中断，确认 PID 属于本次模拟器后再停止；Modbus/MTConnect 可改 `SIMULATOR_PROTOCOL_PORT`，前端控制台可用 `npm run dev -- --port 5175` 避开 `5174`。
 
 ## 协议接入模拟
 

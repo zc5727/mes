@@ -1,11 +1,13 @@
-import { createParamDecorator, ExecutionContext } from '@nestjs/common';
-
-export const DEFAULT_TENANT_ID = 'tenant-demo';
+import {
+  createParamDecorator,
+  ExecutionContext,
+  UnauthorizedException,
+} from '@nestjs/common';
 
 /**
- * Reads the tenant from the request header used by the SaaS API.
- * The demo falls back to tenant-demo so the endpoints can be used without
- * authentication while the identity service is still under development.
+ * Reads the tenant from the request header used by the API.
+ * Missing tenant identity is rejected instead of silently selecting a demo
+ * tenant, which prevents accidental cross-tenant writes in unguarded paths.
  */
 export const TenantId = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): string => {
@@ -13,6 +15,9 @@ export const TenantId = createParamDecorator(
     const value = request.headers?.['x-tenant-id'];
     const tenantId = Array.isArray(value) ? value[0] : value;
 
-    return tenantId?.trim() || DEFAULT_TENANT_ID;
+    if (!tenantId?.trim()) {
+      throw new UnauthorizedException('Tenant is required');
+    }
+    return tenantId.trim();
   },
 );

@@ -21,3 +21,7 @@ export class CreateApprovalDto {
   @IsString() @MaxLength(80) resourceId!: string;
   @IsOptional() @IsString() @MaxLength(500) comment?: string;
 }
+
+export class ApprovalDecisionDto {
+  @IsOptional() @IsString() @MaxLength(500) comment?: string;
+}
