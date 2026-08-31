@@ -19,6 +19,17 @@ REPO_ROOT="$ROOT_DIR"
 INFRA_STARTED_FILE="$RUNTIME_DIR/infra-started"
 STARTED_SERVICE_FILES=()
 STOPPING=false
+# Keep the packaged runtime compatible with developer machines that already
+# expose PostgreSQL/MQTT on the default ports (for example through Colima or
+# an SSH tunnel). These values are also consumed by docker-compose and the
+# backend/simulator processes launched below.
+export MES_POSTGRES_HOST_PORT="${MES_POSTGRES_HOST_PORT:-5432}"
+export MES_MQTT_HOST_PORT="${MES_MQTT_HOST_PORT:-1883}"
+export MES_MQTT_WS_HOST_PORT="${MES_MQTT_WS_HOST_PORT:-9001}"
+export MES_MINIO_HOST_PORT="${MES_MINIO_HOST_PORT:-9000}"
+export MES_MINIO_CONSOLE_HOST_PORT="${MES_MINIO_CONSOLE_HOST_PORT:-9002}"
+export DATABASE_URL="${DATABASE_URL:-postgresql://mes:mes_dev@localhost:${MES_POSTGRES_HOST_PORT}/mes}"
+export MQTT_URL="${MQTT_URL:-mqtt://localhost:${MES_MQTT_HOST_PORT}}"
 
 usage() {
   cat <<'USAGE'

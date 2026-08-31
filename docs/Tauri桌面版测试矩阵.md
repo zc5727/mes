@@ -30,6 +30,18 @@ cd /Users/a1/Documents/ChatGPT/mes
 ./scripts/dev-down.sh --infra      # 同时停止 PostgreSQL/Mosquitto
 ```
 
+如果开发机的默认端口已被 Colima、SSH 转发或其他本地服务占用，可为桌面
+运行时指定隔离端口；端口会同时传递给 Compose、Backend 和 Simulator：
+
+```bash
+MES_POSTGRES_HOST_PORT=15432 \
+MES_MQTT_HOST_PORT=11883 \
+MES_MQTT_WS_HOST_PORT=19001 \
+MES_MINIO_HOST_PORT=19000 \
+MES_MINIO_CONSOLE_HOST_PORT=19002 \
+./scripts/desktop-runtime.sh --once
+```
+
 ## 3. 测试矩阵
 
 状态含义：`BLOCKED` 表示当前环境或真实依赖无法执行；`READY` 表示已有前置能力但缺少本用例证据；`部分通过` 表示代码级/结构级证据已有但仍缺实机或人工证据；`PASS` 必须有实际运行证据。
