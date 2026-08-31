@@ -3,7 +3,7 @@ import { Body, Controller, Get, Param, Patch, Post, Res, UploadedFile, UseInterc
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { TenantId } from '../common/tenant.decorator';
-import { ConfirmDocumentAnalysisDto, SaveDocumentAnalysisDraftDto, UpdateDocumentStatusDto, UploadDocumentDto } from './dto/upload-document.dto';
+import { AnalyzeDocumentDto, ConfirmDocumentAnalysisDto, SaveDocumentAnalysisDraftDto, UpdateDocumentStatusDto, UploadDocumentDto } from './dto/upload-document.dto';
 import { DocumentsService } from './documents.service';
 import type { UploadedDocumentFile } from './documents.types';
 
@@ -51,6 +51,11 @@ export class DocumentsController {
   @Post(':id/analysis-draft')
   async saveAnalysisDraft(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: SaveDocumentAnalysisDraftDto) {
     return { data: await this.documentsService.saveAnalysisDraftReliable(tenantId, id, dto.analysisDraft, dto.actorId), tenantId };
+  }
+
+  @Post(':id/analyze')
+  async analyze(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: AnalyzeDocumentDto) {
+    return { data: await this.documentsService.analyze(tenantId, id, dto.actorId), tenantId };
   }
 
   @Post(':id/analysis/confirm')

@@ -48,3 +48,9 @@ export class SaveDocumentAnalysisDraftDto {
   @MinLength(2)
   actorId!: string;
 }
+
+export class AnalyzeDocumentDto {
+  @IsString()
+  @MinLength(2)
+  actorId!: string;
+}

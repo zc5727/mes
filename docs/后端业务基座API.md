@@ -47,17 +47,23 @@ POST /production-lines
 
 请求头 `x-tenant-id` 确定租户，缺省为 `tenant-demo`。必填字段为 `factoryId`、`code`、`name`、`type`；`targetOee` 可选且范围为 0～100，默认 85；`status` 可选值为 `active`、`inactive`、`maintenance`，默认 `active`。同一租户内 `code` 不可重复，跨租户隔离，成功返回 HTTP 201 和 `{ tenantId, data }`。
 
-## 文件与表单元数据
+## 文件、图纸与表单元数据
 
-演示基座暂提供：
+演示基座提供：
 
 ```http
 GET/POST /foundation/documents
+POST /foundation/documents/upload
+GET /foundation/documents/:id/content
+GET /foundation/documents/:id/preview
+POST /foundation/documents/:id/analyze
+POST /foundation/documents/:id/analysis-draft
+POST /foundation/documents/:id/analysis/confirm
 PATCH /foundation/documents/:id/status
 GET/POST /foundation/quality-records
 ```
 
-当前只保存元数据和状态，不处理文件二进制上传；对象存储适配留待后续阶段。
+上传文件会保存版本、哈希、对象存储键、关联产线/工单和安全扫描状态。`analyze` 当前执行确定性的本地文件结构解析（图片尺寸、PDF 页数、格式和哈希），结果始终为待人工确认草稿；未配置视觉语义模型时不会伪造零件尺寸、工艺参数或质量结论。DWG/DXF 预览仍需要单独部署 CAD 渲染器。
 
 ## 策略执行前置校验
 

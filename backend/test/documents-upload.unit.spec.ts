@@ -45,6 +45,28 @@ describe('document upload boundary', () => {
     });
   });
 
+  it('creates a deterministic structural analysis draft without inventing visual semantics', async () => {
+    const png = Buffer.alloc(24);
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(png, 0);
+    png.writeUInt32BE(1920, 16);
+    png.writeUInt32BE(1080, 20);
+    storage.read = jest.fn().mockResolvedValue(png);
+    const service = new DocumentsService(storage);
+    const record = await service.upload('tenant-demo', { documentKey: 'drawing-visual-001', uploadedBy: 'engineer' }, {
+      originalname: 'layout.png', mimetype: 'image/png', size: png.length, buffer: png,
+    });
+    const analyzed = await service.analyze('tenant-demo', record.id, 'engineer');
+
+    expect(analyzed.analysisStatus).toBe('draft');
+    expect(analyzed.analysisDraft).toEqual(expect.objectContaining({
+      analyzer: 'local-structural-v1',
+      format: 'png',
+      dimensions: { width: 1920, height: 1080 },
+      visualSemantics: 'not_configured',
+      requiresHumanReview: true,
+    }));
+  });
+
   it('removes the binary and memory projection when metadata persistence fails', async () => {
     const persistence = { saveDocumentReliable: jest.fn().mockRejectedValue(new Error('database unavailable')) };
     const service = new DocumentsService(storage, persistence as never);

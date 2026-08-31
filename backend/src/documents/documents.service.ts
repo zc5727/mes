@@ -206,6 +206,21 @@ export class DocumentsService implements OnModuleInit {
     }
   }
 
+  /**
+   * Produces a deterministic local structural analysis before a vision model
+   * is configured. It never invents dimensions or manufacturing semantics and
+   * leaves the result in the human-reviewable draft state.
+   */
+  async analyze(tenantId: string, id: string, actorId: string): Promise<DocumentRecord> {
+    const { record, content } = await this.readContent(tenantId, id);
+    return this.saveAnalysisDraftReliable(
+      tenantId,
+      id,
+      this.structuralAnalysis(record, content),
+      actorId,
+    );
+  }
+
   confirmAnalysis(tenantId: string, id: string, dto: ConfirmDocumentAnalysisDto, persist = true): DocumentRecord {
     const current = this.findOne(tenantId, id);
     if (current.analysisStatus !== 'draft') throw new ConflictException('Only an analysis draft can be confirmed');
@@ -259,6 +274,57 @@ export class DocumentsService implements OnModuleInit {
     } catch (error: unknown) {
       return { status: 'error' as const, provider: 'configured-scanner', message: this.errorMessage(error) };
     }
+  }
+
+  private structuralAnalysis(record: DocumentRecord, content: Buffer): Record<string, unknown> {
+    const format = this.detectFormat(content, record.extension);
+    const dimensions = this.imageDimensions(content, format);
+    const pageCount = format === 'pdf' ? this.pdfPageCount(content) : undefined;
+    return {
+      analyzer: 'local-structural-v1',
+      analyzedAt: timestamp(),
+      fileName: record.fileName,
+      extension: record.extension,
+      format,
+      byteSize: content.length,
+      sha256: record.fileHash,
+      ...(dimensions ? { dimensions } : {}),
+      ...(pageCount ? { pageCount } : {}),
+      visualSemantics: 'not_configured',
+      manufacturingFields: [],
+      requiresHumanReview: true,
+      note: '仅完成文件结构解析，未进行视觉语义识别；确认前不得作为工艺或质量依据。',
+    };
+  }
+
+  private detectFormat(content: Buffer, extension: string): string {
+    if (content.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'png';
+    if (content.subarray(0, 3).equals(Buffer.from([255, 216, 255]))) return 'jpeg';
+    if (content.subarray(0, 5).toString('ascii') === '%PDF-') return 'pdf';
+    return extension.slice(1) || 'unknown';
+  }
+
+  private imageDimensions(content: Buffer, format: string): { width: number; height: number } | undefined {
+    if (format === 'png' && content.length >= 24) {
+      return { width: content.readUInt32BE(16), height: content.readUInt32BE(20) };
+    }
+    if (format !== 'jpeg') return undefined;
+    for (let offset = 2; offset + 9 < content.length;) {
+      if (content[offset] !== 0xff) { offset += 1; continue; }
+      const marker = content[offset + 1];
+      const length = content.readUInt16BE(offset + 2);
+      if (length < 2 || offset + 2 + length > content.length) return undefined;
+      if (marker >= 0xc0 && marker <= 0xc3) {
+        return { width: content.readUInt16BE(offset + 7), height: content.readUInt16BE(offset + 5) };
+      }
+      offset += 2 + length;
+    }
+    return undefined;
+  }
+
+  private pdfPageCount(content: Buffer): number | undefined {
+    const matches = content.toString('latin1').match(/\/Type\s*\/Page(?:\s|\/|>)/g);
+    return matches?.length || undefined;
   }
 
   private validateFile(file?: UploadedDocumentFile): asserts file is UploadedDocumentFile {

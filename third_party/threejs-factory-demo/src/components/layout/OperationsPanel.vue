@@ -82,7 +82,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { confirmDocumentAnalysis, confirmQualityRecord, controlSimulator, createDevice, deleteDevice, createMaintenance, createQualityRecord, createWorkOrder, documentContentUrl, updateDevice, updateDeviceStatus, listDocuments, listMaintenanceWorkOrders, listQualityRecords, rejectQualityRecord, saveDocumentAnalysisDraft, submitQualityRecord, simulateStrategy, updateDocumentStatus, updateMaintenanceStatus, uploadDocument } from '@/api/mesApi';
+import { analyzeDocument, confirmDocumentAnalysis, confirmQualityRecord, controlSimulator, createDevice, deleteDevice, createMaintenance, createQualityRecord, createWorkOrder, documentContentUrl, updateDevice, updateDeviceStatus, listDocuments, listMaintenanceWorkOrders, listQualityRecords, rejectQualityRecord, submitQualityRecord, simulateStrategy, updateDocumentStatus, updateMaintenanceStatus, uploadDocument } from '@/api/mesApi';
 import { toBackendDeviceId, toBackendLineId } from '@/api/identityMap';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
 
@@ -219,7 +219,7 @@ const submit = async () => {
       const document = await uploadDocument(selectedFile.value, { documentKey: `${props.selectedLine.id}-${selectedFile.value.name}`, uploadedBy: 'digital-twin-ui', lineId: toBackendLineId(props.selectedLine.id) });
       const documentId = typeof document.id === 'string' ? document.id : undefined;
       if (documentId) {
-        await saveDocumentAnalysisDraft(documentId, { fileName: selectedFile.value.name, analysisStatus: 'draft' }, 'digital-twin-ui');
+        await analyzeDocument(documentId, 'digital-twin-ui');
         pendingDocumentId.value = documentId;
       }
     } else if (active.value === 'quality') {
