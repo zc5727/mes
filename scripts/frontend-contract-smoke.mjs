@@ -7,9 +7,9 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../third_party/threejs-factory-demo/src/', import.meta.url));
 const contracts = [
   ['views/FactoryDigitalTwin.vue', [
-    '@select-line="handleLineSelect"', '@click="injectFault"', '@click="recoverDevice"',
     '@click="refreshData"', '@click="reconnectRealtime"', '@submit.prevent="submitLine"',
-    'aria-label="控制模式"', 'selectedLineId', 'lineFormError', 'showLineDialog',
+    'aria-label="数据连接控制"', 'aria-label="视图范围"', 'selectedLineId', 'lineFormError', 'showLineDialog',
+    "dataSource", "startRealtime()", "startApiPolling()",
   ]],
   ['components/layout/LeftPanel.vue', ['select-line', 'productionLines', 'line-list']],
   ['components/layout/OperationsPanel.vue', [
@@ -25,6 +25,13 @@ for (const [relativePath, requiredFragments] of contracts) {
   const missing = requiredFragments.filter((fragment) => !source.includes(fragment));
   if (missing.length > 0) {
     throw new Error(`${relativePath} 缺少交互契约：${missing.join(', ')}`);
+  }
+  if (relativePath === 'views/FactoryDigitalTwin.vue') {
+    const forbidden = ['VITE_DATA_MODE', 'fallbackLineDefinitions', 'controlSimulator', 'injectFault', 'recoverDevice'];
+    const present = forbidden.filter((fragment) => source.includes(fragment));
+    if (present.length > 0) {
+      throw new Error(`${relativePath} 仍包含已移除的本地/故障控制：${present.join(', ')}`);
+    }
   }
   console.log(`PASS frontend interaction contract: ${relativePath}`);
 }
