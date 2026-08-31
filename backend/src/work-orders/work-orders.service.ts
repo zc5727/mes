@@ -311,7 +311,12 @@ export class WorkOrdersService implements OnModuleInit {
     if (new Set(serialNumbers).size !== serialNumbers.length) throw new ConflictException('serialNumbers must be unique');
     const existingSerialNumbers = new Set(this.reports.filter((item) => item.tenantId === tenantId && item.workOrderId === id).flatMap((item) => item.serialNumbers));
     if (serialNumbers.some((serialNumber) => existingSerialNumbers.has(serialNumber))) throw new ConflictException('serialNumbers already reported for work order');
-    const materialConsumptions = dto.materialConsumptions ?? [];
+    const materialConsumptions = (dto.materialConsumptions ?? []).map((item) => ({
+      ...item,
+      materialCode: item.materialCode.trim(),
+      batchNo: item.batchNo.trim(),
+      unit: item.unit?.trim(),
+    }));
     if (materialConsumptions.some((item) => !item.materialCode?.trim() || !item.batchNo?.trim() || typeof item.quantity !== 'number' || !Number.isFinite(item.quantity) || item.quantity <= 0)) {
       throw new ConflictException('material consumptions must have positive quantities, material codes and batch numbers');
     }
@@ -336,8 +341,8 @@ export class WorkOrdersService implements OnModuleInit {
         qualityRecordId: dto.qualityRecordId?.trim() || null,
         materialConsumptions,
       };
-      this.reports.push(report);
       const workOrder = this.updateProgress(current, completedQty, false);
+      this.reports.push(report);
       if (this.persistence?.saveReportAndWorkOrder) void this.persistence.saveReportAndWorkOrder(report, workOrder);
       else {
         void this.persistence?.saveReport(report);
@@ -361,9 +366,9 @@ export class WorkOrdersService implements OnModuleInit {
   }
 
   async completeReport(tenantId: string, id: string, dto: ReportWorkOrderDto, actorId = 'system'): Promise<{ workOrder: WorkOrder; report: WorkOrderReport }> {
-    if (this.persistence?.isEnabled?.() || process.env.DATABASE_REQUIRED === 'true') {
-      throw new ConflictException('complete-report requires a shared PostgreSQL transaction; request rejected');
-    }
+    const atomicPersistence = this.persistence?.isEnabled?.() === true;
+    if (process.env.DATABASE_REQUIRED === 'true' && !atomicPersistence) throw new ConflictException('complete-report requires a shared PostgreSQL transaction; request rejected');
+    if (atomicPersistence && !this.persistence?.saveCompleteReport) throw new ConflictException('shared PostgreSQL transaction for complete-report is unavailable');
     if (!this.qualityService || !this.masterDataService || !dto.qualityRecordId?.trim()) {
       throw new ConflictException('complete-report requires quality and inventory validation services');
     }
@@ -374,7 +379,52 @@ export class WorkOrdersService implements OnModuleInit {
     if (current.completedQty + dto.quantity !== current.plannedQty) {
       throw new ConflictException('complete-report must report the remaining planned quantity');
     }
-    return this.report(tenantId, id, dto, actorId, true);
+    if (!atomicPersistence) return this.report(tenantId, id, dto, actorId, true);
+    const reportTraceId = dto.sourceTraceId?.trim() || createId('trace');
+    if (this.qualityService && !this.qualityService.canReportWorkOrder(tenantId, id, dto.qualityRecordId!.trim(), reportTraceId)) {
+      throw new ConflictException('Quality release is required before reporting production');
+    }
+    if (current.status !== 'in_progress') throw new ConflictException('Only in-progress work orders can report production');
+    if (current.completedQty + dto.quantity !== current.plannedQty) throw new ConflictException('Completion quantity changed concurrently');
+    if (this.reports.some((item) => item.tenantId === tenantId && item.sourceTraceId === reportTraceId)) throw new ConflictException(`Report trace ${reportTraceId} already exists`);
+    if (dto.deviceId && this.devicesService) {
+      const device = this.devicesService.findOne(tenantId, dto.deviceId);
+      if (device.lineId !== current.lineId) throw new ConflictException('Report device must belong to work order line');
+      if (device.status !== 'online') throw new ConflictException('Report device must be online');
+      if (this.maintenanceService?.isDeviceOccupied(tenantId, dto.deviceId)) throw new ConflictException('Report device is occupied by maintenance work');
+    }
+    const goodQty = dto.goodQty ?? dto.quantity;
+    const defectQty = dto.defectQty ?? dto.quantity - goodQty;
+    if (goodQty < 0 || defectQty < 0 || goodQty > dto.quantity || defectQty > dto.quantity || goodQty + defectQty !== dto.quantity) throw new ConflictException('Production quantities are invalid');
+    const serialNumbers = dto.serialNumbers ?? [];
+    if (serialNumbers.length && serialNumbers.length !== dto.quantity) throw new ConflictException('serialNumbers count must equal quantity');
+    if (new Set(serialNumbers).size !== serialNumbers.length) throw new ConflictException('serialNumbers must be unique');
+    const materialConsumptions = (dto.materialConsumptions ?? []).map((item) => ({
+      ...item,
+      materialCode: item.materialCode.trim(),
+      batchNo: item.batchNo.trim(),
+      unit: item.unit?.trim(),
+    }));
+    if (materialConsumptions.some((item) => !item.materialCode?.trim() || !item.batchNo?.trim() || typeof item.quantity !== 'number' || !Number.isFinite(item.quantity) || item.quantity <= 0)) throw new ConflictException('material consumptions must have positive quantities, material codes and batch numbers');
+    if (dto.operationCode && this.masterDataService) this.masterDataService.validateOperation(tenantId, current.routingId, dto.operationCode.trim());
+    const report: WorkOrderReport = {
+      id: createId('report'), workOrderId: id, tenantId, quantity: dto.quantity,
+      goodQty, defectQty, deviceId: dto.deviceId ?? null, sourceTraceId: reportTraceId, reportedAt: timestamp(),
+      batchNo: dto.batchNo?.trim() || null, serialNumbers,
+      operationCode: dto.operationCode?.trim() || null, operatorId: dto.operatorId?.trim() || null,
+      qualityRecordId: dto.qualityRecordId?.trim() || null, materialConsumptions,
+    };
+    const workOrder: WorkOrder = { ...current, completedQty: current.plannedQty, status: 'completed', updatedAt: timestamp() };
+    await this.persistence.saveCompleteReport(report, workOrder, materialConsumptions, dto.qualityRecordId.trim());
+    this.reports.push(report);
+    this.workOrders.set(id, workOrder);
+    this.masterDataService?.consumeBatchesWithRollback(tenantId, materialConsumptions, reportTraceId, actorId, false, false);
+    if (workOrder.orderId) this.syncOrderProgress(tenantId, workOrder.orderId);
+    this.auditService?.record(tenantId, dto.operatorId?.trim() || actorId.trim() || 'system', {
+      action: 'work_order.complete_report', resource: 'work_order', resourceId: id,
+      details: { reportId: report.id, quantity: report.quantity, sourceTraceId: report.sourceTraceId }, traceId: report.sourceTraceId,
+    });
+    return { workOrder, report };
   }
 
   /** Records a fully traceable production event without changing the legacy report contract. */

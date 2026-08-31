@@ -146,4 +146,39 @@ describe('core PostgreSQL persistence repository', () => {
     }));
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'completed' }) }));
   });
+
+  it('commits quality, batch, report, work-order and order progress in one transaction', async () => {
+    const workOrderFindUnique = jest.fn().mockResolvedValue({ tenantId: 'tenant-demo', status: 'in_progress', plannedQty: 2, completedQty: 0, orderId: 'order-1' });
+    const qualityFindUnique = jest.fn().mockResolvedValue({ tenantId: 'tenant-demo', workOrderId: 'wo-atomic', status: 'confirmed' });
+    const batchUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const reportCreate = jest.fn().mockResolvedValue(undefined);
+    const workOrderUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const orderFindUnique = jest.fn().mockResolvedValue({ tenantId: 'tenant-demo', plannedQty: 2, completedQty: 0 });
+    const orderUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const transaction = jest.fn(async (callback: (client: unknown) => Promise<void>) => callback({
+      workOrder: { findUnique: workOrderFindUnique, updateMany: workOrderUpdateMany },
+      qualityRecord: { findUnique: qualityFindUnique },
+      batchInventory: { updateMany: batchUpdateMany },
+      workOrderReport: { create: reportCreate },
+      productionOrder: { findUnique: orderFindUnique, updateMany: orderUpdateMany },
+    }));
+    const prisma = {
+      ensureConnection: jest.fn().mockResolvedValue(undefined), isReady: () => true, $transaction: transaction,
+    } as unknown as PrismaService;
+    const service = new CorePersistenceService(prisma);
+
+    await service.saveCompleteReport(
+      { id: 'report-atomic', tenantId: 'tenant-demo', workOrderId: 'wo-atomic', deviceId: null, quantity: 2, goodQty: 2, defectQty: 0, sourceTraceId: 'trace-atomic', qualityRecordId: 'quality-atomic', reportedAt: '2026-08-31T00:00:00.000Z' },
+      { id: 'wo-atomic', tenantId: 'tenant-demo', orderId: 'order-1', orderNo: 'WO-ATOMIC', productCode: 'P-1', productName: '产品', lineId: 'line-1', plannedQty: 2, completedQty: 2, dueAt: '2026-09-01T00:00:00.000Z', priority: 'normal', status: 'completed', statusReason: '', createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z' },
+      [{ materialCode: 'RAW-1', batchNo: 'B-1', quantity: 2 }],
+      'quality-atomic',
+    );
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(qualityFindUnique).toHaveBeenCalledWith({ where: { id: 'quality-atomic' }, select: expect.any(Object) });
+    expect(batchUpdateMany).toHaveBeenCalledTimes(1);
+    expect(reportCreate).toHaveBeenCalledTimes(1);
+    expect(workOrderUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ completedQty: 0, status: 'in_progress' }) }));
+    expect(orderUpdateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ completedQty: 0 }) }));
+  });
 });

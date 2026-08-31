@@ -80,6 +80,104 @@ export class CorePersistenceService {
     }
   }
 
+  /**
+   * Commits a completion report together with quality release and material
+   * consumption in one PostgreSQL transaction.
+   *
+   * This is deliberately separate from the legacy asynchronous projection
+   * methods: a production completion must fail closed rather than leave a
+   * report, inventory and work-order progress out of sync.
+   */
+  async saveCompleteReport(
+    report: PersistedReport,
+    workOrder: PersistedWorkOrder,
+    materialConsumptions: PersistedReport['materialConsumptions'],
+    qualityRecordId: string,
+  ): Promise<void> {
+    await this.prisma.ensureConnection();
+    if (!this.prisma.isReady()) {
+      throw new Error('PostgreSQL is unavailable; complete report was not committed');
+    }
+    try {
+      await this.prisma.$transaction(async (transaction) => {
+        const current = await transaction.workOrder.findUnique({
+          where: { id: workOrder.id },
+          select: { tenantId: true, status: true, plannedQty: true, completedQty: true, orderId: true },
+        });
+        if (!current || current.tenantId !== workOrder.tenantId) throw new Error('Work order was not found in PostgreSQL');
+        if (current.status !== 'in_progress') throw new Error('Work order is no longer in progress');
+        if (current.completedQty + report.quantity !== current.plannedQty) throw new Error('Completion quantity changed concurrently');
+
+        const quality = await transaction.qualityRecord.findUnique({
+          where: { id: qualityRecordId },
+          select: { tenantId: true, workOrderId: true, status: true },
+        });
+        if (!quality || quality.tenantId !== report.tenantId || quality.workOrderId !== report.workOrderId || quality.status !== 'confirmed') {
+          throw new Error('Quality record is not confirmed for this work order');
+        }
+
+        for (const consumption of materialConsumptions ?? []) {
+          const result = await transaction.batchInventory.updateMany({
+            where: {
+              tenantId: report.tenantId,
+              materialCode: consumption.materialCode,
+              batchNo: consumption.batchNo,
+              quantity: { gte: new Prisma.Decimal(consumption.quantity) },
+            },
+            data: { quantity: { decrement: new Prisma.Decimal(consumption.quantity) } },
+          });
+          if (result.count !== 1) throw new Error(`Insufficient material batch ${consumption.batchNo}`);
+        }
+
+        await transaction.workOrderReport.create({ data: this.reportData(report) });
+        const progress = await transaction.workOrder.updateMany({
+          where: {
+            id: report.workOrderId,
+            tenantId: report.tenantId,
+            status: 'in_progress',
+            completedQty: current.completedQty,
+          },
+          data: {
+            completedQty: { increment: report.quantity },
+            status: 'completed',
+            updatedAt: new Date(workOrder.updatedAt),
+          },
+        });
+        if (progress.count !== 1) throw new Error('Work order progress conflict during completion');
+
+        if (current.orderId) {
+          const order = await transaction.productionOrder.findUnique({
+            where: { id: current.orderId },
+            select: { tenantId: true, plannedQty: true, completedQty: true },
+          });
+          if (!order || order.tenantId !== report.tenantId || order.completedQty + report.quantity > order.plannedQty) {
+            throw new Error('Production order progress conflict during completion');
+          }
+          const orderProgress = await transaction.productionOrder.updateMany({
+            where: { id: current.orderId, tenantId: report.tenantId, completedQty: order.completedQty },
+            data: {
+              completedQty: { increment: report.quantity },
+              status: order.completedQty + report.quantity === order.plannedQty ? 'completed' : 'in_progress',
+              updatedAt: new Date(workOrder.updatedAt),
+            },
+          });
+          if (orderProgress.count !== 1) throw new Error('Production order progress conflict during completion');
+        }
+
+        if (typeof transaction.workOrderStatusHistory?.create === 'function') {
+          await transaction.workOrderStatusHistory.create({ data: {
+            id: `${report.id.slice(0, 32)}-status`, tenantId: report.tenantId, workOrderId: report.workOrderId,
+            fromStatus: 'in_progress', toStatus: 'completed', reason: 'complete-report',
+            operatorId: report.operatorId ?? null, occurredAt: new Date(workOrder.updatedAt),
+          } });
+        }
+      });
+    } catch (error: unknown) {
+      this.failure('persist complete report transaction', error);
+      throw error;
+    }
+  }
+
   async deleteFactory(id: string): Promise<void> { await this.write('factory deletion', () => this.prisma.factory.delete({ where: { id } })); }
   async deleteLine(id: string): Promise<void> { await this.write('production line deletion', () => this.prisma.productionLine.delete({ where: { id } })); }
   async deleteDevice(id: string): Promise<void> { await this.write('device deletion', () => this.prisma.device.delete({ where: { id } })); }
