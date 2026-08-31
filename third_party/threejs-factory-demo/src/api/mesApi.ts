@@ -103,6 +103,8 @@ interface ApiLine {
 }
 
 export interface DependencyHealth {
+  environment: string;
+  controlMode: 'read-only' | 'test-control' | 'approved-control';
   database: { enabled: boolean; status: 'disabled' | 'ready' | 'unavailable' };
   mqtt: {
     enabled: boolean;

@@ -33,7 +33,7 @@
       :selected-device="activeSelectedDevice"
       @select-device="handleSceneSelect"
     />
-    <OperationsPanel :selected-line="selectedLine" :selected-device="activeSelectedDevice" :lines="lineSummaries" :devices="devices" :api-enabled="true" :can-write="canWrite" :can-control="canControl" :write-disabled-reason="writeDisabledReason" :control-disabled-reason="controlDisabledReason" @data-changed="handleDataChanged" />
+    <OperationsPanel :selected-line="selectedLine" :selected-device="activeSelectedDevice" :lines="lineSummaries" :devices="devices" :api-enabled="true" :can-write="canWrite" :can-control="canControl" :simulator-control-enabled="simulatorControlEnabled" :simulator-control-disabled-reason="simulatorControlDisabledReason" :write-disabled-reason="writeDisabledReason" :control-disabled-reason="controlDisabledReason" @data-changed="handleDataChanged" />
     <LeftPanel
       :alarms="lineAlarms"
       :devices="lineDevices"
@@ -133,6 +133,12 @@ const canWrite = canMesCapability('write');
 const canControl = canMesCapability('control');
 const writeDisabledReason = mesCapabilityReason('write');
 const controlDisabledReason = mesCapabilityReason('control');
+const simulatorControlEnabled = computed(() => canControl && dependencyHealth.value?.controlMode === 'test-control');
+const simulatorControlDisabledReason = computed(() => {
+  if (!canControl) return controlDisabledReason;
+  if (!dependencyHealth.value) return '正在读取服务控制模式';
+  return `服务端当前为 ${dependencyHealth.value.controlMode}，仿真控制未开放`;
+});
 const showLineDialog = ref(false);
 const lineSubmitting = ref(false);
 const lineFormError = ref('');

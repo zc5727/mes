@@ -27,6 +27,7 @@
       <div class="metric dependency-metric" :title="dependencyHealth?.mqtt.lastError || '基础设施状态'">
         <span>基础设施</span>
         <strong :class="dependencyClass">{{ dependencyLabel }}</strong>
+        <small class="dependency-mode">{{ controlModeLabel }}</small>
       </div>
       <div class="metric simulation-metric">
         <span>{{ dataSource === 'api' ? '外部 MES 来源' : '降级数据' }}</span>
@@ -78,6 +79,10 @@ const dependencyLabel = computed(() => {
   return mqtt.enabled ? 'DB/MQTT OK' : 'DB OK';
 });
 const dependencyClass = computed(() => dependencyLabel.value === 'DEGRADED' ? 'status-error' : 'status-running');
+const controlModeLabel = computed(() => {
+  const mode = props.dependencyHealth?.controlMode;
+  return mode === 'test-control' ? '测试控制' : mode === 'approved-control' ? '审批控制' : '只读';
+});
 
 const clock = ref(formatClock());
 let timer: number | null = null;
@@ -157,6 +162,13 @@ p {
   display: block;
   margin-top: 2px;
   font-size: 20px;
+}
+
+.dependency-mode {
+  display: block;
+  margin-top: 2px;
+  color: #7eaed6;
+  font-size: 10px;
 }
 
 .clock {

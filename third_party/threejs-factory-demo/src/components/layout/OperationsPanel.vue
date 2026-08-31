@@ -15,12 +15,12 @@
       <button v-if="pendingDocumentId" type="button" :disabled="!apiEnabled || !canWrite || submitting" :title="!canWrite ? writeDisabledReason : '确认图纸分析'" @click="confirmDocument">确认图纸分析</button>
     </div>
     <div class="simulator-controls" aria-label="设备仿真控制">
-      <span>设备仿真控制 · 仅通过 MES API</span>
-      <select v-model="faultType" :disabled="!apiEnabled || !canControl || !selectedDevice || controlBusy !== null" aria-label="故障类型" :title="!canControl ? controlDisabledReason : !selectedDevice ? '请先选择设备' : '选择要提交的故障类型'">
+      <span>设备仿真控制 · {{ simulatorControlEnabled ? '测试模式' : '只读模式' }}</span>
+      <select v-model="faultType" :disabled="!apiEnabled || !simulatorControlEnabled || !selectedDevice || controlBusy !== null" aria-label="故障类型" :title="!simulatorControlEnabled ? simulatorControlDisabledReason : !selectedDevice ? '请先选择设备' : '选择要提交的故障类型'">
         <option v-for="option in faultOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
       </select>
-      <button type="button" :disabled="!apiEnabled || !canControl || !selectedDevice || controlBusy !== null" :title="!canControl ? controlDisabledReason : !selectedDevice ? '请先选择设备' : '提交故障注入命令'" @click="injectFault">{{ controlBusy === 'fault' ? '注入中…' : '注入故障' }}</button>
-      <button type="button" :disabled="!apiEnabled || !canControl || !selectedDevice || controlBusy !== null" :title="!canControl ? controlDisabledReason : !selectedDevice ? '请先选择设备' : '提交恢复设备命令'" @click="recoverDevice">{{ controlBusy === 'recover' ? '恢复中…' : '恢复设备' }}</button>
+      <button type="button" :disabled="!apiEnabled || !simulatorControlEnabled || !selectedDevice || controlBusy !== null" :title="!simulatorControlEnabled ? simulatorControlDisabledReason : !selectedDevice ? '请先选择设备' : '提交故障注入命令'" @click="injectFault">{{ controlBusy === 'fault' ? '注入中…' : '注入故障' }}</button>
+      <button type="button" :disabled="!apiEnabled || !simulatorControlEnabled || !selectedDevice || controlBusy !== null" :title="!simulatorControlEnabled ? simulatorControlDisabledReason : !selectedDevice ? '请先选择设备' : '提交恢复设备命令'" @click="recoverDevice">{{ controlBusy === 'recover' ? '恢复中…' : '恢复设备' }}</button>
     </div>
     <small v-if="notice" :class="{ error: error }">{{ notice }}</small>
     <pre v-if="resultPreview" class="result-preview">{{ resultPreview }}</pre>
@@ -98,6 +98,8 @@ const props = defineProps<{
   canControl: boolean;
   writeDisabledReason: string;
   controlDisabledReason: string;
+  simulatorControlEnabled: boolean;
+  simulatorControlDisabledReason: string;
 }>();
 const emit = defineEmits<{ (event: 'data-changed'): void }>();
 const active = ref<Operation | null>(null);
@@ -164,7 +166,7 @@ const transitionQuality = async (id: string, action: 'submit' | 'confirm' | 'rej
 const transitionMaintenance = async (id: string) => { if (!props.apiEnabled || !props.canControl || submitting.value) return; try { submitting.value = true; await updateMaintenanceStatus(id, 'assigned'); await loadRecords(); notice.value = '维修工单已接单'; } catch { error.value = '维修工单状态更新失败，请检查当前状态和权限'; } finally { submitting.value = false; } };
 
 const injectFault = async () => {
-  if (!props.apiEnabled || !props.canControl || !props.selectedDevice) { error.value = props.controlDisabledReason || '请先选择设备'; return; }
+  if (!props.apiEnabled || !props.simulatorControlEnabled || !props.selectedDevice) { error.value = props.simulatorControlDisabledReason || '请先选择设备'; return; }
   controlBusy.value = 'fault'; error.value = ''; notice.value = '';
   try {
     await controlSimulator({ action: 'fault', lineId: toBackendLineId(props.selectedLine.id), deviceId: toBackendDeviceId(props.selectedDevice.id), faultType: faultType.value, requestedBy: 'digital-twin-ui' });
@@ -175,7 +177,7 @@ const injectFault = async () => {
 };
 
 const recoverDevice = async () => {
-  if (!props.apiEnabled || !props.canControl || !props.selectedDevice) { error.value = props.controlDisabledReason || '请先选择设备'; return; }
+  if (!props.apiEnabled || !props.simulatorControlEnabled || !props.selectedDevice) { error.value = props.simulatorControlDisabledReason || '请先选择设备'; return; }
   controlBusy.value = 'recover'; error.value = ''; notice.value = '';
   try {
     await controlSimulator({ action: 'recover', lineId: toBackendLineId(props.selectedLine.id), deviceId: toBackendDeviceId(props.selectedDevice.id), requestedBy: 'digital-twin-ui' });

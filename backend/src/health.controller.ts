@@ -2,6 +2,7 @@ import { Controller, Get, Optional } from '@nestjs/common';
 import { Public } from './common/public.decorator';
 import { PrismaService } from './database/prisma.service';
 import { MqttIngestionService } from './mqtt/mqtt-ingestion.service';
+import { resolveMesControlMode, MesControlMode } from './common/control-mode';
 
 interface HealthPayload {
   status: 'ok';
@@ -21,6 +22,8 @@ interface ReadinessPayload {
 interface ComponentsPayload {
   service: string;
   timestamp: string;
+  environment: string;
+  controlMode: MesControlMode;
   database: ReadinessPayload['database'];
   mqtt: {
     enabled: boolean;
@@ -76,6 +79,8 @@ export class HealthController {
     return {
       service: 'mes-saas-backend',
       timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV?.trim() || 'unknown',
+      controlMode: resolveMesControlMode(),
       database,
       mqtt: mqtt
         ? {

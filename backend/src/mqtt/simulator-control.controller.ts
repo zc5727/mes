@@ -13,6 +13,7 @@ import { StrategyAuthorizationService } from '../strategies/strategy-authorizati
 import { StrategyRequestContext } from '../strategies/strategy.types';
 import { AuditService } from '../audit/audit.service';
 import { MqttIngestionService } from './mqtt-ingestion.service';
+import { canUseSimulatorControl, resolveMesControlMode } from '../common/control-mode';
 import {
   normalizeSimulatorControlCommand,
   SimulatorControlDto,
@@ -86,9 +87,9 @@ export class SimulatorControlController {
 
   /** Simulator control is a test capability and must be explicitly enabled in production. */
   private assertSimulationControlEnabled(): void {
-    if (process.env.NODE_ENV === 'production' && process.env.MES_SIMULATOR_CONTROL_ENABLED !== 'true') {
+    if (!canUseSimulatorControl()) {
       throw new ConflictException(
-        'SIMULATOR_CONTROL_DISABLED: simulator commands are disabled in production',
+        `SIMULATOR_CONTROL_DISABLED: simulator commands are disabled in ${resolveMesControlMode()} mode`,
       );
     }
   }
