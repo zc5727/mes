@@ -32,17 +32,17 @@ export class ProductionLinesController {
   }
 
   @Patch(':id/status')
-  updateStatus(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateLineStatusDto, @Headers('x-user-id') userId?: string) {
-    return { data: this.linesService.updateStatus(tenantId, id, dto, userId), tenantId };
+  async updateStatus(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateLineStatusDto, @Headers('x-user-id') userId?: string) {
+    return { data: await this.linesService.updateStatusReliable(tenantId, id, dto, userId), tenantId };
   }
 
   @Patch(':id')
-  update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateProductionLineDto, @Headers('x-user-id') userId?: string) {
-    return { data: this.linesService.update(tenantId, id, dto, userId), tenantId };
+  async update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateProductionLineDto, @Headers('x-user-id') userId?: string) {
+    return { data: await this.linesService.updateReliable(tenantId, id, dto, userId), tenantId };
   }
 
   @Delete(':id')
-  remove(@TenantId() tenantId: string, @Param('id') id: string, @Headers('x-user-id') userId?: string) {
-    return { data: this.linesService.remove(tenantId, id, userId), tenantId };
+  async remove(@TenantId() tenantId: string, @Param('id') id: string, @Headers('x-user-id') userId?: string) {
+    return { data: await this.linesService.removeReliable(tenantId, id, userId), tenantId };
   }
 }

@@ -128,7 +128,7 @@ export class ProductionLinesService implements OnModuleInit {
     }
   }
 
-  update(tenantId: string, id: string, dto: UpdateProductionLineDto, actorId = 'system'): ProductionLine {
+  update(tenantId: string, id: string, dto: UpdateProductionLineDto, actorId = 'system', persist = true): ProductionLine {
     const current = this.findOne(tenantId, id);
     if (dto.factoryId && dto.factoryId !== current.factoryId) {
       this.factoriesService.findOne(tenantId, dto.factoryId);
@@ -149,7 +149,7 @@ export class ProductionLinesService implements OnModuleInit {
       updatedAt: timestamp(),
     };
     this.lines.set(id, updated);
-    void this.persistence?.saveLine(lineToPersistence(updated));
+    if (persist) void this.persistence?.saveLine(lineToPersistence(updated));
     this.audit?.record(tenantId, actorId.trim() || 'system', {
       action: 'production_line.updated',
       resource: 'production_line',
@@ -161,7 +161,20 @@ export class ProductionLinesService implements OnModuleInit {
     return updated;
   }
 
-  updateStatus(tenantId: string, id: string, dto: UpdateLineStatusDto, actorId = 'system'): ProductionLine {
+  /** Waits for durable persistence before acknowledging a line edit. */
+  async updateReliable(tenantId: string, id: string, dto: UpdateProductionLineDto, actorId = 'system'): Promise<ProductionLine> {
+    const current = this.findOne(tenantId, id);
+    const updated = this.update(tenantId, id, dto, actorId, false);
+    try {
+      await this.persistence?.saveLine(lineToPersistence(updated));
+      return updated;
+    } catch (error: unknown) {
+      this.lines.set(id, current);
+      throw error;
+    }
+  }
+
+  updateStatus(tenantId: string, id: string, dto: UpdateLineStatusDto, actorId = 'system', persist = true): ProductionLine {
     const current = this.findOne(tenantId, id);
     if (dto.status !== 'active' && !dto.reason?.trim()) {
       throw new ConflictException(`A reason is required when line is ${dto.status}`);
@@ -173,7 +186,7 @@ export class ProductionLinesService implements OnModuleInit {
       updatedAt: timestamp(),
     };
     this.lines.set(id, updated);
-    void this.persistence?.saveLine(lineToPersistence(updated));
+    if (persist) void this.persistence?.saveLine(lineToPersistence(updated));
     this.audit?.record(tenantId, actorId.trim() || 'system', {
       action: 'production_line.status',
       resource: 'production_line',
@@ -185,7 +198,20 @@ export class ProductionLinesService implements OnModuleInit {
     return updated;
   }
 
-  remove(tenantId: string, id: string, actorId = 'system'): { id: string; deleted: true } {
+  /** Waits for durable persistence before acknowledging a line status change. */
+  async updateStatusReliable(tenantId: string, id: string, dto: UpdateLineStatusDto, actorId = 'system'): Promise<ProductionLine> {
+    const current = this.findOne(tenantId, id);
+    const updated = this.updateStatus(tenantId, id, dto, actorId, false);
+    try {
+      await this.persistence?.saveLine(lineToPersistence(updated));
+      return updated;
+    } catch (error: unknown) {
+      this.lines.set(id, current);
+      throw error;
+    }
+  }
+
+  remove(tenantId: string, id: string, actorId = 'system', persist = true): { id: string; deleted: true } {
     const line = this.findOne(tenantId, id);
     if (line.status !== 'inactive') {
       throw new ConflictException('Only inactive production lines can be deleted');
@@ -194,7 +220,7 @@ export class ProductionLinesService implements OnModuleInit {
       throw new ConflictException('Production lines with work orders cannot be deleted');
     }
     this.lines.delete(id);
-    void this.persistence?.deleteLine(id);
+    if (persist) void this.persistence?.deleteLine(id);
     this.audit?.record(tenantId, actorId.trim() || 'system', {
       action: 'production_line.deleted',
       resource: 'production_line',
@@ -203,6 +229,19 @@ export class ProductionLinesService implements OnModuleInit {
       details: { code: line.code },
     });
     return { id, deleted: true };
+  }
+
+  /** Deletes a line only after the durable delete succeeds. */
+  async removeReliable(tenantId: string, id: string, actorId = 'system'): Promise<{ id: string; deleted: true }> {
+    const current = this.findOne(tenantId, id);
+    const result = this.remove(tenantId, id, actorId, false);
+    try {
+      await this.persistence?.deleteLine(id);
+      return result;
+    } catch (error: unknown) {
+      this.lines.set(id, current);
+      throw error;
+    }
   }
 
   registerWorkOrder(tenantId: string, lineId: string): void {
