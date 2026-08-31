@@ -14,6 +14,9 @@ const expectedTables = [
   'factories', 'production_lines', 'devices', 'production_orders', 'work_orders',
   'work_order_reports', 'alarms', 'device_events', 'current_states', 'connection_events',
   'quality_records', 'maintenance_work_orders', 'document_records', 'batch_inventories',
+  'foundation_aux_records', 'device_profiles', 'device_connections',
+  'device_connection_status_events', 'strategy_runs', 'strategy_candidates',
+  'audit_events', 'audit_approvals',
 ];
 const prisma = new PrismaClient();
 try {
