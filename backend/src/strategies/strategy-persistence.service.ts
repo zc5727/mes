@@ -20,45 +20,23 @@ export class StrategyPersistenceService {
   constructor(private readonly prisma: PrismaService) {}
 
   async save(tenantId: string, result: StrategySimulationResult, audit: StrategyCallRecord, approvals: Approval[]): Promise<void> {
-    await this.prisma.ensureConnection();
-    if (!this.prisma.isReady()) return;
     try {
-      const governance = this.json({ audit, approvals, result });
-      await this.prisma.strategyRun.upsert({
-        where: { tenantId_simulationId: { tenantId, simulationId: result.simulationId } },
-        create: {
-          id: result.simulationId,
-          tenantId,
-          simulationId: result.simulationId,
-          snapshotAt: new Date(result.snapshot.timestamp),
-          generatedAt: new Date(result.generatedAt),
-          snapshot: this.json(result.snapshot),
-          risks: this.json(result.risks),
-          governance,
-          candidates: { create: result.candidates.map((candidate) => ({
-            id: candidate.id,
-            action: candidate.action,
-            risk: candidate.risk,
-            affectedOrders: this.json(candidate.affectedOrders),
-            fromLine: candidate.fromLine,
-            toLine: candidate.toLine,
-            expectedFinishTime: new Date(candidate.expectedFinishTime),
-            expectedImpact: candidate.expectedImpact,
-            reason: candidate.reason,
-            requiresApproval: true,
-            score: candidate.score,
-          })) },
-        },
-        update: {
-          snapshotAt: new Date(result.snapshot.timestamp),
-          generatedAt: new Date(result.generatedAt),
-          snapshot: this.json(result.snapshot),
-          risks: this.json(result.risks),
-          governance,
-        },
-      });
+      await this.persist(tenantId, result, audit, approvals);
     } catch (error: unknown) {
       this.logger.error(`persist strategy run failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /** Persists a governed simulation synchronously at an HTTP command boundary. */
+  async saveReliable(tenantId: string, result: StrategySimulationResult, audit: StrategyCallRecord, approvals: Approval[]): Promise<void> {
+    await this.persist(tenantId, result, audit, approvals);
+  }
+
+  /** Fails before the governance projection is acknowledged when PostgreSQL is required. */
+  async assertWritable(): Promise<void> {
+    await this.prisma.ensureConnection();
+    if (!this.prisma.isReady() && this.prisma.required) {
+      throw new Error('PostgreSQL is required; strategy governance cannot continue');
     }
   }
 
@@ -82,5 +60,47 @@ export class StrategyPersistenceService {
 
   private json(value: unknown): Prisma.InputJsonValue {
     return value as Prisma.InputJsonValue;
+  }
+
+  private async persist(tenantId: string, result: StrategySimulationResult, audit: StrategyCallRecord, approvals: Approval[]): Promise<void> {
+    await this.prisma.ensureConnection();
+    if (!this.prisma.isReady()) {
+      if (this.prisma.required) throw new Error('PostgreSQL is required; strategy governance cannot continue');
+      return;
+    }
+    const governance = this.json({ audit, approvals, result });
+    await this.prisma.strategyRun.upsert({
+      where: { tenantId_simulationId: { tenantId, simulationId: result.simulationId } },
+      create: {
+        id: result.simulationId,
+        tenantId,
+        simulationId: result.simulationId,
+        snapshotAt: new Date(result.snapshot.timestamp),
+        generatedAt: new Date(result.generatedAt),
+        snapshot: this.json(result.snapshot),
+        risks: this.json(result.risks),
+        governance,
+        candidates: { create: result.candidates.map((candidate) => ({
+          id: candidate.id,
+          action: candidate.action,
+          risk: candidate.risk,
+          affectedOrders: this.json(candidate.affectedOrders),
+          fromLine: candidate.fromLine,
+          toLine: candidate.toLine,
+          expectedFinishTime: new Date(candidate.expectedFinishTime),
+          expectedImpact: candidate.expectedImpact,
+          reason: candidate.reason,
+          requiresApproval: true,
+          score: candidate.score,
+        })) },
+      },
+      update: {
+        snapshotAt: new Date(result.snapshot.timestamp),
+        generatedAt: new Date(result.generatedAt),
+        snapshot: this.json(result.snapshot),
+        risks: this.json(result.risks),
+        governance,
+      },
+    });
   }
 }

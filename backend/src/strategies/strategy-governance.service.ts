@@ -90,6 +90,7 @@ export class StrategyGovernanceService implements OnModuleInit {
     result: StrategySimulationResult,
     context?: StrategyRequestContext,
     idempotencyKey?: string,
+    persist = true,
   ): StrategyCallRecord {
     const lineIds = snapshot.lines.map((line) => line.id);
     const requestFingerprint = idempotencyKey ? this.fingerprint(snapshot) : undefined;
@@ -160,8 +161,28 @@ export class StrategyGovernanceService implements OnModuleInit {
       lifecycleStatus: 'pending_approval',
     };
     this.simulations.set(this.key(tenantId, result.simulationId), { result, audit: record });
-    void this.persistence?.save(tenantId, result, record, this.auditService.listApprovals(tenantId));
+    if (persist) void this.persistence?.save(tenantId, result, record, this.auditService.listApprovals(tenantId));
     return record;
+  }
+
+  /** Records and durably stores an HTTP-governed simulation before returning. */
+  async recordSimulationReliable(
+    tenantId: string,
+    requestedBy: string,
+    snapshot: StrategySnapshot,
+    result: StrategySimulationResult,
+    context?: StrategyRequestContext,
+    idempotencyKey?: string,
+  ): Promise<StrategyCallRecord> {
+    await this.persistence?.assertWritable();
+    const record = this.recordSimulation(tenantId, requestedBy, snapshot, result, context, idempotencyKey, false);
+    try {
+      await this.persistence?.saveReliable(tenantId, result, record, this.auditService.listApprovals(tenantId));
+      return record;
+    } catch (error: unknown) {
+      this.simulations.delete(this.key(tenantId, result.simulationId));
+      throw error;
+    }
   }
 
   fingerprint(snapshot: StrategySnapshot): string {

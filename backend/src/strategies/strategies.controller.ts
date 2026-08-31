@@ -2,7 +2,7 @@ import { RequireCapability } from '../common/route-capability.decorator';
 import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, Post, ServiceUnavailableException } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { StrategyEngineService } from './strategy-engine.service';
-import { StrategyGovernanceService } from './strategy-governance.service';
+import { StrategyCallRecord, StrategyGovernanceService } from './strategy-governance.service';
 import { StrategyAuthorizationService } from './strategy-authorization.service';
 import { StrategyRequestContext, StrategySimulationResult, StrategySnapshot } from './strategy.types';
 import {
@@ -21,7 +21,7 @@ export class StrategiesController {
 
   @Post('simulate')
   @HttpCode(HttpStatus.OK)
-  simulate(
+  async simulate(
     @TenantId() tenantIdOrDto: string | StrategySimulationDto,
     @Headers('x-user-id') userId?: string,
     @Headers('x-role') role?: string,
@@ -31,7 +31,7 @@ export class StrategiesController {
     @Headers('x-trace-id') traceId?: string,
     @Body() dto?: StrategySimulationDto,
     @Headers('idempotency-key') idempotencyKey?: string,
-  ): { data: StrategySimulationResult; audit?: ReturnType<StrategyGovernanceService['recordSimulation']> } {
+  ): Promise<{ data: StrategySimulationResult; audit?: StrategyCallRecord }> {
     // The single-argument form remains available for existing in-process callers;
     // HTTP requests use tenant/user headers and the validated body parameter.
     const legacyCall = typeof tenantIdOrDto !== 'string';
@@ -80,7 +80,9 @@ export class StrategiesController {
 
     const result = this.strategyEngine.simulate(snapshot);
     const requestedBy = context?.userId || userId?.trim() || 'api-user';
-    const audit = governance?.recordSimulation(tenantId, requestedBy, snapshot, result, context, normalizedIdempotencyKey);
+    const audit = governance
+      ? await governance.recordSimulationReliable(tenantId, requestedBy, snapshot, result, context, normalizedIdempotencyKey)
+      : undefined;
     if (audit) {
       const response = { data: result, audit, traceId: audit.traceId };
       if (normalizedIdempotencyKey && governance) {

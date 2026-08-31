@@ -6,7 +6,7 @@ import { StrategyGovernanceService } from '../src/strategies/strategy-governance
 import { ServiceUnavailableException } from '@nestjs/common';
 
 describe('StrategiesController', () => {
-  it('returns a deterministic, approval-gated simulation without mutating the snapshot', () => {
+  it('returns a deterministic, approval-gated simulation without mutating the snapshot', async () => {
     const controller = new StrategiesController(new StrategyEngineService());
     const dto: StrategySimulationDto = {
       timestamp: '2026-08-28T08:00:00.000Z',
@@ -39,8 +39,8 @@ describe('StrategiesController', () => {
     };
     const before = JSON.stringify(dto);
 
-    const first = controller.simulate(dto);
-    const second = controller.simulate(dto);
+    const first = await controller.simulate(dto);
+    const second = await controller.simulate(dto);
 
     expect(first.data.simulationId).toBe(second.data.simulationId);
     expect(first.data.candidates.length).toBeGreaterThanOrEqual(2);
@@ -51,7 +51,7 @@ describe('StrategiesController', () => {
     expect(JSON.stringify(dto)).toBe(before);
   });
 
-  it('replays the HTTP contract by idempotency key and exposes discard-only rollback', () => {
+  it('replays the HTTP contract by idempotency key and exposes discard-only rollback', async () => {
     const audit = new AuditService();
     const controller = new StrategiesController(
       new StrategyEngineService(),
@@ -66,8 +66,8 @@ describe('StrategiesController', () => {
     };
     const args = ['tenant-a', 'user-1', 'plant_manager', 'FACTORY-01', '*', 'session-1', 'trace-1', dto, 'idem-1'] as const;
 
-    const first = controller.simulate(...args);
-    const replay = controller.simulate(...args);
+    const first = await controller.simulate(...args);
+    const replay = await controller.simulate(...args);
 
     expect(replay).toBe(first);
     expect(audit.list('tenant-a')).toHaveLength(1);
@@ -80,7 +80,7 @@ describe('StrategiesController', () => {
     expect(rolledBack.data.result.executionAllowed).toBe(false);
   });
 
-  it('fails closed for governed HTTP routes when governance is unavailable', () => {
+  it('fails closed for governed HTTP routes when governance is unavailable', async () => {
     const controller = new StrategiesController(new StrategyEngineService());
     const dto: StrategySimulationDto = {
       timestamp: '2026-08-28T08:00:00.000Z',
@@ -91,7 +91,7 @@ describe('StrategiesController', () => {
     };
     const identity = ['tenant-a', 'user-1', 'plant_manager', 'FACTORY-01', '*', 'session-1', 'trace-1'] as const;
 
-    expect(() => controller.simulate(...identity, dto)).toThrow(ServiceUnavailableException);
+    await expect(controller.simulate(...identity, dto)).rejects.toThrow(ServiceUnavailableException);
     expect(() => controller.getSimulation(
       'tenant-a', 'sim-missing', 'user-1', 'plant_manager', 'FACTORY-01', '*', 'session-1', 'trace-2',
     )).toThrow(ServiceUnavailableException);

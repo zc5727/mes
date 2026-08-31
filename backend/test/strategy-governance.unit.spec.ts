@@ -173,4 +173,17 @@ describe('StrategyGovernanceService', () => {
     expect(restored.listApprovalsForSimulation('tenant-a', result.simulationId)).toEqual(approvals);
     expect(restored.getIdempotent('tenant-a', 'restart-key', restored.fingerprint(snapshot))).toEqual({ data: result, audit: call });
   });
+
+  it('does not retain an HTTP simulation when durable governance storage fails', async () => {
+    const persistence = {
+      assertWritable: jest.fn().mockResolvedValue(undefined),
+      saveReliable: jest.fn().mockRejectedValue(new Error('database unavailable')),
+    } as never;
+    const governance = new StrategyGovernanceService(new AuditService(), persistence);
+    const result = new StrategyEngineService().simulate(snapshot);
+
+    await expect(governance.recordSimulationReliable('tenant-a', 'operator', snapshot, result))
+      .rejects.toThrow('database unavailable');
+    expect(() => governance.getSimulation('tenant-a', result.simulationId)).toThrow('not found');
+  });
 });
