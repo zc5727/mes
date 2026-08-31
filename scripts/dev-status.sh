@@ -35,8 +35,12 @@ check_tcp() {
 check_process backend
 check_process frontend
 check_process simulator
+check_process simulator-ui
 check_http backend http://localhost:3000/api/v1/health
 check_http frontend http://localhost:5173
+if [[ -f "$RUNTIME_DIR/simulator-ui.pid" ]]; then
+  check_http simulator-ui http://localhost:5174
+fi
 check_tcp mqtt 1883
 check_tcp postgres 5432
 

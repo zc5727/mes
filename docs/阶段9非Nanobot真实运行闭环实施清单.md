@@ -85,7 +85,10 @@ cd /Users/a1/Documents/ChatGPT/mes
 
 - `scripts/dev-up.sh` 默认不启动基础设施，也默认不打开 MQTT；必须显式传 `--infra --mqtt`。
 - Docker Compose 不可用时，需按 `docs/阶段8真实运行闭环实施计划.md` 使用等价 `docker run`，并记录容器版本。
-- 启动脚本需要进一步增加 PostgreSQL/MQTT readiness 和后端健康等待，当前不能仅凭“进程已创建”判断启动成功。
+- `dev-up.sh` 已包含 PostgreSQL/MQTT readiness、Backend health 和前端 HTTP
+  readiness。当前 macOS/Codex 非交互执行器会在命令返回后清理已启动的子进程，
+  因此进程脱离尚未通过可靠回归；需在 launchd、Docker Compose 或其他明确的进程
+  监管器下单独验收，不得以本地 shell 返回作为通过依据。
 
 ## 4. 接口契约审查与冲突清单
 
@@ -292,7 +295,8 @@ node scripts/browser-smoke.mjs
 
 1. MQTT 采集尚未接入 PostgreSQL，重启恢复不能验收。
 2. 缺少数据库 migration、幂等唯一键和写入失败处理的正式实现。
-3. 统一启动脚本尚未实现完整 readiness 检查。
+3. 真实 PostgreSQL/MQTT/MinIO、生产配置和进程监管仍需独立环境验收；当前不能
+   据此宣称现场部署完成。
 
 ### P1
 
