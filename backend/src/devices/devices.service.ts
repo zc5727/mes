@@ -157,7 +157,7 @@ export class DevicesService implements OnModuleInit {
     return updated;
   }
 
-  updateStatus(tenantId: string, id: string, dto: UpdateDeviceStatusDto): Device {
+  updateStatus(tenantId: string, id: string, dto: UpdateDeviceStatusDto, persist = true): Device {
     const current = this.findOne(tenantId, id);
     const updated: Device = {
       ...current,
@@ -166,7 +166,7 @@ export class DevicesService implements OnModuleInit {
       updatedAt: timestamp(),
     };
     this.devices.set(id, updated);
-    this.persist('save device', this.persistence?.saveDevice(updated));
+    if (persist) this.persist('save device', this.persistence?.saveDevice(updated));
     this.audit?.record(tenantId, 'system', {
       action: 'device.status',
       resource: 'device',
@@ -176,6 +176,19 @@ export class DevicesService implements OnModuleInit {
       details: { from: current.status, to: updated.status, reason: updated.statusReason },
     });
     return updated;
+  }
+
+  /** Waits for durable status persistence for operator-facing state changes. */
+  async updateStatusReliable(tenantId: string, id: string, dto: UpdateDeviceStatusDto): Promise<Device> {
+    const current = this.findOne(tenantId, id);
+    const updated = this.updateStatus(tenantId, id, dto, false);
+    try {
+      await this.persistence?.saveDevice(updated);
+      return updated;
+    } catch (error: unknown) {
+      this.devices.set(id, current);
+      throw error;
+    }
   }
 
   ingestTelemetry(tenantId: string, id: string, dto: IngestTelemetryDto): Device {

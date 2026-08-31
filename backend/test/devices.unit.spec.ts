@@ -19,6 +19,18 @@ describe('DevicesService line ownership', () => {
     expect(devices.findAll('tenant-demo')).toHaveLength(0);
   });
 
+  it('rolls back a device status when durable persistence rejects it', async () => {
+    const persistence = {
+      isEnabled: () => false,
+      saveDevice: jest.fn().mockRejectedValue(new Error('database unavailable')),
+    };
+    const devices = new DevicesService(persistence as never, new ProductionLinesService());
+
+    await expect(devices.updateStatusReliable('tenant-demo', 'device-cnc-01', { status: 'maintenance', reason: '故障隔离' }))
+      .rejects.toThrow('database unavailable');
+    expect(devices.findOne('tenant-demo', 'device-cnc-01').status).toBe('online');
+  });
+
   it('does not retain demo devices when an enabled database restores an empty snapshot', async () => {
     const persistence = {
       isEnabled: () => true,

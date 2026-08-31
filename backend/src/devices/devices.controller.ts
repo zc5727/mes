@@ -35,8 +35,8 @@ export class DevicesController {
 
   @Patch(':id/status')
   @RequireCapability('write')
-  updateStatus(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateDeviceStatusDto) {
-    return { data: this.devicesService.updateStatus(tenantId, id, dto), tenantId };
+  async updateStatus(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateDeviceStatusDto) {
+    return { data: await this.devicesService.updateStatusReliable(tenantId, id, dto), tenantId };
   }
 
   @Post(':id/telemetry')
