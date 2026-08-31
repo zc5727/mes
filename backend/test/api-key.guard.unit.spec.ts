@@ -46,6 +46,20 @@ describe('ApiKeyGuard', () => {
       .toThrow(UnauthorizedException);
   });
 
+  it('rejects the example API key instead of treating it as deployment credentials', () => {
+    process.env.MES_API_KEY = 'replace-with-a-long-random-api-key';
+    try {
+      const guard = new ApiKeyGuard(new Reflector());
+
+      expect(() => guard.canActivate(createContext(
+        'Bearer replace-with-a-long-random-api-key',
+        'tenant-demo',
+      ))).toThrow(UnauthorizedException);
+    } finally {
+      process.env.MES_API_KEY = 'test-api-key';
+    }
+  });
+
   it('rejects requests over the configured rate limit', () => {
     process.env.MES_RATE_LIMIT_PER_MINUTE = '1';
     const guard = new ApiKeyGuard(new Reflector());

@@ -11,6 +11,8 @@ import { timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import { IS_PUBLIC_KEY } from './public.decorator';
 
+const EXAMPLE_API_KEY = 'replace-with-a-long-random-api-key';
+
 /**
  * Protects the HTTP API behind the configured gateway key.
  *
@@ -41,7 +43,7 @@ export class ApiKeyGuard implements CanActivate {
 
   private assertApiKey(authorization: string | undefined, queryKey?: string): void {
     const expected = process.env.MES_API_KEY?.trim();
-    if (!expected) {
+    if (!expected || expected === EXAMPLE_API_KEY) {
       throw new UnauthorizedException('API authentication is not configured');
     }
 
