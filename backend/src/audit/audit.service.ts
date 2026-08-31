@@ -54,6 +54,9 @@ export class AuditService {
     return { valid: true, checked: entries.length };
   }
   listApprovals(tenantId: string) { return this.approvals.get(tenantId) ?? []; }
+  findApproval(tenantId: string, id: string): Approval | undefined {
+    return this.listApprovals(tenantId).find((approval) => approval.id === id);
+  }
   restoreApproval(item: Approval): void {
     if (this.listApprovals(item.tenantId).some((approval) => approval.id === item.id)) return;
     this.approvals.set(item.tenantId, [...this.listApprovals(item.tenantId), item]);

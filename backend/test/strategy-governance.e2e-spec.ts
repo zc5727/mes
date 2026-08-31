@@ -49,6 +49,8 @@ describe('strategy governance boundary (e2e)', () => {
 
     const approvalId = simulated.body.audit.approvalIds[0];
     expect(approvalId).toEqual(expect.any(String));
+    await request(server).patch(`/api/v1/audit/approvals/${approvalId}/approve`)
+      .set(identity('supervisor', 'LINE-01,LINE-02')).expect(403);
     await request(server).post(`/api/v1/strategies/simulations/${simulationId}/approvals/${approvalId}/approve`)
       .set(identity('supervisor', 'LINE-01,LINE-02')).expect(200);
     const executed = await request(server).post(`/api/v1/strategies/simulations/${simulationId}/execute`)

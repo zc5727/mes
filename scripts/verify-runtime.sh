@@ -34,9 +34,15 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 echo "检查 Docker Compose 配置"
-"${COMPOSE[@]}" config >/dev/null
+if ! "${COMPOSE[@]}" config >/dev/null; then
+  echo "BLOCKED: Compose 配置校验失败：$COMPOSE_FILE" >&2
+  exit 2
+fi
 echo "启动真实 PostgreSQL/MQTT/对象存储服务（infra + object-storage profiles）"
-"${COMPOSE[@]}" --profile infra --profile object-storage up -d postgres mqtt minio
+if ! "${COMPOSE[@]}" --profile infra --profile object-storage up -d postgres mqtt minio; then
+  echo "BLOCKED: 基础设施启动失败，请执行 ${COMPOSE[*]} logs postgres mqtt minio 诊断。" >&2
+  exit 2
+fi
 STARTED=true
 for port in 5432 1883 9000; do
   for _ in $(seq 1 30); do
@@ -49,10 +55,16 @@ for port in 5432 1883 9000; do
   }
 done
 
-curl --fail --silent --show-error http://localhost:9000/minio/health/live >/dev/null
+if ! curl --fail --silent --show-error http://localhost:9000/minio/health/live >/dev/null; then
+  echo "BLOCKED: MinIO readiness 检查失败。" >&2
+  exit 2
+fi
 echo "PASS MinIO object storage readiness"
 
-"${COMPOSE[@]}" exec -T postgres pg_isready -U mes -d mes >/dev/null
+if ! "${COMPOSE[@]}" exec -T postgres pg_isready -U mes -d mes >/dev/null; then
+  echo "BLOCKED: PostgreSQL healthcheck 未通过。" >&2
+  exit 2
+fi
 echo "PASS PostgreSQL protocol readiness"
 
 echo "执行真实数据库迁移"

@@ -39,7 +39,10 @@ preflight() {
     return 2
   fi
   [[ -f "$file" ]] || { echo "BLOCKED: Compose 文件不存在：$file" >&2; return 2; }
-  compose config >/dev/null
+  if ! compose config >/dev/null; then
+    echo "BLOCKED: Compose 配置校验失败：$file" >&2
+    return 2
+  fi
   echo "PASS runtime preflight: Docker/Compose/config"
 }
 
@@ -66,7 +69,10 @@ wait_tcp() {
 ready() {
   preflight
   for port in 5432 1883; do wait_tcp "$port"; done
-  compose exec -T postgres pg_isready -U mes -d mes >/dev/null
+  if ! compose exec -T postgres pg_isready -U mes -d mes >/dev/null; then
+    echo "BLOCKED: PostgreSQL 容器 healthcheck 未通过。" >&2
+    return 2
+  fi
   if [[ "$OBJECT_STORAGE" == true ]]; then
     wait_tcp 9000
     curl --fail --silent --show-error http://localhost:9000/minio/health/live >/dev/null || { echo "BLOCKED: MinIO healthcheck failed." >&2; return 2; }
@@ -81,9 +87,15 @@ ready() {
 
 start() {
   preflight
-  compose --profile infra up -d postgres mqtt
+  if ! compose --profile infra up -d postgres mqtt; then
+    echo "BLOCKED: PostgreSQL/MQTT 启动失败，请执行 compose logs postgres mqtt 诊断。" >&2
+    return 2
+  fi
   wait_tcp 5432
-  if [[ "$OBJECT_STORAGE" == true ]]; then compose --profile object-storage up -d minio; fi
+  if [[ "$OBJECT_STORAGE" == true ]] && ! compose --profile object-storage up -d minio; then
+    echo "BLOCKED: MinIO 启动失败，请执行 compose logs minio 诊断。" >&2
+    return 2
+  fi
   npm --prefix "$ROOT_DIR/backend" run db:init
   DATABASE_URL="${DATABASE_URL:-postgresql://mes:mes_dev@localhost:5432/mes}" npm --prefix "$ROOT_DIR/backend" run db:verify-runtime
   DATABASE_ENABLED=true DATABASE_REQUIRED=true MQTT_ENABLED=true MES_OBJECT_STORAGE="$OBJECT_STORAGE" "$ROOT_DIR/scripts/dev-up.sh" --mqtt
@@ -124,8 +136,14 @@ stop() {
 
 restart() {
   preflight
-  compose --profile infra restart postgres mqtt
-  if [[ "$OBJECT_STORAGE" == true ]]; then compose --profile object-storage restart minio; fi
+  if ! compose --profile infra restart postgres mqtt; then
+    echo "BLOCKED: PostgreSQL/MQTT 重启失败，请执行 compose logs postgres mqtt 诊断。" >&2
+    return 2
+  fi
+  if [[ "$OBJECT_STORAGE" == true ]] && ! compose --profile object-storage restart minio; then
+    echo "BLOCKED: MinIO 重启失败，请执行 compose logs minio 诊断。" >&2
+    return 2
+  fi
   "$ROOT_DIR/scripts/dev-down.sh"
   npm --prefix "$ROOT_DIR/backend" run db:init
   DATABASE_URL="${DATABASE_URL:-postgresql://mes:mes_dev@localhost:5432/mes}" npm --prefix "$ROOT_DIR/backend" run db:verify-runtime
