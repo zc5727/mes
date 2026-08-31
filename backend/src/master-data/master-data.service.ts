@@ -81,14 +81,24 @@ export class MasterDataService implements OnModuleInit {
     }
   }
 
-  createBatch(tenantId: string, dto: CreateBatchInventoryDto, actorId = 'system'): BatchInventory {
+  createBatch(tenantId: string, dto: CreateBatchInventoryDto, actorId = 'system', persist = true): BatchInventory {
     const key = `${tenantId}:${dto.materialCode.trim()}:${dto.batchNo.trim()}`;
     if (this.batches.has(key)) throw new ConflictException(`Batch ${dto.batchNo} already exists`);
     const batch: BatchInventory = { id: createId('batch'), tenantId, materialCode: dto.materialCode.trim(), batchNo: dto.batchNo.trim(), quantity: dto.quantity, unit: dto.unit?.trim() || null, updatedAt: timestamp() };
     this.batches.set(key, batch);
-    void this.inventoryPersistence?.save(batch);
+    if (persist) void this.inventoryPersistence?.save(batch);
     this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'master_data.batch_created', resource: 'batch_inventory', resourceId: batch.id, after: batch as unknown as Record<string, unknown>, details: { materialCode: batch.materialCode, batchNo: batch.batchNo } });
     return batch;
+  }
+  async createBatchReliable(tenantId: string, dto: CreateBatchInventoryDto, actorId = 'system'): Promise<BatchInventory> {
+    const batch = this.createBatch(tenantId, dto, actorId, false);
+    try {
+      await this.inventoryPersistence?.saveReliable(batch);
+      return batch;
+    } catch (error: unknown) {
+      this.batches.delete(this.batchKey(tenantId, batch.materialCode, batch.batchNo));
+      throw error;
+    }
   }
   listBatches(tenantId: string): BatchInventory[] { return [...this.batches.values()].filter((batch) => batch.tenantId === tenantId); }
   consumeBatch(tenantId: string, materialCode: string, batchNo: string, quantity: number): BatchInventory {
@@ -130,17 +140,31 @@ export class MasterDataService implements OnModuleInit {
       if (operationKey) this.batchConsumptionKeys.delete(operationKey);
     };
   }
-  returnBatch(tenantId: string, dto: BatchInventoryMovementDto, actorId = 'system'): BatchInventory {
+  returnBatch(tenantId: string, dto: BatchInventoryMovementDto, actorId = 'system', persist = true): BatchInventory {
     const operationKey = dto.idempotencyKey?.trim() ? `${tenantId}:${dto.idempotencyKey.trim()}` : undefined;
     if (operationKey && this.batchReturnKeys.has(operationKey)) return this.batches.get(this.batchKey(tenantId, dto.materialCode, dto.batchNo))!;
     const key = this.batchKey(tenantId, dto.materialCode, dto.batchNo);
     const batch = this.batches.get(key);
     if (!batch) throw new ConflictException(`Material batch ${dto.batchNo} not found`);
     const updated = { ...batch, quantity: batch.quantity + dto.quantity, updatedAt: timestamp() };
-    this.batches.set(key, updated); void this.inventoryPersistence?.save(updated);
+    this.batches.set(key, updated); if (persist) void this.inventoryPersistence?.save(updated);
     if (operationKey) this.batchReturnKeys.add(operationKey);
     this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'master_data.batch_returned', resource: 'batch_inventory', resourceId: updated.id, traceId: dto.idempotencyKey, before: batch as unknown as Record<string, unknown>, after: updated as unknown as Record<string, unknown>, details: { materialCode: updated.materialCode, batchNo: updated.batchNo, quantity: dto.quantity } });
     return updated;
+  }
+  async returnBatchReliable(tenantId: string, dto: BatchInventoryMovementDto, actorId = 'system'): Promise<BatchInventory> {
+    const key = this.batchKey(tenantId, dto.materialCode, dto.batchNo);
+    const current = this.batches.get(key);
+    const operationKey = dto.idempotencyKey?.trim() ? `${tenantId}:${dto.idempotencyKey.trim()}` : undefined;
+    const updated = this.returnBatch(tenantId, dto, actorId, false);
+    try {
+      await this.inventoryPersistence?.saveReliable(updated);
+      return updated;
+    } catch (error: unknown) {
+      if (current) this.batches.set(key, current);
+      if (operationKey) this.batchReturnKeys.delete(operationKey);
+      throw error;
+    }
   }
   validateOperation(tenantId: string, routingId: string | undefined, operationCode: string): void {
     const operation = this.list(tenantId, 'operation').find((item) => item.code === operationCode);

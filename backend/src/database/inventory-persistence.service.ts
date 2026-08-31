@@ -51,6 +51,25 @@ export class InventoryPersistenceService {
     });
   }
 
+  /** Persists one batch synchronously for HTTP command boundaries. */
+  async saveReliable(batch: BatchInventory): Promise<void> {
+    await this.prisma.ensureConnection();
+    if (!this.prisma.isReady()) {
+      this.failIfRequired('persist batch inventory');
+      return;
+    }
+    try {
+      await this.prisma.batchInventory.upsert({
+        where: { id: batch.id },
+        create: this.data(batch),
+        update: { materialCode: batch.materialCode, batchNo: batch.batchNo, quantity: new Prisma.Decimal(batch.quantity), unit: batch.unit, updatedAt: new Date(batch.updatedAt) },
+      });
+    } catch (error: unknown) {
+      this.failure('persist batch inventory', error);
+      this.failIfRequired('persist batch inventory', error);
+    }
+  }
+
   async saveMany(batches: BatchInventory[]): Promise<void> {
     if (batches.length === 0) return;
     return this.enqueue(async () => {

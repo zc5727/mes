@@ -127,4 +127,20 @@ describe('business foundation APIs', () => {
     service.returnBatch('tenant-a', { materialCode: 'RAW-01', batchNo: 'B-01', quantity: 1, idempotencyKey: 'return-1' });
     expect(service.listBatches('tenant-a')[0].quantity).toBe(3);
   });
+
+  it('rolls back batch creation and return when durable inventory writes fail', async () => {
+    const persistence = { saveReliable: jest.fn().mockRejectedValue(new Error('database unavailable')) };
+    const service = new MasterDataService(persistence as never);
+
+    await expect(service.createBatchReliable('tenant-a', {
+      materialCode: 'RAW-FAIL', batchNo: 'B-FAIL', quantity: 2,
+    })).rejects.toThrow('database unavailable');
+    expect(service.listBatches('tenant-a')).toHaveLength(0);
+
+    service.createBatch('tenant-a', { materialCode: 'RAW-RETURN', batchNo: 'B-RETURN', quantity: 2 }, 'system', false);
+    await expect(service.returnBatchReliable('tenant-a', {
+      materialCode: 'RAW-RETURN', batchNo: 'B-RETURN', quantity: 1, idempotencyKey: 'return-fail',
+    })).rejects.toThrow('database unavailable');
+    expect(service.listBatches('tenant-a')[0].quantity).toBe(2);
+  });
 });

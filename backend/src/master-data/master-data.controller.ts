@@ -32,8 +32,8 @@ export class MasterDataController {
   @Get('batches') batches(@TenantId() tenantId: string) { return { data: this.service.listBatches(tenantId), tenantId }; }
   @Post('batches')
   @RequireCapability('write')
-  createBatch(@TenantId() tenantId: string, @Body() dto: CreateBatchInventoryDto, @Headers('x-user-id') actorId?: string) { return { data: this.service.createBatch(tenantId, dto, actorId), tenantId }; }
+  async createBatch(@TenantId() tenantId: string, @Body() dto: CreateBatchInventoryDto, @Headers('x-user-id') actorId?: string) { return { data: await this.service.createBatchReliable(tenantId, dto, actorId), tenantId }; }
   @Post('batches/return')
   @RequireCapability('write')
-  returnBatch(@TenantId() tenantId: string, @Body() dto: BatchInventoryMovementDto, @Headers('x-user-id') actorId?: string) { return { data: this.service.returnBatch(tenantId, dto, actorId), tenantId }; }
+  async returnBatch(@TenantId() tenantId: string, @Body() dto: BatchInventoryMovementDto, @Headers('x-user-id') actorId?: string) { return { data: await this.service.returnBatchReliable(tenantId, dto, actorId), tenantId }; }
 }
