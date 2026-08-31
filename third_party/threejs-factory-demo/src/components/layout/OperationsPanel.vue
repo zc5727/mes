@@ -13,7 +13,7 @@
       <button type="button" :disabled="!apiEnabled || !canWrite" :title="!canWrite ? writeDisabledReason : '图纸登记'" @click="active = 'document'">图纸登记</button>
       <button type="button" :disabled="!apiEnabled || !canWrite" :title="!canWrite ? writeDisabledReason : '质量记录'" @click="active = 'quality'">质量记录</button>
       <button type="button" :disabled="!apiEnabled || !canControl" :title="!canControl ? controlDisabledReason : '策略评估'" @click="active = 'strategy'">策略评估</button>
-      <button v-if="pendingDocumentId" type="button" :disabled="!apiEnabled || !canWrite || submitting" :title="!canWrite ? writeDisabledReason : '确认图纸分析'" @click="confirmDocument">确认图纸分析</button>
+      <button v-if="pendingDocumentId && pendingDocumentReady" type="button" :disabled="!apiEnabled || !canWrite || submitting" :title="!canWrite ? writeDisabledReason : '确认图纸分析'" @click="confirmDocument">确认图纸分析</button>
     </div>
     <div class="simulator-controls" aria-label="设备仿真控制">
       <span>设备仿真控制 · {{ simulatorControlEnabled ? '测试模式' : '只读模式' }}</span>
@@ -30,7 +30,7 @@
     <div v-else-if="!apiEnabled" class="record-status">当前未启用 MES API，不读取或修改业务工作台</div>
     <div v-else class="record-status">文档 {{ documents.length }} · 质量 {{ qualityRecords.length }} · 维修 {{ maintenanceOrders.length }}</div>
     <div v-if="apiEnabled" class="record-list">
-      <div v-for="document in documents.slice(0, 2)" :key="`d-${document.id}`" class="record-row"><span>图纸 · {{ String(document.fileName ?? document.id) }}</span><button type="button" :disabled="submitting" @click="previewDocument(document.id)">预览</button><button type="button" :disabled="!canWrite || submitting" :title="!canWrite ? writeDisabledReason : '确认图纸'" @click="confirmDocumentRecord(document.id)">确认</button></div>
+      <div v-for="document in documents.slice(0, 2)" :key="`d-${document.id}`" class="record-row"><span>图纸 · {{ String(document.fileName ?? document.id) }} · {{ documentAnalysisLabel(document) }}</span><button type="button" :disabled="submitting" @click="previewDocument(document.id)">预览</button><button v-if="documentAnalysisStatus(document) === 'failed'" type="button" :disabled="!canWrite || submitting" :title="!canWrite ? writeDisabledReason : '重试图纸分析'" @click="runDocumentAnalysis(document.id, true)">重试</button><button v-else-if="documentAnalysisStatus(document) === 'not_started'" type="button" :disabled="!canWrite || submitting" :title="!canWrite ? writeDisabledReason : '异步分析图纸'" @click="runDocumentAnalysis(document.id, false)">分析</button><button type="button" :disabled="!canWrite || submitting" :title="!canWrite ? writeDisabledReason : '送审图纸'" @click="confirmDocumentRecord(document.id)">送审</button></div>
       <div v-for="record in qualityRecords.slice(0, 2)" :key="`q-${record.id}`" class="record-row"><span>质量 · {{ String(record.batchNo ?? record.id) }}</span><button type="button" :disabled="!canWrite || submitting" :title="!canWrite ? writeDisabledReason : '提交质量记录'" @click="transitionQuality(record.id, 'submit')">提交</button><button type="button" :disabled="!canWrite || submitting" :title="!canWrite ? writeDisabledReason : '确认质量记录'" @click="transitionQuality(record.id, 'confirm')">确认</button><button type="button" :disabled="!canWrite || submitting" :title="!canWrite ? writeDisabledReason : '驳回质量记录'" @click="transitionQuality(record.id, 'reject')">驳回</button></div>
       <div v-for="order in maintenanceOrders.slice(0, 2)" :key="`m-${order.id}`" class="record-row"><span>维修 · {{ String(order.title ?? order.id) }}</span><button type="button" :disabled="!canControl || submitting" :title="!canControl ? controlDisabledReason : '接单维修工单'" @click="transitionMaintenance(order.id)">接单</button></div>
       <span v-if="!documents.length && !qualityRecords.length && !maintenanceOrders.length" class="hint">暂无文档、质量或维修记录</span>
@@ -90,7 +90,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { analyzeDocument, confirmDocumentAnalysis, confirmQualityRecord, controlSimulator, createDevice, deleteDevice, createMaintenance, createQualityRecord, createWorkOrder, documentContentUrl, reportWorkOrder, updateDevice, updateDeviceStatus, listDocuments, listMaintenanceWorkOrders, listQualityRecords, listWorkOrders, rejectQualityRecord, submitQualityRecord, simulateStrategy, updateDocumentStatus, updateMaintenanceStatus, uploadDocument } from '@/api/mesApi';
+import { confirmDocumentAnalysis, confirmQualityRecord, controlSimulator, createDevice, deleteDevice, createMaintenance, createQualityRecord, createWorkOrder, documentContentUrl, queueDocumentAnalysis, reportWorkOrder, retryDocumentAnalysis, updateDevice, updateDeviceStatus, listDocuments, listMaintenanceWorkOrders, listQualityRecords, listWorkOrders, rejectQualityRecord, submitQualityRecord, simulateStrategy, updateDocumentStatus, updateMaintenanceStatus, uploadDocument } from '@/api/mesApi';
 import { toBackendDeviceId, toBackendLineId } from '@/api/identityMap';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
 
@@ -124,6 +124,7 @@ const documents = ref<Array<Record<string, unknown> & { id: string }>>([]);
 const workOrders = ref<Array<import('@/api/mesApi').WorkOrderRecord>>([]);
 const qualityRecords = ref<Array<Record<string, unknown> & { id: string }>>([]);
 const maintenanceOrders = ref<Array<Record<string, unknown> & { id: string }>>([]);
+const pendingDocumentReady = computed(() => pendingDocumentId.value !== null && documents.value.some((document) => document.id === pendingDocumentId.value && documentAnalysisStatus(document) === 'draft'));
 const workOrder = ref({ orderNo: '', productCode: '', productName: '', plannedQty: 1, dueAt: '' });
 const device = ref({ code: '', name: '', model: '', protocol: 'simulator' as const });
 const editingDeviceId = ref<string | null>(null);
@@ -141,6 +142,8 @@ const faultOptions: Array<{ value: FaultType; label: string }> = [
   { value: 'MATERIAL_SHORTAGE', label: '物料短缺' },
   { value: 'QUALITY_ANOMALY', label: '质量异常' },
 ];
+const documentAnalysisStatus = (document: Record<string, unknown>): string => typeof document.analysisStatus === 'string' ? document.analysisStatus : 'not_started';
+const documentAnalysisLabel = (document: Record<string, unknown>): string => ({ not_started: '未分析', queued: '排队中', processing: '分析中', failed: '失败', draft: '待复核', confirmed: '已确认' }[documentAnalysisStatus(document)] ?? '未知');
 const reportableWorkOrders = computed(() => workOrders.value.filter((order) => (
   order.status === 'in_progress' && order.lineId === toBackendLineId(props.selectedLine.id)
 )));
@@ -175,6 +178,18 @@ onMounted(() => { void loadRecords(); });
 watch(() => props.apiEnabled, () => { void loadRecords(); });
 
 const previewDocument = (id: string) => { window.open(documentContentUrl(id), '_blank', 'noopener,noreferrer'); };
+const runDocumentAnalysis = async (id: string, retry: boolean) => {
+  if (!props.apiEnabled || !props.canWrite) return;
+  submitting.value = true; error.value = ''; notice.value = '';
+  try {
+    if (retry) await retryDocumentAnalysis(id, 'digital-twin-ui');
+    else await queueDocumentAnalysis(id, 'digital-twin-ui');
+    pendingDocumentId.value = id;
+    await loadRecords();
+    notice.value = retry ? '图纸分析已重新排队' : '图纸分析已排队，完成后请人工复核';
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : '图纸分析任务提交失败'; }
+  finally { submitting.value = false; }
+};
 const confirmDocumentRecord = async (id: string) => { if (!props.apiEnabled || !props.canWrite || submitting.value) return; try { submitting.value = true; await updateDocumentStatus(id, 'reviewing'); await loadRecords(); notice.value = '图纸已送审'; } catch { error.value = '图纸送审失败，请检查当前状态和权限'; } finally { submitting.value = false; } };
 const transitionQuality = async (id: string, action: 'submit' | 'confirm' | 'reject') => { if (!props.apiEnabled || !props.canWrite || submitting.value) return; try { submitting.value = true; if (action === 'submit') await submitQualityRecord(id); if (action === 'confirm') await confirmQualityRecord(id); if (action === 'reject') await rejectQualityRecord(id); await loadRecords(); notice.value = `质量记录${action === 'reject' ? '已驳回' : action === 'confirm' ? '已确认' : '已提交'}`; } catch { error.value = '质量记录状态更新失败，请检查当前状态和权限'; } finally { submitting.value = false; } };
 const transitionMaintenance = async (id: string) => { if (!props.apiEnabled || !props.canControl || submitting.value) return; try { submitting.value = true; await updateMaintenanceStatus(id, 'assigned'); await loadRecords(); notice.value = '维修工单已接单'; } catch { error.value = '维修工单状态更新失败，请检查当前状态和权限'; } finally { submitting.value = false; } };
@@ -243,10 +258,7 @@ const submit = async () => {
       if (!selectedFile.value) throw new Error('请选择图纸文件');
       const document = await uploadDocument(selectedFile.value, { documentKey: `${props.selectedLine.id}-${selectedFile.value.name}`, uploadedBy: 'digital-twin-ui', lineId: toBackendLineId(props.selectedLine.id) });
       const documentId = typeof document.id === 'string' ? document.id : undefined;
-      if (documentId) {
-        await analyzeDocument(documentId, 'digital-twin-ui');
-        pendingDocumentId.value = documentId;
-      }
+      if (documentId) await runDocumentAnalysis(documentId, false);
     } else if (active.value === 'quality') {
       await createQualityRecord({ batchNo: quality.value.batchNo, lineId: toBackendLineId(props.selectedLine.id), deviceId: props.selectedDevice?.id, operatorId: 'digital-twin-ui', values: { result: quality.value.result, remark: quality.value.remark } });
     } else {
