@@ -116,4 +116,31 @@ describe('device connections', () => {
     expect(rebound.profileKey).toBe('generic-cnc-opcua');
     expect(() => service.profile('tenant-b', connection.id)).toThrow(NotFoundException);
   });
+
+  it('marks an invalid persisted configuration unavailable before it can be started', async () => {
+    const persisted = {
+      restore: jest.fn().mockResolvedValue({
+        connections: [{
+          id: 'device-connection-invalid', tenantId: 'tenant-a', deviceId: 'device-99', name: '坏连接',
+          type: 'modbus-tcp', profileKey: null, driverVerification: 'not-verified',
+          endpoint: 'http://wrong-protocol', config: {}, capabilities: [], enabled: true,
+          status: 'running', health: { status: 'healthy', checkedAt: null, latencyMs: null },
+          lastError: null, lastErrorCode: null, lastEventAt: null, lastHeartbeatAt: null,
+          startedAt: null, createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z',
+        }],
+        statusEvents: [],
+      }),
+    };
+    const service = new DeviceConnectionsService(
+      { probe: jest.fn() },
+      new DeviceProfilesService(),
+      persisted as never,
+    );
+
+    await service.onModuleInit();
+
+    expect(service.findOne('tenant-a', 'device-connection-invalid')).toEqual(expect.objectContaining({
+      status: 'error', lastErrorCode: 'INVALID_CONNECTION_CONFIG', startedAt: null,
+    }));
+  });
 });
