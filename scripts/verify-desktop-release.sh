@@ -8,6 +8,15 @@ DMG_PATH=""
 NOTARY_PROFILE="${MES_NOTARY_PROFILE:-}"
 FAILURES=0
 BLOCKED=0
+DMG_MOUNT_POINT=""
+
+cleanup_dmg_mount() {
+  if [[ -n "$DMG_MOUNT_POINT" ]]; then
+    hdiutil detach "$DMG_MOUNT_POINT" >/dev/null 2>&1 || true
+    rmdir "$DMG_MOUNT_POINT" 2>/dev/null || true
+  fi
+}
+trap cleanup_dmg_mount EXIT
 
 usage() {
   cat <<'USAGE'
@@ -64,7 +73,28 @@ if [[ -d "$APP_PATH" ]] && command -v spctl >/dev/null 2>&1; then
   fi
 fi
 if [[ -f "$DMG_PATH" ]] && command -v hdiutil >/dev/null 2>&1; then
-  if hdiutil imageinfo "$DMG_PATH" >/tmp/mes-dmg.out 2>&1; then passed "DMG metadata"; else failed "DMG metadata"; fi
+  if hdiutil imageinfo "$DMG_PATH" >/tmp/mes-dmg.out 2>&1; then
+    passed "DMG metadata"
+  else
+    failed "DMG metadata"
+  fi
+  DMG_MOUNT_POINT="$(mktemp -d /tmp/mes-dmg-mount.XXXXXX)"
+  if hdiutil attach -readonly -nobrowse -mountpoint "$DMG_MOUNT_POINT" "$DMG_PATH" >/tmp/mes-dmg-attach.out 2>&1; then
+    if find "$DMG_MOUNT_POINT" -maxdepth 2 -type d -name '*.app' -print -quit | grep -q .; then
+      passed "DMG mount contains app"
+    else
+      failed "DMG mount contains app"
+    fi
+    if hdiutil detach "$DMG_MOUNT_POINT" >/tmp/mes-dmg-detach.out 2>&1; then
+      passed "DMG detach"
+      rmdir "$DMG_MOUNT_POINT" 2>/dev/null || true
+      DMG_MOUNT_POINT=""
+    else
+      failed "DMG detach"
+    fi
+  else
+    blocked "DMG 无法只读挂载；详见 /tmp/mes-dmg-attach.out"
+  fi
 fi
 
 if [[ -n "$NOTARY_PROFILE" ]]; then
