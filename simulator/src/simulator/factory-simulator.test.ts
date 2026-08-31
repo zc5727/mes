@@ -12,6 +12,21 @@ test("pause stops state progression while preserving explicit messages", () => {
   assert.equal(factory.snapshot()[0].oee.plannedTimeSeconds, (before[before.length - 1].payload.data as { oee: { plannedTimeSeconds: number } }).oee.plannedTimeSeconds);
 });
 
+test("records delivered paused messages in replay history", () => {
+  const factory = new FactorySimulator("test-tenant", 1000, () => 0.5, [LINE_DEFINITIONS[0]]);
+  factory.setPaused(true);
+  factory.injectFault("line-cnc", "cnc-01", "JAM");
+
+  const timestamp = new Date("2026-08-28T00:00:00.000Z");
+  const delivered = factory.tick(timestamp);
+  const replay = JSON.parse(factory.exportReplay()) as { frames: Array<{ timestamp: string; messages: unknown[] }> };
+
+  assert.equal(delivered[0].payload.event, "alarm.created");
+  assert.equal(replay.frames.length, 1);
+  assert.equal(replay.frames[0].timestamp, timestamp.toISOString());
+  assert.deepEqual(replay.frames[0].messages, delivered);
+});
+
 test("reset clears output history and restores the initial device state", () => {
   const factory = new FactorySimulator("test-tenant", 1000, () => 0.5, [LINE_DEFINITIONS[0]]);
   factory.tick();

@@ -347,15 +347,13 @@ export class FactorySimulator {
     const pending = this.pendingMessages.splice(0);
     const elapsedSeconds = this.intervalMs / 1000 * this.timeScale;
     const scenarioMessages = this.applyScheduledScenario(elapsedSeconds, timestamp);
-    if (this.paused || this.stopped) return this.deliver([...pending, ...scenarioMessages], timestamp);
+    if (this.paused || this.stopped) return this.recordFrame(timestamp, [...pending, ...scenarioMessages]);
     const agvTelemetry = this.agvs.map((agv) => agv.tick(elapsedSeconds, timestamp));
     const lineMessages = this.lines.flatMap((line) => line.tick(elapsedSeconds, timestamp))
       .map((message) => this.attachAgvs(message, timestamp));
     const agvMessages = this.emitAgvTelemetry ? agvTelemetry.map((telemetry) => this.agvTelemetryMessage(telemetry)) : [];
     const messages = [...lineMessages, ...agvMessages];
-    const result = this.deliver([...pending, ...scenarioMessages, ...messages], timestamp);
-    this.history.push({ timestamp: timestamp.toISOString(), messages: result });
-    return result;
+    return this.recordFrame(timestamp, [...pending, ...scenarioMessages, ...messages]);
   }
 
   public async run(publisher: MessagePublisher, once = false): Promise<() => Promise<void>> {
@@ -474,6 +472,12 @@ export class FactorySimulator {
 
   private deliver(messages: SimulationMessage[], timestamp: Date): SimulationMessage[] {
     return this.network ? this.network.enqueue(messages, timestamp) : messages;
+  }
+
+  private recordFrame(timestamp: Date, messages: SimulationMessage[]): SimulationMessage[] {
+    const delivered = this.deliver(messages, timestamp);
+    this.history.push({ timestamp: timestamp.toISOString(), messages: cloneMessages(delivered) });
+    return delivered;
   }
 
   private applyResetCommand(command: SimulatorControlCommand, timestamp: Date): SimulationMessage[] {

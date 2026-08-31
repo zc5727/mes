@@ -61,7 +61,9 @@ export class MtConnectTelemetrySimulator implements ProtocolTelemetrySource {
 
   public async close(): Promise<void> {
     if (!this.server.listening) return;
-    await new Promise<void>((resolve) => this.server.close(() => resolve()));
+    await new Promise<void>((resolve, reject) => {
+      this.server.close((error) => error ? reject(error) : resolve());
+    });
   }
 
   private handleRequest(message: IncomingMessage, response: ServerResponse): void {

@@ -174,7 +174,7 @@ mes/control/{tenantId}/twin/command
 
 策略或调度服务可以直接读取 `FactorySimulator.strategyInputSnapshot()`，获得同一时间点的产线、设备、AGV、告警和运行控制状态。场景测试通过 `loadScenario([{ "atSeconds": 10, "command": { ... } }])` 注入定时控制命令；可以用 `exportScenario()` 保存 JSON，用 `loadScenarioDocument()` 加载保存的场景。`exportReplay()` 除了历史帧，也包含场景事件，便于在同一版本和种子下回放。
 
-阶段 7 的网络扰动通过构造参数启用：`latencyMs` 模拟延迟，`duplicateRate` 模拟重复消息，`dropRate` 模拟丢包，`seed` 保证扰动可复现。`exportReplay()` 导出带版本、设备 `seed`、网络 `networkSeed` 和序号的回放文档，`replayFrames()` 支持按帧筛选回放数据。未提供 seed 时不会伪造确定性保证。
+阶段 7 的网络扰动通过构造参数启用：`latencyMs` 模拟延迟，`duplicateRate` 模拟重复消息，`dropRate` 模拟丢包，`seed` 保证扰动可复现。`exportReplay()` 导出带版本、设备 `seed`、网络 `networkSeed` 和序号的回放文档，`replayFrames()` 支持按帧筛选回放数据；暂停/停止期间实际发出的告警和延迟消息也会进入 replay history。未提供 seed 时不会伪造确定性保证。
 
 消息统一为 JSON，`event` 表示事件类型，`data` 为业务数据。例如：
 

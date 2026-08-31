@@ -86,7 +86,12 @@ export class ModbusTcpSimulatorServer {
   async close(): Promise<void> { await closeServer(this.server); }
 
   private handleSocket(socket: Socket): void {
-    socket.on("error", () => undefined);
+    socket.once("error", (error) => {
+      // Keep socket failures observable; an ignored protocol error masks a
+      // broken simulator endpoint during integration tests.
+      console.error(`Modbus TCP simulator socket error: ${error.message}`);
+      socket.destroy();
+    });
     let pending = Buffer.alloc(0);
     socket.on("data", (chunk) => {
       pending = Buffer.concat([pending, chunk]);
@@ -187,7 +192,12 @@ export class OpcUaTelemetrySimulator implements ProtocolTelemetrySource {
     return adaptOpcUaTelemetry({ ...this.values, values: values as OpcUaTelemetryFrame["values"] });
   }
 
-  private async resetClient(): Promise<void> { await this.session?.close().catch(() => undefined); await this.client?.disconnect().catch(() => undefined); this.session = undefined; this.client = undefined; }
+  private async resetClient(): Promise<void> {
+    await this.session?.close();
+    await this.client?.disconnect();
+    this.session = undefined;
+    this.client = undefined;
+  }
   async close(): Promise<void> {
     await this.resetClient();
     if (!this.initialized) return;
@@ -208,7 +218,7 @@ export class OpcUaTelemetrySimulator implements ProtocolTelemetrySource {
       await this.server.start();
       this.started = true;
     } catch (error: unknown) {
-      if (this.initialized) await this.server.shutdown().catch(() => undefined);
+      if (this.initialized) await this.server.shutdown();
       this.started = false;
       this.initialized = false;
       throw error;
