@@ -70,11 +70,13 @@ export class MasterDataService implements OnModuleInit {
       if (batch.quantity < item.quantity) throw new ConflictException(`Insufficient material batch ${item.batchNo}`);
       return { key, batch, quantity: item.quantity };
     });
-    resolved.forEach(({ key, batch, quantity }) => {
+    const updatedBatches = resolved.map(({ key, batch, quantity }) => {
       const updated = { ...batch, quantity: batch.quantity - quantity, updatedAt: timestamp() };
       this.batches.set(key, updated);
-      void this.inventoryPersistence?.save(updated);
+      return updated;
     });
+    if (this.inventoryPersistence?.saveMany) void this.inventoryPersistence.saveMany(updatedBatches);
+    else updatedBatches.forEach((batch) => void this.inventoryPersistence?.save(batch));
     if (operationKey) this.batchConsumptionKeys.add(operationKey);
   }
   returnBatch(tenantId: string, dto: BatchInventoryMovementDto): BatchInventory {

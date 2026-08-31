@@ -20,4 +20,19 @@ describe('batch inventory PostgreSQL persistence', () => {
     await new InventoryPersistenceService(prisma).save({ id: 'batch-1', tenantId: 'tenant-demo', materialCode: 'RAW-1', batchNo: 'B-1', quantity: 2.5, unit: 'kg', updatedAt: '2026-08-31T00:00:00.000Z' });
     expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'batch-1' }, create: expect.objectContaining({ quantity: expect.anything() }) }));
   });
+
+  it('uses one Prisma transaction for multi-batch consumption persistence', async () => {
+    const upsert = jest.fn()
+      .mockReturnValueOnce(Promise.resolve('first'))
+      .mockReturnValueOnce(Promise.resolve('second'));
+    const transaction = jest.fn().mockResolvedValue(['first', 'second']);
+    const prisma = { required: false, ensureConnection: jest.fn().mockResolvedValue(undefined), isReady: () => true, batchInventory: { upsert }, $transaction: transaction } as unknown as PrismaService;
+    const service = new InventoryPersistenceService(prisma);
+    await service.saveMany([
+      { id: 'batch-1', tenantId: 'tenant-demo', materialCode: 'RAW-1', batchNo: 'B-1', quantity: 1, unit: 'kg', updatedAt: '2026-08-31T00:00:00.000Z' },
+      { id: 'batch-2', tenantId: 'tenant-demo', materialCode: 'RAW-2', batchNo: 'B-2', quantity: 2, unit: 'kg', updatedAt: '2026-08-31T00:00:00.000Z' },
+    ]);
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(upsert).toHaveBeenCalledTimes(2);
+  });
 });
