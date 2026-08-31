@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { createId, timestamp } from '../common/mock.types';
 import { InventoryPersistenceService } from '../database/inventory-persistence.service';
+import { FoundationPersistenceService } from '../database/foundation-persistence.service';
 import { BatchInventoryMovementDto, CreateBatchInventoryDto, CreateBomDto, CreateCalendarDto, CreateOperationDto, CreateProcessDto, CreateProductDto, CreateRoutingDto, CreateShiftDto } from './dto/master-data.dto';
 
 export interface MasterDataRecord { id: string; tenantId: string; code: string; name: string; type: 'product' | 'process' | 'shift' | 'calendar' | 'operation' | 'bom' | 'routing'; data: Record<string, unknown>; createdAt: string; updatedAt: string; }
@@ -11,11 +12,17 @@ export class MasterDataService implements OnModuleInit {
   private readonly records = new Map<string, MasterDataRecord[]>();
   private readonly batches = new Map<string, BatchInventory>();
 
-  constructor(@Optional() private readonly inventoryPersistence?: InventoryPersistenceService) {}
+  constructor(@Optional() private readonly inventoryPersistence?: InventoryPersistenceService, @Optional() private readonly foundationPersistence?: FoundationPersistenceService) {}
 
   async onModuleInit(): Promise<void> {
     const batches = await this.inventoryPersistence?.restore();
     batches?.forEach((batch) => this.batches.set(this.batchKey(batch.tenantId, batch.materialCode, batch.batchNo), batch));
+    const domains: MasterDataRecord['type'][] = ['product', 'process', 'shift', 'calendar', 'operation', 'bom', 'routing'];
+    const records = await Promise.all(domains.map((type) => this.foundationPersistence?.restoreAux(`master-data:${type}`)));
+    records.flatMap((items) => items ?? []).forEach((item) => {
+      const record = item.payload as unknown as MasterDataRecord;
+      this.records.set(item.tenantId, [...(this.records.get(item.tenantId) ?? []), record]);
+    });
   }
   private readonly batchConsumptionKeys = new Set<string>();
   private readonly batchReturnKeys = new Set<string>();
@@ -39,7 +46,9 @@ export class MasterDataService implements OnModuleInit {
       }
     }
     const now = timestamp(); const record: MasterDataRecord = { id: createId(type), tenantId, code: dto.code.trim(), name: dto.name.trim(), type, data: { ...dto }, createdAt: now, updatedAt: now };
-    this.records.set(tenantId, [...(this.records.get(tenantId) ?? []), record]); return record;
+    this.records.set(tenantId, [...(this.records.get(tenantId) ?? []), record]);
+    void this.foundationPersistence?.saveAux({ id: record.id, tenantId, domain: `master-data:${type}`, payload: record as unknown as Record<string, unknown>, createdAt: record.createdAt, updatedAt: record.updatedAt });
+    return record;
   }
 
   createBatch(tenantId: string, dto: CreateBatchInventoryDto): BatchInventory {

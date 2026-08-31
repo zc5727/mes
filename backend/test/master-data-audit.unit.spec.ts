@@ -58,6 +58,22 @@ describe('business foundation APIs', () => {
     expect(() => service.create('tenant-a', 'routing', { code: 'ROUTE-BAD', name: '无效路线', productCode: 'P-01', version: '1.0', operationCodes: ['OP-MISSING'] })).toThrow('Unknown operation codes');
   });
 
+  it('restores persisted routing master data without crossing tenants', async () => {
+    const persistence = {
+      restoreAux: jest.fn((domain: string) => Promise.resolve(domain === 'master-data:routing' ? [{
+        id: 'routing-1', tenantId: 'tenant-a', domain, payload: {
+          id: 'routing-1', tenantId: 'tenant-a', code: 'ROUTE-P01', name: '持久化路线', type: 'routing',
+          data: { productCode: 'P-01', version: '1.0', operationCodes: [] },
+          createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z',
+        }, createdAt: '2026-08-31T00:00:00.000Z', updatedAt: '2026-08-31T00:00:00.000Z',
+      }] : [])),
+    };
+    const service = new MasterDataService(undefined, persistence as never);
+    await service.onModuleInit();
+    expect(service.list('tenant-a', 'routing')).toHaveLength(1);
+    expect(service.list('tenant-b', 'routing')).toHaveLength(0);
+  });
+
   it('keeps batch inventory tenant-scoped and consumes atomically', () => {
     const service = new MasterDataService();
     service.createBatch('tenant-a', { materialCode: 'RAW-01', batchNo: 'B-01', quantity: 5 });
