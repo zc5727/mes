@@ -81,6 +81,15 @@ export class FoundationPersistenceService {
     }));
   }
 
+  /** Persists document metadata synchronously after the binary has been stored. */
+  async saveDocumentReliable(item: DocumentRecord): Promise<void> {
+    await this.persistNow('document metadata', () => this.prisma.documentRecord.upsert({
+      where: { id: item.id },
+      create: this.documentData(item),
+      update: this.documentUpdateData(item),
+    }));
+  }
+
   async restoreAux(domain: string): Promise<FoundationAuxRecord[]> {
     await this.prisma.ensureConnection();
     if (!this.prisma.isReady()) {

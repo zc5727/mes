@@ -46,7 +46,7 @@ export class DocumentsService implements OnModuleInit {
     if (snapshot?.documents.length) snapshot.documents.forEach((record) => this.records.set(record.tenantId, [...(this.records.get(record.tenantId) ?? []), record]));
   }
 
-  async upload(tenantId: string, dto: UploadDocumentDto, file?: UploadedDocumentFile): Promise<DocumentRecord> {
+  async upload(tenantId: string, dto: UploadDocumentDto, file?: UploadedDocumentFile, persist = true): Promise<DocumentRecord> {
     this.validateFile(file);
     const uploadedFile = file as UploadedDocumentFile;
     const extension = this.extension(uploadedFile.originalname);
@@ -105,13 +105,26 @@ export class DocumentsService implements OnModuleInit {
       securityScannedAt: scan.status === 'not_scanned' ? null : now,
     };
     this.records.set(tenantId, [...(this.records.get(tenantId) ?? []), record]);
-    void this.persistence?.saveDocument(record);
+    if (persist) void this.persistence?.saveDocument(record);
     this.auditService?.record(tenantId, dto.uploadedBy.trim(), {
       action: 'document.uploaded', resource: 'document', resourceId: id,
       details: { documentKey: record.documentKey, version: record.version, fileHash: hash, securityScanStatus: scan.status },
       traceId,
     });
     return record;
+  }
+
+  /** Acknowledges an upload only after both binary and metadata are durable. */
+  async uploadReliable(tenantId: string, dto: UploadDocumentDto, file?: UploadedDocumentFile): Promise<DocumentRecord> {
+    const record = await this.upload(tenantId, dto, file, false);
+    try {
+      await this.persistence?.saveDocumentReliable(record);
+      return record;
+    } catch (error: unknown) {
+      this.records.set(tenantId, this.list(tenantId).filter((item) => item.id !== record.id));
+      await this.storage.remove(record.storageKey).catch(() => undefined);
+      throw error;
+    }
   }
 
   list(tenantId: string): DocumentRecord[] {
@@ -141,7 +154,7 @@ export class DocumentsService implements OnModuleInit {
     return { supported: false, kind: 'unsupported', renderer: 'none', reason: 'No preview renderer is configured' };
   }
 
-  updateStatus(tenantId: string, id: string, dto: UpdateDocumentStatusDto): DocumentRecord {
+  updateStatus(tenantId: string, id: string, dto: UpdateDocumentStatusDto, persist = true): DocumentRecord {
     const current = this.findOne(tenantId, id);
     const status = dto.status as DocumentStatus;
     if (!Object.hasOwn(STATUS_TRANSITIONS, status) || !STATUS_TRANSITIONS[current.status].includes(status)) {
@@ -155,10 +168,22 @@ export class DocumentsService implements OnModuleInit {
         from: current.status,
         to: status,
       })],
-    }, dto.actorId, 'document.status_changed');
+    }, dto.actorId, 'document.status_changed', persist);
   }
 
-  saveAnalysisDraft(tenantId: string, id: string, analysisDraft: Record<string, unknown>, actorId: string): DocumentRecord {
+  async updateStatusReliable(tenantId: string, id: string, dto: UpdateDocumentStatusDto): Promise<DocumentRecord> {
+    const current = this.findOne(tenantId, id);
+    const updated = this.updateStatus(tenantId, id, dto, false);
+    try {
+      await this.persistence?.saveDocumentReliable(updated);
+      return updated;
+    } catch (error: unknown) {
+      this.records.set(tenantId, this.list(tenantId).map((item) => item.id === id ? current : item));
+      throw error;
+    }
+  }
+
+  saveAnalysisDraft(tenantId: string, id: string, analysisDraft: Record<string, unknown>, actorId: string, persist = true): DocumentRecord {
     const current = this.findOne(tenantId, id);
     const now = timestamp();
     return this.replace(current, {
@@ -166,10 +191,22 @@ export class DocumentsService implements OnModuleInit {
       analysisDraft,
       updatedAt: now,
       trace: [...current.trace, this.trace('analysis_draft_saved', now, actorId.trim(), createId('trace'))],
-    }, actorId, 'document.analysis_draft_saved');
+    }, actorId, 'document.analysis_draft_saved', persist);
   }
 
-  confirmAnalysis(tenantId: string, id: string, dto: ConfirmDocumentAnalysisDto): DocumentRecord {
+  async saveAnalysisDraftReliable(tenantId: string, id: string, analysisDraft: Record<string, unknown>, actorId: string): Promise<DocumentRecord> {
+    const current = this.findOne(tenantId, id);
+    const updated = this.saveAnalysisDraft(tenantId, id, analysisDraft, actorId, false);
+    try {
+      await this.persistence?.saveDocumentReliable(updated);
+      return updated;
+    } catch (error: unknown) {
+      this.records.set(tenantId, this.list(tenantId).map((item) => item.id === id ? current : item));
+      throw error;
+    }
+  }
+
+  confirmAnalysis(tenantId: string, id: string, dto: ConfirmDocumentAnalysisDto, persist = true): DocumentRecord {
     const current = this.findOne(tenantId, id);
     if (current.analysisStatus !== 'draft') throw new ConflictException('Only an analysis draft can be confirmed');
     const now = timestamp();
@@ -180,7 +217,19 @@ export class DocumentsService implements OnModuleInit {
       analysisConfirmedAt: now,
       updatedAt: now,
       trace: [...current.trace, this.trace('analysis_confirmed', now, dto.reviewerId.trim(), createId('trace'))],
-    }, dto.reviewerId, 'document.analysis_confirmed');
+    }, dto.reviewerId, 'document.analysis_confirmed', persist);
+  }
+
+  async confirmAnalysisReliable(tenantId: string, id: string, dto: ConfirmDocumentAnalysisDto): Promise<DocumentRecord> {
+    const current = this.findOne(tenantId, id);
+    const updated = this.confirmAnalysis(tenantId, id, dto, false);
+    try {
+      await this.persistence?.saveDocumentReliable(updated);
+      return updated;
+    } catch (error: unknown) {
+      this.records.set(tenantId, this.list(tenantId).map((item) => item.id === id ? current : item));
+      throw error;
+    }
   }
 
   private listByKey(tenantId: string, documentKey: string): DocumentRecord[] {
@@ -189,10 +238,10 @@ export class DocumentsService implements OnModuleInit {
       .sort((left, right) => left.version - right.version);
   }
 
-  private replace(current: DocumentRecord, patch: Partial<DocumentRecord>, actorId = 'system', action = 'document.updated'): DocumentRecord {
+  private replace(current: DocumentRecord, patch: Partial<DocumentRecord>, actorId = 'system', action = 'document.updated', persist = true): DocumentRecord {
     const updated = { ...current, ...patch };
     this.records.set(current.tenantId, (this.records.get(current.tenantId) ?? []).map((item) => item.id === current.id ? updated : item));
-    void this.persistence?.saveDocument(updated);
+    if (persist) void this.persistence?.saveDocument(updated);
     this.auditService?.record(current.tenantId, actorId.trim() || 'system', {
       action, resource: 'document', resourceId: current.id,
       before: { status: current.status, analysisStatus: current.analysisStatus, analysisDraft: current.analysisDraft },

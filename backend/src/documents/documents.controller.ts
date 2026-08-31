@@ -40,21 +40,21 @@ export class DocumentsController {
   @Post('upload')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024 } }))
   async upload(@TenantId() tenantId: string, @Body() dto: UploadDocumentDto, @UploadedFile() file?: UploadedDocumentFile) {
-    return { data: await this.documentsService.upload(tenantId, dto, file), tenantId };
+    return { data: await this.documentsService.uploadReliable(tenantId, dto, file), tenantId };
   }
 
   @Patch(':id/status')
-  updateStatus(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateDocumentStatusDto) {
-    return { data: this.documentsService.updateStatus(tenantId, id, dto), tenantId };
+  async updateStatus(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateDocumentStatusDto) {
+    return { data: await this.documentsService.updateStatusReliable(tenantId, id, dto), tenantId };
   }
 
   @Post(':id/analysis-draft')
-  saveAnalysisDraft(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: SaveDocumentAnalysisDraftDto) {
-    return { data: this.documentsService.saveAnalysisDraft(tenantId, id, dto.analysisDraft, dto.actorId), tenantId };
+  async saveAnalysisDraft(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: SaveDocumentAnalysisDraftDto) {
+    return { data: await this.documentsService.saveAnalysisDraftReliable(tenantId, id, dto.analysisDraft, dto.actorId), tenantId };
   }
 
   @Post(':id/analysis/confirm')
-  confirmAnalysis(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: ConfirmDocumentAnalysisDto) {
-    return { data: this.documentsService.confirmAnalysis(tenantId, id, dto), tenantId };
+  async confirmAnalysis(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: ConfirmDocumentAnalysisDto) {
+    return { data: await this.documentsService.confirmAnalysisReliable(tenantId, id, dto), tenantId };
   }
 }

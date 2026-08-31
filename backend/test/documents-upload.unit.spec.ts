@@ -9,7 +9,7 @@ const file = (name = 'drawing.pdf', mimetype = 'application/pdf') => ({
 describe('document upload boundary', () => {
   const storage: DocumentStorage = {
     provider: 'local-disk', root: '/tmp/mes-documents',
-    put: jest.fn().mockResolvedValue(undefined), read: jest.fn(), remove: jest.fn(),
+    put: jest.fn().mockResolvedValue(undefined), read: jest.fn(), remove: jest.fn().mockResolvedValue(undefined),
   };
 
   beforeEach(() => jest.clearAllMocks());
@@ -43,5 +43,16 @@ describe('document upload boundary', () => {
       supported: false, kind: 'cad', renderer: 'cad-viewer',
       reason: 'CAD preview requires a licensed or separately deployed CAD renderer',
     });
+  });
+
+  it('removes the binary and memory projection when metadata persistence fails', async () => {
+    const persistence = { saveDocumentReliable: jest.fn().mockRejectedValue(new Error('database unavailable')) };
+    const service = new DocumentsService(storage, persistence as never);
+
+    await expect(service.uploadReliable('tenant-demo', { documentKey: 'drawing-004', uploadedBy: 'engineer' }, file()))
+      .rejects.toThrow('database unavailable');
+    expect(storage.put).toHaveBeenCalled();
+    expect(storage.remove).toHaveBeenCalledTimes(1);
+    expect(service.list('tenant-demo')).toHaveLength(0);
   });
 });
