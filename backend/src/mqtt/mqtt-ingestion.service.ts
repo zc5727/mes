@@ -149,17 +149,27 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
    * as MQTT. This is intentionally telemetry/alarm ingestion only; no device
    * command is reachable from this endpoint.
    */
-  ingestHttpEvent(tenantId: string, event: IngestDeviceEventDto): { accepted: boolean; duplicate: boolean; eventId: string } {
+  ingestHttpEvent(
+    tenantId: string,
+    event: IngestDeviceEventDto,
+  ): { accepted: boolean; duplicate: boolean; eventId: string } {
+    const deviceId = this.requiredText(event.deviceId, 'deviceId');
+    const lineId = this.requiredText(event.lineId, 'lineId');
+    if (Number.isNaN(Date.parse(event.eventTime))) {
+      throw new BadRequestException('eventTime must be an ISO timestamp');
+    }
     const payload = mapGatewayPoints(event.payload ?? {});
-    const eventId = event.eventId ?? event.traceId ?? `${event.deviceId}:${event.eventTime}:${event.eventType}`;
+    const eventId = this.normalizedText(event.eventId)
+      ?? this.normalizedText(event.traceId)
+      ?? `${deviceId}:${event.eventTime}:${event.eventType}`;
     if (event.eventType !== 'telemetry') {
       throw new BadRequestException('HTTP device-events currently accepts telemetry only; publish alarms via MQTT');
     }
     const status = this.normalizeStatus(event.status ?? payload.status);
     const telemetry = {
-      deviceId: event.deviceId,
-      deviceName: String(payload.deviceName ?? event.deviceId),
-      lineId: event.lineId,
+      deviceId,
+      deviceName: String(payload.deviceName ?? deviceId),
+      lineId,
       status,
       temperatureCelsius: this.numberPoint(payload.temperatureCelsius, 0),
       cycleTimeSeconds: this.numberPoint(payload.cycleTimeSeconds, 0),
@@ -182,7 +192,11 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
       void this.persistence?.saveTelemetry(result.current);
       this.notifyProjection(tenantId);
     }
-    return { accepted: result.accepted, duplicate: !result.accepted, eventId };
+    return {
+      accepted: result.accepted,
+      duplicate: result.accepted ? false : result.reason === 'duplicate',
+      eventId,
+    };
   }
 
   async publishSimulatorControl(tenantId: string, command: SimulatorControlCommand): Promise<string> {
@@ -358,5 +372,16 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     const parsed = this.numberPoint(value, fallback);
     if (!Number.isInteger(parsed) || parsed < 0) throw new BadRequestException('Count device point must be a non-negative integer');
     return parsed;
+  }
+
+  private requiredText(value: string, field: string): string {
+    const normalized = this.normalizedText(value);
+    if (!normalized) throw new BadRequestException(`${field} is required`);
+    return normalized;
+  }
+
+  private normalizedText(value: string | undefined): string | undefined {
+    const normalized = value?.trim();
+    return normalized || undefined;
   }
 }

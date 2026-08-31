@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { BadRequestException } from '@nestjs/common';
 import { AlarmDeduplicator } from '../src/mqtt/alarm-deduplicator';
 import { DeviceTelemetryCache } from '../src/mqtt/device-cache';
 import { MqttIngestionService } from '../src/mqtt/mqtt-ingestion.service';
@@ -176,6 +177,25 @@ describe('simulator MQTT ingestion', () => {
       deviceId: 'cnc-01', lineId: 'line-cnc', eventType: 'telemetry',
       eventTime: '2026-08-28T09:05:00.000Z', traceId: 'trace-1', payload: {}, status: 'RUNNING',
     })).toMatchObject({ accepted: false, duplicate: true });
+  });
+
+  it('distinguishes stale HTTP replays from duplicate events and validates service input', () => {
+    const client = new FakeMqttClient();
+    const { service } = createService(client);
+    const event = {
+      deviceId: 'cnc-01', lineId: 'line-cnc', eventType: 'telemetry' as const,
+      eventTime: '2026-08-28T09:05:00.000Z', traceId: 'trace-stale', payload: {}, status: 'RUNNING',
+    };
+
+    expect(service.ingestHttpEvent('demo-tenant', event)).toMatchObject({
+      accepted: true, duplicate: false,
+    });
+    expect(service.ingestHttpEvent('demo-tenant', {
+      ...event, traceId: 'trace-late', eventTime: '2026-08-28T09:04:00.000Z',
+    })).toMatchObject({ accepted: false, duplicate: false });
+    expect(() => service.ingestHttpEvent('demo-tenant', {
+      ...event, eventTime: 'not-a-timestamp',
+    })).toThrow(BadRequestException);
   });
 
   it('returns a diagnosable 503 when the broker rejects a control publish', async () => {
