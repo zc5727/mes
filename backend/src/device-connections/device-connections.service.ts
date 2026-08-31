@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { createId, timestamp } from '../common/mock.types';
 import { DEVICE_CONNECTION_PROBE } from './device-connection.constants';
 import type { CreateDeviceConnectionDto, CreateUnifiedDeviceEventDto, UpdateDeviceConnectionDto } from './dto/device-connection.dto';
@@ -8,13 +8,18 @@ import type {
   DeviceConnectionProbe,
   UnifiedDeviceEvent,
 } from './device-connection.types';
+import { DeviceProfilesService } from '../device-profiles/device-profiles.service';
 
 @Injectable()
 export class DeviceConnectionsService {
   private readonly connections = new Map<string, DeviceConnection[]>();
   private readonly events = new Map<string, UnifiedDeviceEvent[]>();
 
-  constructor(@Inject(DEVICE_CONNECTION_PROBE) private readonly probe: DeviceConnectionProbe) {}
+  constructor(
+    @Inject(DEVICE_CONNECTION_PROBE)
+    private readonly probe: DeviceConnectionProbe,
+    @Optional() private readonly profiles?: DeviceProfilesService,
+  ) {}
 
   list(tenantId: string): DeviceConnection[] {
     return [...(this.connections.get(tenantId) ?? [])].sort((left, right) => left.name.localeCompare(right.name));
@@ -28,14 +33,21 @@ export class DeviceConnectionsService {
 
   create(tenantId: string, dto: CreateDeviceConnectionDto): DeviceConnection {
     this.validateEndpoint(dto.type, dto.endpoint);
+    this.validateProfile(dto.type, dto.profileKey);
     const duplicate = this.list(tenantId).some((item) => item.deviceId === dto.deviceId.trim() && item.type === dto.type);
     if (duplicate) throw new ConflictException(`A ${dto.type} connection already exists for device ${dto.deviceId}`);
     const now = timestamp();
     const connection: DeviceConnection = {
       id: createId('device-connection'), tenantId, deviceId: dto.deviceId.trim(), name: dto.name.trim(),
-      type: dto.type, endpoint: dto.endpoint.trim(), config: dto.config ?? {}, capabilities: this.normalizeCapabilities(dto.capabilities),
-      enabled: dto.enabled ?? true, status: 'stopped', health: this.unknownHealth(), lastError: null,
-      lastErrorCode: null, lastEventAt: null, lastHeartbeatAt: null, startedAt: null, createdAt: now, updatedAt: now,
+      type: dto.type,
+      profileKey: dto.profileKey?.trim() || null,
+      driverVerification: this.driverVerification(dto.type, dto.profileKey),
+      endpoint: dto.endpoint.trim(),
+      config: dto.config ?? {},
+      capabilities: this.normalizeCapabilities(dto.capabilities),
+      enabled: dto.enabled ?? true, status: dto.type === 'mtconnect' ? 'unsupported' : 'stopped', health: dto.type === 'mtconnect' ? { status: 'unsupported', checkedAt: null, latencyMs: null } : this.unknownHealth(), lastError: dto.type === 'mtconnect' ? 'MTConnect adapter is not implemented' : null,
+      lastErrorCode: dto.type === 'mtconnect' ? 'PROTOCOL_UNIMPLEMENTED' : null,
+      lastEventAt: null, lastHeartbeatAt: null, startedAt: null, createdAt: now, updatedAt: now,
     };
     this.connections.set(tenantId, [...(this.connections.get(tenantId) ?? []), connection]);
     return connection;
@@ -45,9 +57,13 @@ export class DeviceConnectionsService {
     const current = this.findOne(tenantId, id);
     const type = current.type;
     if (dto.endpoint) this.validateEndpoint(type, dto.endpoint);
+    const profileKey = dto.profileKey?.trim() ?? current.profileKey;
+    this.validateProfile(type, profileKey ?? undefined);
     const updated = {
       ...current,
       name: dto.name?.trim() || current.name,
+      profileKey,
+      driverVerification: this.driverVerification(type, profileKey ?? undefined),
       endpoint: dto.endpoint?.trim() || current.endpoint,
       config: dto.config ?? current.config,
       capabilities: dto.capabilities ? this.normalizeCapabilities(dto.capabilities) : current.capabilities,
@@ -59,9 +75,11 @@ export class DeviceConnectionsService {
 
   async test(tenantId: string, id: string): Promise<{ connection: DeviceConnection; test: { ok: boolean; latencyMs: number; error: string | null } }> {
     const current = this.findOne(tenantId, id);
-    const result = await this.probe.probe(current);
+    const result = current.type === 'mtconnect'
+      ? this.unsupportedProbeResult()
+      : await this.probe.probe(current);
     const checkedAt = timestamp();
-    const health: ConnectionHealth = { status: result.ok ? 'healthy' : 'unhealthy', checkedAt, latencyMs: result.latencyMs };
+    const health: ConnectionHealth = { status: this.healthStatus(result), checkedAt, latencyMs: result.latencyMs };
     const updated = this.replace({ ...current, health, lastError: result.ok ? null : result.error ?? 'Connection probe failed', lastErrorCode: result.ok ? null : result.errorCode ?? 'CONNECTION_PROBE_FAILED', lastHeartbeatAt: result.ok ? checkedAt : current.lastHeartbeatAt, updatedAt: checkedAt });
     return { connection: updated, test: { ok: result.ok, latencyMs: result.latencyMs, error: result.ok ? null : result.error ?? 'Connection probe failed' } };
   }
@@ -70,12 +88,17 @@ export class DeviceConnectionsService {
     const current = this.findOne(tenantId, id);
     if (!current.enabled) throw new ConflictException('Disabled device connections cannot be started');
     const starting = this.replace({ ...current, status: 'starting', lastError: null, updatedAt: timestamp() });
-    const result = await this.probe.probe(starting);
+    const result = starting.type === 'mtconnect'
+      ? this.unsupportedProbeResult()
+      : await this.probe.probe(starting);
     const now = timestamp();
-    const health: ConnectionHealth = { status: result.ok ? 'healthy' : 'unhealthy', checkedAt: now, latencyMs: result.latencyMs };
+    const health: ConnectionHealth = { status: this.healthStatus(result), checkedAt: now, latencyMs: result.latencyMs };
     return this.replace({
       ...starting,
-      status: result.ok ? 'running' : 'error', health, lastError: result.ok ? null : result.error ?? 'Connection start failed', lastErrorCode: result.ok ? null : result.errorCode ?? 'CONNECTION_START_FAILED', lastHeartbeatAt: result.ok ? now : current.lastHeartbeatAt,
+      status: result.ok ? 'running' : this.statusForProbeFailure(result), health,
+      lastError: result.ok ? null : result.error ?? 'Connection start failed',
+      lastErrorCode: result.ok ? null : result.errorCode ?? 'CONNECTION_START_FAILED',
+      lastHeartbeatAt: result.ok ? now : current.lastHeartbeatAt,
       startedAt: result.ok ? now : null, updatedAt: now,
     });
   }
@@ -87,6 +110,17 @@ export class DeviceConnectionsService {
 
   health(tenantId: string, id: string): ConnectionHealth {
     return this.findOne(tenantId, id).health;
+  }
+
+  profile(tenantId: string, id: string) {
+    const connection = this.findOne(tenantId, id);
+    if (!connection.profileKey) {
+      throw new NotFoundException(`No device profile is bound to connection ${id}`);
+    }
+    if (!this.profiles) {
+      throw new ConflictException('Device profile catalog is unavailable');
+    }
+    return this.profiles.findOne(connection.profileKey);
   }
 
   listEvents(tenantId: string, connectionId: string): UnifiedDeviceEvent[] {
@@ -133,6 +167,57 @@ export class DeviceConnectionsService {
     const values = (capabilities ?? []).map((item) => item.trim()).filter(Boolean);
     if (values.some((item) => item.length > 80)) throw new BadRequestException('Connection capability is too long');
     return [...new Set(values)];
+  }
+
+  private validateProfile(type: DeviceConnection['type'], profileKey?: string): void {
+    if (!profileKey?.trim()) return;
+    if (!this.profiles) {
+      throw new ConflictException('Device profile catalog is unavailable');
+    }
+    const profile = this.profiles.findOne(profileKey.trim());
+    if (!this.isCompatibleProtocol(profile.protocol, type)) {
+      throw new BadRequestException(
+        `Profile ${profileKey} does not support ${type} connections`,
+      );
+    }
+  }
+
+  private driverVerification(
+    type: DeviceConnection['type'],
+    profileKey?: string,
+  ): DeviceConnection['driverVerification'] {
+    if (type === 'mtconnect') return 'unimplemented';
+    if (!profileKey?.trim()) return 'not-verified';
+    if (!this.profiles) return 'not-verified';
+    return this.profiles.findOne(profileKey.trim()).verified
+      ? 'verified'
+      : 'not-verified';
+  }
+
+  private isCompatibleProtocol(profileProtocol: string, connectionType: DeviceConnection['type']): boolean {
+    return profileProtocol === connectionType
+      || (profileProtocol === 'opcua' && connectionType === 'opc-ua');
+  }
+
+  private healthStatus(result: { ok: boolean; errorCode?: string }): ConnectionHealth['status'] {
+    return result.errorCode === 'PROTOCOL_UNIMPLEMENTED' || result.errorCode === 'PROTOCOL_NOT_IMPLEMENTED'
+      ? 'unsupported'
+      : result.ok ? 'healthy' : 'unhealthy';
+  }
+
+  private statusForProbeFailure(
+    result: { ok: boolean; errorCode?: string },
+  ): DeviceConnection['status'] {
+    return this.healthStatus(result) === 'unsupported' ? 'unsupported' : 'error';
+  }
+
+  private unsupportedProbeResult(): { ok: false; latencyMs: number; error: string; errorCode: string } {
+    return {
+      ok: false,
+      latencyMs: 0,
+      error: 'MTConnect adapter is not implemented',
+      errorCode: 'PROTOCOL_UNIMPLEMENTED',
+    };
   }
 
   private validateEndpoint(type: DeviceConnection['type'], endpoint: string): void {

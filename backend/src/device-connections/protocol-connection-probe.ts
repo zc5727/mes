@@ -6,8 +6,16 @@ import type { DeviceConnectionProbe, ConnectionProbeResult } from './device-conn
 /** Performs bounded protocol probes; it never sends a device-control command. */
 @Injectable()
 export class ProtocolConnectionProbe implements DeviceConnectionProbe {
-  async probe(connection: { type: 'mqtt' | 'http' | 'webhook' | 'modbus-tcp' | 'opc-ua'; endpoint: string; config: Record<string, unknown> }): Promise<ConnectionProbeResult> {
+  async probe(connection: { type: 'mqtt' | 'http' | 'webhook' | 'modbus-tcp' | 'opc-ua' | 'mtconnect'; endpoint: string; config: Record<string, unknown> }): Promise<ConnectionProbeResult> {
     const startedAt = Date.now();
+    if (connection.type === 'mtconnect') {
+      return {
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        error: 'MTConnect adapter is not implemented',
+        errorCode: 'PROTOCOL_UNIMPLEMENTED',
+      };
+    }
     if (connection.type === 'mqtt') return this.probeMqtt(connection.endpoint, startedAt);
     if (connection.type === 'modbus-tcp' || connection.type === 'opc-ua') return this.probeTcp(connection.endpoint, connection.type, startedAt, connection.config);
     return this.probeHttp(connection.endpoint, startedAt, connection.config);
@@ -32,11 +40,23 @@ export class ProtocolConnectionProbe implements DeviceConnectionProbe {
     try {
       const response = await fetch(endpoint, { method: 'HEAD', signal: controller.signal });
       if (!response.ok && response.status !== 405) {
-        return { ok: false, latencyMs: Date.now() - startedAt, error: `HTTP probe returned ${response.status}` };
+        return {
+          ok: false,
+          latencyMs: Date.now() - startedAt,
+          error: `HTTP probe returned ${response.status}`,
+          errorCode: 'HTTP_STATUS_NOT_OK',
+        };
       }
       return { ok: true, latencyMs: Date.now() - startedAt };
     } catch (error: unknown) {
-      return { ok: false, latencyMs: Date.now() - startedAt, error: this.errorMessage(error) };
+      return {
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        error: this.errorMessage(error),
+        errorCode: error instanceof DOMException && error.name === 'AbortError'
+          ? 'PROTOCOL_TIMEOUT'
+          : 'PROTOCOL_CONNECTION_FAILED',
+      };
     } finally {
       clearTimeout(timeout);
     }
@@ -52,14 +72,19 @@ export class ProtocolConnectionProbe implements DeviceConnectionProbe {
         client.end(true);
         resolve(result);
       };
-      const timeout = setTimeout(() => finish({ ok: false, latencyMs: Date.now() - startedAt, error: 'MQTT probe timed out' }), 5_000);
+      const timeout = setTimeout(() => finish({
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        error: 'MQTT probe timed out',
+        errorCode: 'PROTOCOL_TIMEOUT',
+      }), 5_000);
       client.once('connect', () => {
         clearTimeout(timeout);
         finish({ ok: true, latencyMs: Date.now() - startedAt });
       });
       client.once('error', (error: Error) => {
         clearTimeout(timeout);
-        finish({ ok: false, latencyMs: Date.now() - startedAt, error: error.message });
+        finish({ ok: false, latencyMs: Date.now() - startedAt, error: error.message, errorCode: 'MQTT_CONNECTION_FAILED' });
       });
     });
   }

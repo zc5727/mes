@@ -21,4 +21,16 @@ describe('protocol connection probe', () => {
     expect(result.ok).toBe(false);
     expect(result.errorCode).toBeDefined();
   });
+
+  it('does not pretend to implement MTConnect', async () => {
+    const result = await new ProtocolConnectionProbe().probe({
+      type: 'mtconnect', endpoint: 'http://127.0.0.1:5000/current', config: {},
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: 'MTConnect adapter is not implemented',
+      errorCode: 'PROTOCOL_UNIMPLEMENTED',
+    }));
+  });
 });

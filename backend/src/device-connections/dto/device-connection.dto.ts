@@ -1,4 +1,15 @@
-import { IsBoolean, IsIn, IsObject, IsOptional, IsString, IsUrl, MaxLength, MinLength } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsDateString,
+  IsIn,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUrl,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 import type { DeviceConnectionType, UnifiedDeviceEventType } from '../device-connection.types';
 
 export class CreateDeviceConnectionDto {
@@ -12,10 +23,20 @@ export class CreateDeviceConnectionDto {
   @MaxLength(120)
   name!: string;
 
-  @IsIn(['mqtt', 'http', 'webhook', 'modbus-tcp', 'opc-ua'])
+  @IsIn(['mqtt', 'http', 'webhook', 'modbus-tcp', 'opc-ua', 'mtconnect'])
   type!: DeviceConnectionType;
 
-  @IsUrl({ require_tld: false })
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  profileKey?: string;
+
+  @IsUrl({
+    require_tld: false,
+    require_protocol: true,
+    protocols: ['mqtt', 'mqtts', 'ws', 'wss', 'http', 'https', 'modbus-tcp', 'opc.tcp'],
+  })
   endpoint!: string;
 
   @IsOptional()
@@ -23,6 +44,8 @@ export class CreateDeviceConnectionDto {
   config?: Record<string, unknown>;
 
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   capabilities?: string[];
 
   @IsOptional()
@@ -38,7 +61,17 @@ export class UpdateDeviceConnectionDto {
   name?: string;
 
   @IsOptional()
-  @IsUrl({ require_tld: false })
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  profileKey?: string;
+
+  @IsOptional()
+  @IsUrl({
+    require_tld: false,
+    require_protocol: true,
+    protocols: ['mqtt', 'mqtts', 'ws', 'wss', 'http', 'https', 'modbus-tcp', 'opc.tcp'],
+  })
   endpoint?: string;
 
   @IsOptional()
@@ -46,6 +79,8 @@ export class UpdateDeviceConnectionDto {
   config?: Record<string, unknown>;
 
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   capabilities?: string[];
 
   @IsOptional()
@@ -64,6 +99,7 @@ export class CreateUnifiedDeviceEventDto {
 
   @IsOptional()
   @IsString()
+  @IsDateString()
   occurredAt?: string;
 
   @IsObject()

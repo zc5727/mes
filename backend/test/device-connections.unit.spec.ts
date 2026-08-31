@@ -1,11 +1,16 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { DeviceConnectionsService } from '../src/device-connections/device-connections.service';
+import { DeviceProfilesService } from '../src/device-profiles/device-profiles.service';
 import type { DeviceConnectionProbe } from '../src/device-connections/device-connection.types';
 
 describe('device connections', () => {
+  const createService = (probe: DeviceConnectionProbe): DeviceConnectionsService => (
+    new DeviceConnectionsService(probe, new DeviceProfilesService())
+  );
+
   it('keeps configurations tenant scoped and declares capabilities', () => {
     const probe: DeviceConnectionProbe = { probe: jest.fn() };
-    const service = new DeviceConnectionsService(probe);
+    const service = createService(probe);
     const connection = service.create('tenant-a', {
       deviceId: 'device-01', name: 'HTTP采集', type: 'http', endpoint: 'http://localhost:3100/events',
       capabilities: ['telemetry', 'alarm', 'telemetry'],
@@ -19,7 +24,7 @@ describe('device connections', () => {
 
   it('tests, starts, reports health and stops without touching a PLC', async () => {
     const probe: DeviceConnectionProbe = { probe: jest.fn().mockResolvedValue({ ok: true, latencyMs: 12 }) };
-    const service = new DeviceConnectionsService(probe);
+    const service = createService(probe);
     const connection = service.create('tenant-a', {
       deviceId: 'device-01', name: 'Webhook', type: 'webhook', endpoint: 'https://example.test/hook',
       capabilities: ['status'],
@@ -36,7 +41,7 @@ describe('device connections', () => {
 
   it('stores a unified event only for a running connection and rejects duplicates', async () => {
     const probe: DeviceConnectionProbe = { probe: jest.fn().mockResolvedValue({ ok: true, latencyMs: 1 }) };
-    const service = new DeviceConnectionsService(probe);
+    const service = createService(probe);
     const connection = service.create('tenant-a', {
       deviceId: 'device-01', name: 'MQTT', type: 'mqtt', endpoint: 'mqtt://localhost:1883',
     });
@@ -50,12 +55,63 @@ describe('device connections', () => {
 
   it('records the last error and validates protocol endpoints', async () => {
     const probe: DeviceConnectionProbe = { probe: jest.fn().mockResolvedValue({ ok: false, latencyMs: 8, error: 'connection refused' }) };
-    const service = new DeviceConnectionsService(probe);
+    const service = createService(probe);
     expect(() => service.create('tenant-a', { deviceId: 'd', name: 'Bad', type: 'mqtt', endpoint: 'https://example.test' })).toThrow(BadRequestException);
     const connection = service.create('tenant-a', { deviceId: 'device-02', name: 'HTTP', type: 'http', endpoint: 'http://localhost:3100' });
     const result = await service.test('tenant-a', connection.id);
     expect(result.test.error).toBe('connection refused');
     expect(result.connection.lastError).toBe('connection refused');
     await expect(service.start('tenant-a', connection.id)).resolves.toEqual(expect.objectContaining({ status: 'error', lastError: 'connection refused' }));
+  });
+
+  it('rejects mismatched profiles and keeps unimplemented protocols fail-closed', async () => {
+    const probe: DeviceConnectionProbe = { probe: jest.fn() };
+    const service = createService(probe);
+
+    expect(() => service.create('tenant-a', {
+      deviceId: 'device-03',
+      name: 'Modbus设备',
+      type: 'modbus-tcp',
+      profileKey: 'generic-cnc-opcua',
+      endpoint: 'modbus-tcp://localhost:502',
+    })).toThrow(BadRequestException);
+
+    const mtconnect = service.create('tenant-a', {
+      deviceId: 'device-04',
+      name: 'MTConnect设备',
+      type: 'mtconnect',
+      profileKey: 'fanuc-cnc-mtconnect',
+      endpoint: 'http://localhost:5000/mtconnect',
+    });
+    expect(mtconnect.status).toBe('unsupported');
+    await expect(service.start('tenant-a', mtconnect.id)).resolves.toEqual(
+      expect.objectContaining({
+        status: 'unsupported',
+        health: expect.objectContaining({ status: 'unsupported' }),
+        lastError: 'MTConnect adapter is not implemented',
+        lastErrorCode: 'PROTOCOL_UNIMPLEMENTED',
+        driverVerification: 'unimplemented',
+      }),
+    );
+    expect(probe.probe).not.toHaveBeenCalled();
+  });
+
+  it('binds a compatible profile and exposes it without crossing tenant boundaries', () => {
+    const service = createService({ probe: jest.fn() });
+    const connection = service.create('tenant-a', {
+      deviceId: 'device-05',
+      name: 'OPC UA设备',
+      type: 'opc-ua',
+      profileKey: 'generic-cnc-opcua',
+      endpoint: 'opc.tcp://localhost:4840',
+    });
+
+    expect(connection.driverVerification).toBe('not-verified');
+    expect(service.profile('tenant-a', connection.id)).toEqual(
+      expect.objectContaining({ key: 'generic-cnc-opcua', protocol: 'opcua', verified: false }),
+    );
+    const rebound = service.update('tenant-a', connection.id, { profileKey: 'generic-cnc-opcua' });
+    expect(rebound.profileKey).toBe('generic-cnc-opcua');
+    expect(() => service.profile('tenant-b', connection.id)).toThrow(NotFoundException);
   });
 });

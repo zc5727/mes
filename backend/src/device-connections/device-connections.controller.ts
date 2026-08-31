@@ -31,6 +31,9 @@ export class DeviceConnectionsController {
   @Get(':id/health')
   health(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.health(tenantId, id), tenantId }; }
 
+  @Get(':id/profile')
+  profile(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.profile(tenantId, id), tenantId }; }
+
   @Get(':id/events')
   events(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.listEvents(tenantId, id), tenantId }; }
 

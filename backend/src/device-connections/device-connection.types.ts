@@ -1,6 +1,7 @@
-export type DeviceConnectionType = 'mqtt' | 'http' | 'webhook' | 'modbus-tcp' | 'opc-ua';
-export type DeviceConnectionStatus = 'stopped' | 'starting' | 'running' | 'error';
-export type DeviceConnectionHealthStatus = 'unknown' | 'healthy' | 'unhealthy';
+export type DeviceConnectionType = 'mqtt' | 'http' | 'webhook' | 'modbus-tcp' | 'opc-ua' | 'mtconnect';
+export type DeviceConnectionStatus = 'stopped' | 'starting' | 'running' | 'error' | 'unsupported';
+export type DeviceConnectionHealthStatus = 'unknown' | 'healthy' | 'unhealthy' | 'unsupported';
+export type DeviceDriverVerificationStatus = 'verified' | 'not-verified' | 'unimplemented';
 export type UnifiedDeviceEventType = 'telemetry' | 'alarm' | 'status' | 'capabilities';
 
 export interface ConnectionHealth {
@@ -15,6 +16,8 @@ export interface DeviceConnection {
   deviceId: string;
   name: string;
   type: DeviceConnectionType;
+  profileKey: string | null;
+  driverVerification: DeviceDriverVerificationStatus;
   endpoint: string;
   config: Record<string, unknown>;
   capabilities: string[];
