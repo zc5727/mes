@@ -5,7 +5,7 @@ import { StrategyEngineService } from '../src/strategies/strategy-engine.service
 import { StrategySimulationDto } from '../src/strategies/strategy-simulation.dto';
 
 describe('strategy recovery drill', () => {
-  it('covers fault, transfer advice, and recovery advice without changing the source snapshot', () => {
+  it('covers fault, transfer advice, and recovery advice without changing the source snapshot', async () => {
     const source = JSON.parse(readFileSync(
       resolve(__dirname, 'fixtures/strategy-four-line-fault.json'),
       'utf8',
@@ -13,7 +13,7 @@ describe('strategy recovery drill', () => {
     const sourceBefore = JSON.stringify(source);
     const controller = new StrategiesController(new StrategyEngineService());
 
-    const faultResult = controller.simulate(source).data;
+    const faultResult = (await controller.simulate(source)).data;
     const transfer = faultResult.candidates.find((candidate) => candidate.action === 'transfer_work_order');
 
     expect(faultResult.risks.some((risk) => risk.message.includes('延期风险'))).toBe(true);
@@ -32,7 +32,7 @@ describe('strategy recovery drill', () => {
         order.id === 'WO-WELD-001' ? { ...order, status: 'paused' as const } : { ...order },
       ),
     };
-    const recoveryResult = controller.simulate(recovered).data;
+    const recoveryResult = (await controller.simulate(recovered)).data;
     const recovery = recoveryResult.candidates.find((candidate) => candidate.action === 'schedule_recovery');
 
     expect(recovery).toEqual(expect.objectContaining({
