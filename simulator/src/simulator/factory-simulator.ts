@@ -21,6 +21,7 @@ import { MessagePublisher } from "../mqtt/publisher";
 import { AgvSimulator } from "./agv-simulator";
 import { NetworkSimulator } from "./network-simulator";
 import { ProductionLineSimulator } from "./production-line-simulator";
+import { parseScenarioDocument } from "./replay";
 
 export class FactorySimulator {
   private lines: ProductionLineSimulator[];
@@ -169,11 +170,7 @@ export class FactorySimulator {
   }
 
   public loadScenarioDocument(document: ScenarioDocument | string): void {
-    const parsed: unknown = typeof document === "string" ? JSON.parse(document) : document;
-    if (!isRecord(parsed) || parsed.version !== 1 || !Array.isArray(parsed.events)) {
-      throw new Error("Scenario document must contain version 1 and an events array");
-    }
-    this.loadScenario(parsed.events as ScenarioEvent[]);
+    this.loadScenario(parseScenarioDocument(document).events);
   }
 
   public clearScenario(): void {

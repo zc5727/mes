@@ -5,6 +5,7 @@ import { ConsolePublisher, MqttPublisher, MessagePublisher } from "./mqtt/publis
 import { FactorySimulator } from "./simulator/factory-simulator";
 import { parseConsoleControlCommand, parseSimulatorControlCommand, parseTwinCommand } from "./twin/command";
 import { runProtocolSmoke } from "./protocols/protocol-runner";
+import { readReplayDocument } from "./simulator/replay";
 
 async function createPublisher(mqttUrl?: string): Promise<MessagePublisher> {
   if (!mqttUrl) {
@@ -24,6 +25,18 @@ async function main(): Promise<void> {
   if (options.protocol) {
     const defaultPort = options.protocol === "opc-ua" ? 4841 : options.protocol === "mtconnect" ? 5000 : 1502;
     await runProtocolSmoke(options.protocol, options.protocolHost ?? "127.0.0.1", options.protocolPort ?? defaultPort, options.mqttUrl);
+    return;
+  }
+  if (options.replayPath) {
+    const replay = readReplayDocument(options.replayPath);
+    const publisher = await createPublisher(options.mqttUrl);
+    try {
+      for (const frame of replay.frames) {
+        for (const message of frame.messages) await publisher.publish(message);
+      }
+    } finally {
+      await publisher.close();
+    }
     return;
   }
   const publisher = await createPublisher(options.mqttUrl);

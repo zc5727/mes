@@ -176,6 +176,8 @@ mes/control/{tenantId}/twin/command
 
 阶段 7 的网络扰动通过构造参数启用：`latencyMs` 模拟延迟，`duplicateRate` 模拟重复消息，`dropRate` 模拟丢包，`seed` 保证扰动可复现。`exportReplay()` 导出带版本、设备 `seed`、网络 `networkSeed` 和序号的回放文档，`replayFrames()` 支持按帧筛选回放数据；暂停/停止期间实际发出的告警和延迟消息也会进入 replay history。未提供 seed 时不会伪造确定性保证。
 
+跨进程回放使用 `--replay-file <path>`：程序先校验 replay JSON，再按原始帧顺序发布消息，不重新推进设备状态，也不执行文件中的控制命令。未设置 `MQTT_URL` 时逐条输出到 stdout。
+
 消息统一为 JSON，`event` 表示事件类型，`data` 为业务数据。例如：
 
 ```json

@@ -9,6 +9,7 @@ export interface CliOptions extends SimulatorOptions {
   mqttUrl?: string;
   lineConfigPath?: string;
   scenarioPath?: string;
+  replayPath?: string;
   once: boolean;
   faults: FaultCommand[];
   clearFaults: FaultCommand[];
@@ -61,6 +62,9 @@ export function parseCliArgs(args: string[], env: NodeJS.ProcessEnv = process.en
   const protocol = protocolValue === undefined ? undefined : parseProtocolEndpoint({ protocol: protocolValue as ProtocolKind, host: getValue("--protocol-host") ?? env.SIMULATOR_PROTOCOL_HOST ?? "127.0.0.1", port: Number(getValue("--protocol-port") ?? env.SIMULATOR_PROTOCOL_PORT ?? defaultProtocolPort(protocolValue)) }).protocol;
   const protocolHost = protocol === undefined ? undefined : getValue("--protocol-host") ?? env.SIMULATOR_PROTOCOL_HOST ?? "127.0.0.1";
   const protocolPort = protocol === undefined ? undefined : Number(getValue("--protocol-port") ?? env.SIMULATOR_PROTOCOL_PORT ?? defaultProtocolPort(protocol));
+  const replayPathValue = getValue("--replay-file") ?? env.SIMULATOR_REPLAY_FILE;
+  const replayPath = replayPathValue?.trim() || undefined;
+  if (replayPath && protocol) throw new Error("--replay-file cannot be combined with --protocol");
 
   return {
     tenantId: getValue("--tenant") ?? env.MES_TENANT_ID ?? DEFAULT_TENANT_ID,
@@ -68,6 +72,7 @@ export function parseCliArgs(args: string[], env: NodeJS.ProcessEnv = process.en
     mqttUrl: getValue("--mqtt") ?? env.MQTT_URL,
     lineConfigPath: getValue("--config") ?? env.SIMULATOR_LINE_CONFIG,
     scenarioPath: getValue("--scenario") ?? env.SIMULATOR_SCENARIO,
+    replayPath,
     once: args.includes("--once"),
     faults: parseFaultCommands("--fault"),
     clearFaults: parseFaultCommands("--clear-fault"),
