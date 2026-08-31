@@ -444,6 +444,9 @@ export class WorkOrdersService implements OnModuleInit {
       qualityRecordId: dto.qualityRecordId?.trim() || null, materialConsumptions,
     };
     const completedQty = current.completedQty + dto.quantity;
+    if (completedQty === current.plannedQty && this.qualityService && !this.qualityService.canCompleteWorkOrder(tenantId, id)) {
+      throw new ConflictException('Quality release is required before work order completion');
+    }
     const workOrder: WorkOrder = { ...current, completedQty, status: completedQty === current.plannedQty ? 'completed' : current.status, updatedAt: timestamp() };
     const commit = await this.persistence.saveReportTransaction(report, workOrder, materialConsumptions, dto.qualityRecordId?.trim());
     if (!commit.created) {

@@ -66,13 +66,30 @@ describe('quality and maintenance minimum loops', () => {
     const quality = new QualityService();
     const workOrders = new WorkOrdersService(undefined, undefined, undefined, undefined, undefined, undefined, quality);
     const order = workOrders.create('tenant-demo', { orderNo: 'WO-QGATE', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1, dueAt: '2026-09-01T09:00:00.000Z' });
-    workOrders.updateStatus('tenant-demo', order.id, { status: 'released' });
-    workOrders.updateStatus('tenant-demo', order.id, { status: 'in_progress' });
+    workOrders.updateStatus('tenant-demo', order.id, { status: 'released' }, 'system', false);
+    workOrders.updateStatus('tenant-demo', order.id, { status: 'in_progress' }, 'system', false);
     const record = quality.create('tenant-demo', { workOrderId: order.id, batchNo: 'B-QGATE', lineId: 'line-cnc', operatorId: 'inspector', values: {}, traceId: 'trace-qgate' });
     expect(() => workOrders.report('tenant-demo', order.id, { quantity: 1, qualityRecordId: record.id })).toThrow(ConflictException);
     quality.submit('tenant-demo', record.id, { actorId: 'inspector' });
     quality.confirm('tenant-demo', record.id, { actorId: 'manager' });
     expect(workOrders.report('tenant-demo', order.id, { quantity: 1, qualityRecordId: record.id, sourceTraceId: 'trace-qgate' }).workOrder.status).toBe('completed');
+  });
+
+  it('applies the quality release gate on the PostgreSQL report path', async () => {
+    const quality = new QualityService();
+    const persistence = {
+      isEnabled: () => true,
+      saveReportTransaction: jest.fn().mockResolvedValue({ created: true }),
+    };
+    const workOrders = new WorkOrdersService(undefined, undefined, undefined, undefined, undefined, persistence as never, quality);
+    const order = workOrders.create('tenant-demo', { orderNo: 'WO-QGATE-PERSISTED', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1, dueAt: '2026-09-01T09:00:00.000Z' }, 'system', false);
+    workOrders.updateStatus('tenant-demo', order.id, { status: 'released' }, 'system', false);
+    workOrders.updateStatus('tenant-demo', order.id, { status: 'in_progress' }, 'system', false);
+    const record = quality.create('tenant-demo', { workOrderId: order.id, batchNo: 'B-QGATE-PERSISTED', lineId: 'line-cnc', operatorId: 'inspector', values: {}, traceId: 'trace-qgate-persisted' });
+    await expect(workOrders.recordReport('tenant-demo', order.id, { quantity: 1, qualityRecordId: record.id, sourceTraceId: 'trace-qgate-persisted' })).rejects.toThrow('Quality release is required');
+    quality.submit('tenant-demo', record.id, { actorId: 'inspector' });
+    quality.confirm('tenant-demo', record.id, { actorId: 'manager' });
+    await expect(workOrders.recordReport('tenant-demo', order.id, { quantity: 1, qualityRecordId: record.id, sourceTraceId: 'trace-qgate-persisted' })).resolves.toMatchObject({ workOrder: { status: 'completed' } });
   });
 
   it('rolls back the in-memory quality projection when durable persistence rejects a command', async () => {
