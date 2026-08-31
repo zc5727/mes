@@ -27,6 +27,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     return this.enabled && this.connected;
   }
 
+  async readiness(): Promise<{ enabled: boolean; status: 'disabled' | 'ready' | 'unavailable' }> {
+    await this.ensureConnection();
+    return { enabled: this.enabled, status: !this.enabled ? 'disabled' : this.connected ? 'ready' : 'unavailable' };
+  }
+
   async ensureConnection(): Promise<void> {
     if (!this.enabled || this.connected) return;
     this.connecting ??= this.connectInternal();

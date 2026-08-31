@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { AuditService } from '../audit/audit.service';
+import { Approval, AuditService } from '../audit/audit.service';
 import {
   StrategyRequestContext,
   StrategyAction,
@@ -218,6 +218,12 @@ export class StrategyGovernanceService {
     return [...this.simulations.values()]
       .filter((tracked) => tracked.audit.tenantId === tenantId)
       .map((tracked) => tracked.audit);
+  }
+
+  listApprovalsForSimulation(tenantId: string, simulationId: string): Approval[] {
+    const tracked = this.getSimulation(tenantId, simulationId);
+    const approvalIds = new Set(tracked.audit.approvalIds);
+    return this.auditService.listApprovals(tenantId).filter((approval) => approvalIds.has(approval.id));
   }
 
   private createHighRiskApprovals(tenantId: string, result: StrategySimulationResult): string[] {

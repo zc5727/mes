@@ -11,6 +11,8 @@ describe('nanobot read-only tool contract', () => {
       'get_delay_risk',
       'get_simulation_snapshot',
       'get_strategy_result',
+      'get_strategy_history',
+      'get_strategy_approval_status',
     ]);
   });
 

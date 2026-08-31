@@ -50,6 +50,11 @@ export class WorkOrdersController {
     return { data: this.workOrdersService.executionSummary(tenantId, id), tenantId };
   }
 
+  @Get(':id/traceability')
+  traceability(@TenantId() tenantId: string, @Param('id') id: string) {
+    return { data: this.workOrdersService.executionSummary(tenantId, id), tenantId };
+  }
+
   @Patch(':id')
   update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateWorkOrderDto) {
     return { data: this.workOrdersService.update(tenantId, id, dto), tenantId };

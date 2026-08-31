@@ -41,5 +41,6 @@ describe('business foundation APIs', () => {
     expect(bom.data).toEqual(expect.objectContaining({ productCode: 'P-01', version: '1.0' }));
     expect(routing.data.operationCodes).toEqual(['OP-10']);
     expect(service.list('tenant-b', 'routing')).toHaveLength(0);
+    expect(() => service.create('tenant-a', 'routing', { code: 'ROUTE-BAD', name: '无效路线', productCode: 'P-01', version: '1.0', operationCodes: ['OP-MISSING'] })).toThrow('Unknown operation codes');
   });
 });

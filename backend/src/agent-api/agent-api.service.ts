@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { AlarmsService, AlarmFilters } from '../alarms/alarms.service';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { DevicesService } from '../devices/devices.service';
 import { MqttIngestionService } from '../mqtt/mqtt-ingestion.service';
 import { ProductionLinesService } from '../production-lines/production-lines.service';
 import { StrategyEngineService } from '../strategies/strategy-engine.service';
+import { StrategyGovernanceService } from '../strategies/strategy-governance.service';
 import { StrategySnapshot, StrategySimulationResult } from '../strategies/strategy.types';
 import { WorkOrdersService } from '../work-orders/work-orders.service';
 import {
@@ -34,6 +35,7 @@ export class AgentApiService {
     private readonly workOrdersService: WorkOrdersService,
     private readonly mqttIngestionService: MqttIngestionService,
     private readonly strategyEngine: StrategyEngineService,
+    @Optional() private readonly governance?: StrategyGovernanceService,
   ) {}
 
   execute(request: RawAgentRequest): AgentToolResponse {
@@ -75,8 +77,12 @@ export class AgentApiService {
         return this.delayRisk(tenantId, this.requiredArg(args, 'workOrderId'));
       case 'get_simulation_snapshot':
         return this.simulationSnapshot(tenantId, args);
-      case 'get_strategy_result':
+    case 'get_strategy_result':
         return this.strategyResult(tenantId, this.requiredArg(args, 'simulationId'));
+      case 'get_strategy_history':
+        return this.governance?.listCalls(tenantId) ?? [];
+      case 'get_strategy_approval_status':
+        return this.governance?.listApprovalsForSimulation(tenantId, this.requiredArg(args, 'simulationId')) ?? [];
     }
   }
 
@@ -125,12 +131,15 @@ export class AgentApiService {
   private simulationSnapshot(tenantId: string, args: Record<string, unknown>) {
     const requestedId = typeof args.simulationId === 'string' ? args.simulationId : undefined;
     if (requestedId) {
+      const governed = this.governance?.getSimulation(tenantId, requestedId);
+      if (governed) return { simulationId: requestedId, ...governed.result.snapshot };
       const snapshot = this.snapshots.get(requestedId);
       if (!snapshot) throw new NotFoundException(`Simulation ${requestedId} not found`);
       return { simulationId: requestedId, ...snapshot };
     }
     const snapshot = this.buildSnapshot(tenantId);
     const result = this.strategyEngine.simulate(snapshot);
+    this.governance?.recordSimulation(tenantId, 'nanobot', snapshot, result);
     this.snapshots.set(result.simulationId, snapshot);
     this.simulations.set(result.simulationId, result);
     this.simulationTenants.set(result.simulationId, tenantId);
@@ -138,6 +147,8 @@ export class AgentApiService {
   }
 
   private strategyResult(tenantId: string, simulationId: string) {
+    const governed = this.governance?.getSimulation(tenantId, simulationId);
+    if (governed) return governed.result;
     const cached = this.simulations.get(simulationId);
     if (cached && this.simulationTenants.get(simulationId) === tenantId) return cached;
     const result = this.strategyEngine.simulate(this.buildSnapshot(tenantId));

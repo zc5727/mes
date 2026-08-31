@@ -3,6 +3,7 @@ import { OrdersService } from '../src/orders/orders.service';
 import { ProductionLinesService } from '../src/production-lines/production-lines.service';
 import { WorkOrdersService } from '../src/work-orders/work-orders.service';
 import { DevicesService } from '../src/devices/devices.service';
+import { MasterDataService } from '../src/master-data/master-data.service';
 
 describe('production execution flow', () => {
   it('creates an order, runs a work order, reports production and completes it', () => {
@@ -106,5 +107,15 @@ describe('production execution flow', () => {
     expect(result.report).toEqual(expect.objectContaining({ batchNo: 'B-001', serialNumbers: ['S-001', 'S-002'] }));
     expect(workOrders.executionSummary('tenant-demo', workOrder.id)).toEqual(expect.objectContaining({ operations: ['OP-10'], batches: ['B-001'], materialConsumptions: [{ materialCode: 'RAW-01', quantity: 2 }] }));
     expect(() => workOrders.update('tenant-demo', workOrder.id, { productName: '不应修改' })).toThrow(ConflictException);
+  });
+
+  it('binds a work order to existing BOM and routing records', () => {
+    const masterData = new MasterDataService();
+    const operation = masterData.create('tenant-demo', 'operation', { code: 'OP-BIND', name: '装配' });
+    const bom = masterData.create('tenant-demo', 'bom', { code: 'BOM-BIND', name: '绑定 BOM', productCode: 'P', version: '1.0', items: [{ code: 'RAW', qty: 1 }], operationCodes: [operation.code] });
+    const routing = masterData.create('tenant-demo', 'routing', { code: 'ROUTE-BIND', name: '绑定路线', productCode: 'P', version: '1.0', operationCodes: [operation.code] });
+    const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService(), new DevicesService(), masterData);
+    const workOrder = workOrders.create('tenant-demo', { orderNo: 'WO-BOM-ROUTE', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1, dueAt: '2026-08-31T18:00:00.000Z', bomId: bom.id, routingId: routing.id });
+    expect(workOrder).toEqual(expect.objectContaining({ bomId: bom.id, routingId: routing.id }));
   });
 });

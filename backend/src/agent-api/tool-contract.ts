@@ -11,6 +11,8 @@ export const AGENT_READ_ONLY_TOOLS = [
   'get_delay_risk',
   'get_simulation_snapshot',
   'get_strategy_result',
+  'get_strategy_history',
+  'get_strategy_approval_status',
 ] as const;
 
 export type AgentReadOnlyTool = (typeof AGENT_READ_ONLY_TOOLS)[number];

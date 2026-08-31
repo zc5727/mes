@@ -20,12 +20,19 @@
 ```text
 GET /api/v1/strategies/simulations/:simulationId
 GET /api/v1/strategies/audit-records
+GET /api/v1/strategies/simulations/:simulationId/approvals
 POST /api/v1/strategies/simulations/:simulationId/rollback
 ```
 
 记录明确标记 `requiresApproval=true` 和 `executionAllowed=false`。这些接口只能读取仿真结果与调用记录，不提供设备控制或工单修改能力。
 
 正式仿真请求建议携带 `Idempotency-Key`。同一租户、同一 key 和同一快照会重放原结果，不重复创建审计和审批；同一 key 复用但快照不同会返回冲突。回滚接口只丢弃仿真建议并保留结果与审计轨迹，不回写设备、工单或产线。
+
+审批状态通过仿真专属接口读取，返回该仿真产生的审批记录（`pending`、`approved` 或 `rejected`）。审批决定不会触发策略执行；策略模块没有设备控制或工单写回能力。
+
+## Agent 受控访问
+
+本地 nanobot 只能调用 `backend/src/agent-api/tool-contract.ts` 中的只读白名单：生产概览、产线/设备/告警/工单查询、仿真快照、策略结果、策略历史和审批状态。Agent 的策略结果优先从 `StrategyGovernanceService` 按租户读取，不能绕过治理层调用设备服务的写入方法；未知工具和任何控制类工具都会返回 `UNKNOWN_TOOL`。
 
 ## OpenMES 映射边界
 

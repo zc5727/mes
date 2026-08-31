@@ -91,6 +91,14 @@ POST /api/v1/integrations/erpnext/work-orders/:workOrderId/reports
 
 未配置时接口不会影响 MES 启动；健康检查返回 `disabled`，读写桥接会返回明确的 `503`。ERPNext 的鉴权、超时、未找到和上游错误会转换为稳定的 HTTP 错误，不会伪造本地成功结果。
 
+运行态检查：
+
+```bash
+npm run verify:runtime
+```
+
+该命令检查 `/api/v1/health` 和 `/api/v1/health/readiness`。PostgreSQL 未启用时 readiness 会明确返回 `database.status=disabled`；启用但连接失败时返回 `degraded`。
+
 ## 下一步开发顺序
 
 1. 租户、用户和权限

@@ -142,6 +142,25 @@ export class StrategiesController {
     return { data: this.governance?.listCalls(tenantId) ?? [], tenantId };
   }
 
+  @Get('simulations/:simulationId/approvals')
+  listSimulationApprovals(
+    @TenantId() tenantId: string,
+    @Param('simulationId') simulationId: string,
+    @Headers('x-user-id') userId?: string,
+    @Headers('x-role') role?: string,
+    @Headers('x-factory-id') factoryId?: string,
+    @Headers('x-scope') scope?: string,
+    @Headers('x-session-id') sessionId?: string,
+    @Headers('x-trace-id') traceId?: string,
+  ) {
+    if (!this.governance) return { data: [], tenantId };
+    const context = this.authorization.fromHeaders({ userId, role, factoryId, scope, sessionId, traceId });
+    this.authorization.assertCanRead(context);
+    const tracked = this.governance.getSimulation(tenantId, simulationId);
+    this.authorization.assertSnapshotAccess(context, tracked.result.snapshot);
+    return { data: this.governance.listApprovalsForSimulation(tenantId, simulationId), tenantId };
+  }
+
   @Post('preflight')
   preflight(@Body() dto: StrategySimulationDto) {
     return { data: this.strategyEngine.preflight(this.toSnapshot(dto)) };

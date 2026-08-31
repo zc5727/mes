@@ -115,7 +115,9 @@ start_service() {
     echo "$name 无法启动：localhost:$port 已被占用，拒绝创建第二实例" >&2
     return 1
   fi
-  nohup bash -c "cd '$ROOT_DIR/$directory' && $command" >"$LOG_DIR/${name}.log" 2>&1 &
+  # Ignore the parent terminal hangup as well as nohup's own signal handling;
+  # this keeps the managed service alive after dev-up exits.
+  nohup bash -c "trap '' HUP; cd '$ROOT_DIR/$directory' && $command" </dev/null >"$LOG_DIR/${name}.log" 2>&1 &
   echo $! >"$pid_file"
   STARTED_PID_FILES+=("$pid_file")
   echo "$name 已启动，PID=$(cat "$pid_file")，日志：$LOG_DIR/${name}.log"

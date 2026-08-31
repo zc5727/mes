@@ -90,7 +90,9 @@ const strategy = ref({ comment: '' });
 const title = computed(() => ({ 'work-order': '新建生产工单', device: '新增设备', maintenance: '新建维修工单', document: '登记图纸', quality: '填报质量记录', strategy: '策略仿真评估' }[active.value ?? 'work-order']));
 const selectedDeviceName = computed(() => props.selectedDevice?.name ?? '未选择设备');
 
-onMounted(async () => {
+const loadRecords = async () => {
+  recordsLoading.value = true;
+  recordsError.value = false;
   try {
     const [documentItems, qualityItems, maintenanceItems] = await Promise.all([listDocuments(), listQualityRecords(), listMaintenanceWorkOrders()]);
     documents.value = documentItems as typeof documents.value;
@@ -101,7 +103,9 @@ onMounted(async () => {
   } finally {
     recordsLoading.value = false;
   }
-});
+};
+
+onMounted(() => { void loadRecords(); });
 
 const previewDocument = (id: string) => { window.open(documentContentUrl(id), '_blank', 'noopener,noreferrer'); };
 
@@ -137,6 +141,7 @@ const submit = async () => {
       });
       resultPreview.value = JSON.stringify(result, null, 2);
     }
+    await loadRecords();
     notice.value = active.value === 'strategy' ? '策略仿真完成，结果仅供评估' : '提交成功，后端已受理'; active.value = null;
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '提交失败，请检查后端服务';
@@ -149,6 +154,7 @@ const confirmDocument = async () => {
   try {
     await confirmDocumentAnalysis(pendingDocumentId.value, 'digital-twin-ui', { analysisStatus: 'confirmed' });
     pendingDocumentId.value = null;
+    await loadRecords();
     notice.value = '图纸分析已确认';
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '图纸确认失败'; }
   finally { submitting.value = false; }
