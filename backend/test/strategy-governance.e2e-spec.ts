@@ -147,4 +147,30 @@ describe('strategy governance boundary (e2e)', () => {
     await request(server).post(`/api/v1/strategies/simulations/${simulationId}/approvals/${approvalId}/approve`)
       .set(identity('supervisor', 'LINE-01,LINE-02')).expect(409);
   });
+
+  it('limits Agent service accounts and rejects tenant identity mismatches', async () => {
+    const server = app.getHttpServer();
+    process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT = 'true';
+    try {
+      const denied = await request(server).post('/api/v1/agent-api/tools/execute')
+        .set(identity('supervisor'))
+        .send({
+          tool: 'get_production_overview', tenantId: 'tenant-demo', requestedBy: 'nanobot', traceId: 'trace-agent-role',
+          authorization: {
+            userId: 'supervisor-e2e', role: 'supervisor', factoryId: 'factory-demo', scope: '*',
+            sessionId: 'session-supervisor', serviceAccountId: 'nanobot-prod',
+          },
+        }).expect(201);
+      expect(denied.body.error).toEqual(expect.objectContaining({
+        code: 'AUTHORIZATION_DENIED', message: expect.stringContaining('SERVICE_ACCOUNT_ROLE_DENIED'),
+      }));
+
+      await request(server).post('/api/v1/agent-api/tools/execute')
+        .set({ ...identity('viewer'), 'x-tenant-id': 'tenant-other' })
+        .send({ tool: 'get_production_overview', tenantId: 'tenant-demo', traceId: 'trace-tenant-mismatch' })
+        .expect(403);
+    } finally {
+      delete process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT;
+    }
+  });
 });

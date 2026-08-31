@@ -160,8 +160,18 @@ export class AgentApiService {
       sessionId: input.sessionId,
       traceId,
     });
+    this.assertServiceAccountMinimumPrivilege(input, context.role);
     this.authorization.assertCanRead(context);
     return context;
+  }
+
+  private assertServiceAccountMinimumPrivilege(input: AgentAuthorizationContext, role: string): void {
+    if (!input.serviceAccountId || process.env.MES_AGENT_REQUIRE_SERVICE_ACCOUNT !== 'true') return;
+    const allowedRoles = (process.env.MES_AGENT_ALLOWED_ROLES ?? 'auditor')
+      .split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
+    if (!allowedRoles.includes(role)) {
+      throw new ForbiddenException('SERVICE_ACCOUNT_ROLE_DENIED: Agent service accounts are limited to read-only roles');
+    }
   }
 
   private assertResource(context: StrategyRequestContext | undefined, kind: string, id: string, lineId?: string): void {

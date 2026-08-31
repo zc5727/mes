@@ -32,6 +32,7 @@ export interface AgentAuthorizationContext {
   factoryId: string;
   scope: string[] | string;
   sessionId: string;
+  serviceAccountId?: string;
 }
 
 export interface ActiveAlarmsArguments {

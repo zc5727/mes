@@ -138,6 +138,10 @@ DATABASE_ENABLED=true DATABASE_REQUIRED=true npm run start:dev
 
 `DATABASE_REQUIRED=true` 会在数据库不可用或核心表未迁移时阻止启动，避免误把生产运行当成内存模式。
 
+### MQTT 安全配置边界
+
+当前 `backend/docker-compose.yml` 的 Mosquitto profile 仅用于本地联调：明文 `1883`、`allow_anonymous true`，未挂载 TLS 证书、用户密码文件或 ACL 文件。TLS/ACL 生产配置目前没有可执行证据，状态为 **BLOCKED**，不能宣称已通过安全验收。接入现场前必须提供证书、`password_file`、`acl_file` 和对应 compose 挂载，并单独执行连接、拒绝匿名访问和越权 topic 的验收。
+
 生产运行时也可以由统一编排脚本执行初始化、readiness 和清理：
 
 ```bash
