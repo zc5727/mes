@@ -67,6 +67,7 @@ model Tenant {
   maintenanceWorkOrders MaintenanceWorkOrder[]
   documents        DocumentRecord[]
   batchInventories BatchInventory[]
+  foundationAuxRecords FoundationAuxRecord[]
 
   @@map("tenants")
 }
@@ -524,4 +525,16 @@ model BatchInventory {
   @@unique([tenantId, materialCode, batchNo])
   @@index([tenantId, materialCode])
   @@map("batch_inventories")
+}
+
+model FoundationAuxRecord {
+  id        String   @id @db.VarChar(40)
+  tenantId  String   @map("tenant_id") @db.VarChar(40)
+  domain    String   @db.VarChar(40)
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  @@index([tenantId, domain, updatedAt])
+  @@map("foundation_aux_records")
 }

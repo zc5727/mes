@@ -32,6 +32,8 @@ export class MaintenanceService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     const snapshot = await this.persistence?.restore();
     snapshot?.maintenance.forEach((item) => this.orders.set(item.id, item));
+    const plans = await this.persistence?.restoreAux('preventive-plan'); plans?.forEach((item) => this.plans.set(item.id, item.payload as unknown as PreventivePlan));
+    const parts = await this.persistence?.restoreAux('spare-part'); parts?.forEach((item) => this.parts.set(`${item.tenantId}:${(item.payload as unknown as SparePart).code}`, item.payload as unknown as SparePart));
   }
 
   list(tenantId: string): MaintenanceWorkOrder[] { return [...this.orders.values()].filter((item) => item.tenantId === tenantId); }
@@ -89,6 +91,7 @@ export class MaintenanceService implements OnModuleInit {
     this.devices.findOne(tenantId, dto.deviceId);
     const plan: PreventivePlan = { id: createId('pm'), tenantId, deviceId: dto.deviceId, title: dto.title.trim(), intervalHours: dto.intervalHours ?? 720, nextDueAt: dto.nextDueAt, active: true, createdAt: timestamp() };
     this.plans.set(plan.id, plan);
+    void this.persistence?.saveAux({ id: plan.id, tenantId, domain: 'preventive-plan', payload: plan as unknown as Record<string, unknown>, createdAt: plan.createdAt, updatedAt: plan.createdAt });
     return plan;
   }
   listPreventivePlans(tenantId: string): PreventivePlan[] { return [...this.plans.values()].filter((plan) => plan.tenantId === tenantId); }
@@ -101,6 +104,7 @@ export class MaintenanceService implements OnModuleInit {
     const part: SparePart = { id: createId('part'), tenantId, code: dto.code.trim(), name: dto.name.trim(), stock: dto.stock ?? 0, minimumStock: dto.minimumStock ?? 0, updatedAt: timestamp() };
     if (part.stock < 0 || part.minimumStock < 0) throw new BadRequestException('Spare part stock cannot be negative');
     this.parts.set(key, part);
+    void this.persistence?.saveAux({ id: part.id, tenantId, domain: 'spare-part', payload: part as unknown as Record<string, unknown>, createdAt: part.updatedAt, updatedAt: part.updatedAt });
     return part;
   }
   listSpareParts(tenantId: string): SparePart[] { return [...this.parts.values()].filter((part) => part.tenantId === tenantId); }
@@ -113,6 +117,7 @@ export class MaintenanceService implements OnModuleInit {
     if (part.stock < dto.quantity) throw new ConflictException('Insufficient spare part stock');
     const updated = { ...part, stock: part.stock - dto.quantity, updatedAt: timestamp() };
     this.parts.set(key, updated);
+    void this.persistence?.saveAux({ id: updated.id, tenantId, domain: 'spare-part', payload: updated as unknown as Record<string, unknown>, createdAt: updated.updatedAt, updatedAt: updated.updatedAt });
     if (dto.operationId) this.partMovements.set(`${tenantId}:${dto.operationId}`, updated);
     return updated;
   }

@@ -25,6 +25,8 @@ export class QualityService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     const snapshot = await this.persistence?.restore();
     if (snapshot?.quality.length) snapshot.quality.forEach((record) => this.records.set(record.tenantId, [...(this.records.get(record.tenantId) ?? []), record]));
+    const rules = await this.persistence?.restoreAux('quality-rule'); rules?.forEach((item) => this.rules.set(item.tenantId, [...(this.rules.get(item.tenantId) ?? []), item.payload as unknown as QualityRule]));
+    const issues = await this.persistence?.restoreAux('quality-issue'); issues?.forEach((item) => this.issues.set(item.tenantId, [...(this.issues.get(item.tenantId) ?? []), item.payload as unknown as QualityIssue]));
   }
 
   list(tenantId: string): QualityRecord[] {
@@ -36,6 +38,7 @@ export class QualityService implements OnModuleInit {
     if (this.listRules(tenantId).some((rule) => rule.key === dto.key.trim())) throw new ConflictException(`Quality rule ${dto.key} already exists`);
     const rule: QualityRule = { id: createId('qrule'), tenantId, key: dto.key.trim(), name: dto.name.trim(), inspectionType: dto.inspectionType, requiredFields: dto.requiredFields.map((field) => field.trim()), createdAt: timestamp() };
     this.rules.set(tenantId, [...this.listRules(tenantId), rule]);
+    void this.persistence?.saveAux({ id: rule.id, tenantId, domain: 'quality-rule', payload: rule as unknown as Record<string, unknown>, createdAt: rule.createdAt, updatedAt: rule.createdAt });
     return rule;
   }
 
@@ -45,6 +48,7 @@ export class QualityService implements OnModuleInit {
     const now = timestamp();
     const issue: QualityIssue = { id: createId('ncr'), tenantId, qualityRecordId: dto.qualityRecordId, code: dto.code.trim(), description: dto.description.trim(), status: 'open', capa: dto.capa?.trim() || null, createdAt: now, updatedAt: now };
     this.issues.set(tenantId, [...this.listIssues(tenantId), issue]);
+    void this.persistence?.saveAux({ id: issue.id, tenantId, domain: 'quality-issue', payload: issue as unknown as Record<string, unknown>, createdAt: issue.createdAt, updatedAt: issue.updatedAt });
     return issue;
   }
   updateIssue(tenantId: string, id: string, dto: UpdateQualityIssueDto): QualityIssue {
@@ -54,6 +58,7 @@ export class QualityService implements OnModuleInit {
     if (dto.status === 'closed' && !dto.capa?.trim() && !current.capa) throw new ConflictException('CAPA is required before closing a quality issue');
     const updated = { ...current, status: dto.status, capa: dto.capa?.trim() || current.capa, updatedAt: timestamp() };
     this.issues.set(tenantId, this.listIssues(tenantId).map((issue) => issue.id === id ? updated : issue));
+    void this.persistence?.saveAux({ id: updated.id, tenantId, domain: 'quality-issue', payload: updated as unknown as Record<string, unknown>, createdAt: updated.createdAt, updatedAt: updated.updatedAt });
     return updated;
   }
 

@@ -25,4 +25,23 @@ describe('quality, maintenance and document persistence', () => {
     await expect(new FoundationPersistenceService(prisma).restore()).resolves.toEqual({ quality: [], maintenance: [], documents: [] });
     expect(prisma.qualityRecord.findMany).not.toHaveBeenCalled();
   });
+
+  it('persists auxiliary domain records through an idempotent upsert', async () => {
+    const upsert = jest.fn().mockResolvedValue(undefined);
+    const prisma = {
+      ensureConnection: jest.fn().mockResolvedValue(undefined), isReady: () => true,
+      foundationAuxRecord: { upsert },
+    } as unknown as PrismaService;
+
+    await new FoundationPersistenceService(prisma).saveAux({
+      id: 'rule-1', tenantId: 'tenant-1', domain: 'quality-rule', payload: { key: 'dimensional' },
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z',
+    });
+
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'rule-1' },
+      create: expect.objectContaining({ tenantId: 'tenant-1', domain: 'quality-rule', payload: { key: 'dimensional' } }),
+      update: expect.objectContaining({ tenantId: 'tenant-1', domain: 'quality-rule', payload: { key: 'dimensional' } }),
+    }));
+  });
 });

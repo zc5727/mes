@@ -10,6 +10,7 @@ export interface FoundationPersistenceSnapshot {
   maintenance: MaintenanceWorkOrder[];
   documents: DocumentRecord[];
 }
+export interface FoundationAuxRecord { id: string; tenantId: string; domain: string; payload: Record<string, unknown>; createdAt: string; updatedAt: string }
 
 /** Persists quality, maintenance and document metadata while binaries remain in the storage adapter. */
 @Injectable()
@@ -61,6 +62,30 @@ export class FoundationPersistenceService {
       where: { id: item.id },
       create: this.documentData(item),
       update: this.documentUpdateData(item),
+    }));
+  }
+
+  async restoreAux(domain: string): Promise<FoundationAuxRecord[]> {
+    await this.prisma.ensureConnection();
+    if (!this.prisma.isReady()) {
+      this.failIfRequired(`restore auxiliary ${domain}`);
+      return [];
+    }
+    try {
+      const rows = await this.prisma.foundationAuxRecord.findMany({ where: { domain } });
+      return rows.map((row) => ({ id: row.id, tenantId: row.tenantId, domain: row.domain, payload: row.payload as Record<string, unknown>, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() }));
+    } catch (error: unknown) {
+      this.failure(`restore auxiliary ${domain}`, error);
+      this.failIfRequired(`restore auxiliary ${domain}`, error);
+      return [];
+    }
+  }
+
+  async saveAux(item: FoundationAuxRecord): Promise<void> {
+    await this.write('foundation auxiliary record', () => this.prisma.foundationAuxRecord.upsert({
+      where: { id: item.id },
+      create: { id: item.id, tenantId: item.tenantId, domain: item.domain, payload: item.payload as Prisma.InputJsonValue, createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) },
+      update: { tenantId: item.tenantId, domain: item.domain, payload: item.payload as Prisma.InputJsonValue, updatedAt: new Date(item.updatedAt) },
     }));
   }
 
