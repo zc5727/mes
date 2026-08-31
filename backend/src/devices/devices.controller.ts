@@ -47,12 +47,12 @@ export class DevicesController {
 
   @Patch(':id')
   @RequireCapability('write')
-  update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateDeviceDto) {
-    return { data: this.devicesService.update(tenantId, id, dto), tenantId };
+  async update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateDeviceDto) {
+    return { data: await this.devicesService.updateReliable(tenantId, id, dto), tenantId };
   }
 
   @Delete(':id')
-  remove(@TenantId() tenantId: string, @Param('id') id: string) {
-    return { data: this.devicesService.remove(tenantId, id), tenantId };
+  async remove(@TenantId() tenantId: string, @Param('id') id: string) {
+    return { data: await this.devicesService.removeReliable(tenantId, id), tenantId };
   }
 }

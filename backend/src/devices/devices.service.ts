@@ -131,7 +131,7 @@ export class DevicesService implements OnModuleInit {
     }
   }
 
-  update(tenantId: string, id: string, dto: UpdateDeviceDto): Device {
+  update(tenantId: string, id: string, dto: UpdateDeviceDto, persist = true): Device {
     const current = this.findOne(tenantId, id);
     if (dto.lineId && dto.lineId !== current.lineId) {
       this.productionLines?.findOne(tenantId, dto.lineId);
@@ -145,7 +145,7 @@ export class DevicesService implements OnModuleInit {
 
     const updated: Device = { ...current, ...dto, updatedAt: timestamp() };
     this.devices.set(id, updated);
-    this.persist('save device', this.persistence?.saveDevice(updated));
+    if (persist) this.persist('save device', this.persistence?.saveDevice(updated));
     this.audit?.record(tenantId, 'system', {
       action: 'device.updated',
       resource: 'device',
@@ -155,6 +155,19 @@ export class DevicesService implements OnModuleInit {
       details: { code: updated.code, lineId: updated.lineId },
     });
     return updated;
+  }
+
+  /** Waits for durable persistence before acknowledging an asset edit. */
+  async updateReliable(tenantId: string, id: string, dto: UpdateDeviceDto): Promise<Device> {
+    const current = this.findOne(tenantId, id);
+    const updated = this.update(tenantId, id, dto, false);
+    try {
+      await this.persistence?.saveDevice(updated);
+      return updated;
+    } catch (error: unknown) {
+      this.devices.set(id, current);
+      throw error;
+    }
   }
 
   updateStatus(tenantId: string, id: string, dto: UpdateDeviceStatusDto, persist = true): Device {
@@ -230,10 +243,10 @@ export class DevicesService implements OnModuleInit {
     );
   }
 
-  remove(tenantId: string, id: string): { id: string; deleted: true } {
+  remove(tenantId: string, id: string, persist = true): { id: string; deleted: true } {
     const device = this.findOne(tenantId, id);
     this.devices.delete(id);
-    this.persist('delete device', this.persistence?.deleteDevice(id));
+    if (persist) this.persist('delete device', this.persistence?.deleteDevice(id));
     this.audit?.record(tenantId, 'system', {
       action: 'device.deleted',
       resource: 'device',
@@ -242,6 +255,19 @@ export class DevicesService implements OnModuleInit {
       details: { code: device.code, lineId: device.lineId },
     });
     return { id, deleted: true };
+  }
+
+  /** Deletes an asset only after the durable delete succeeds. */
+  async removeReliable(tenantId: string, id: string): Promise<{ id: string; deleted: true }> {
+    const current = this.findOne(tenantId, id);
+    const result = this.remove(tenantId, id, false);
+    try {
+      await this.persistence?.deleteDevice(id);
+      return result;
+    } catch (error: unknown) {
+      this.devices.set(id, current);
+      throw error;
+    }
   }
 
   private createSeed(

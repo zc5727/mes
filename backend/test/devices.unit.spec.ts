@@ -31,6 +31,22 @@ describe('DevicesService line ownership', () => {
     expect(devices.findOne('tenant-demo', 'device-cnc-01').status).toBe('online');
   });
 
+  it('rolls back an asset edit when durable persistence rejects it', async () => {
+    const persistence = { saveDevice: jest.fn().mockRejectedValue(new Error('database unavailable')) };
+    const devices = new DevicesService(persistence as never, new ProductionLinesService());
+    await expect(devices.updateReliable('tenant-demo', 'device-cnc-01', { name: '写入失败设备' }))
+      .rejects.toThrow('database unavailable');
+    expect(devices.findOne('tenant-demo', 'device-cnc-01').name).toBe('立式加工中心 01');
+  });
+
+  it('restores an asset when durable deletion rejects it', async () => {
+    const persistence = { deleteDevice: jest.fn().mockRejectedValue(new Error('database unavailable')) };
+    const devices = new DevicesService(persistence as never, new ProductionLinesService());
+    await expect(devices.removeReliable('tenant-demo', 'device-cnc-01'))
+      .rejects.toThrow('database unavailable');
+    expect(devices.findOne('tenant-demo', 'device-cnc-01')).toEqual(expect.objectContaining({ id: 'device-cnc-01' }));
+  });
+
   it('does not retain demo devices when an enabled database restores an empty snapshot', async () => {
     const persistence = {
       isEnabled: () => true,
