@@ -86,9 +86,9 @@
 
 **判定原则：** “有代码”不等于“已完成”，必须同时具备测试、运行和验收证据。
 
-**最新提交增量：** `12904bab` 在前序基础上补充数字孪生 SSE smoke。当前验证输出为后端 unit 39 套件/122 项、E2E 8 套件/25 项、模拟器 43 项，`verify-all.sh` 通过；真实运行 verify 已完成依赖启动、14 张表校验、API/MQTT/故障/数字孪生 smoke 和迁移回滚，但 PostgreSQL 重启后 Backend 健康检查失败，退出 7，真实重启恢复仍未通过。
+**最新提交增量：** `b8028e63` 在前序基础上补充数字孪生 SSE smoke。当前验证输出为后端 unit 39 套件/122 项、E2E 8 套件/25 项、模拟器 43 项，`verify-all.sh` 通过；真实运行 verify 已完成依赖启动、14 张表校验、API/MQTT/故障/数字孪生 smoke 和迁移回滚，但 PostgreSQL 重启后 Backend 健康检查失败，退出 7，真实重启恢复仍未通过。
 
-### 3.1 当前提交 12904bab 执行快照
+### 3.1 当前提交 b8028e63 执行快照
 
 本提交及本轮复核已确认 `./scripts/verify-all.sh` exit 0：后端 unit 39 套件/122 项、E2E 8 套件/25 项、后端 build、数据库 schema 校验、模拟器 43 项、前端 build、前端契约 smoke 和 Tauri desktop smoke 均通过；真实运行门禁已取得依赖 readiness、数据库校验、迁移回滚及 API/MQTT/故障/数字孪生 smoke 证据，但 PostgreSQL 重启后 Backend 健康检查失败。代码级、隔离环境和本机容器证据均不能替代完整现场验收。
 
