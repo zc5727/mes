@@ -13,6 +13,7 @@ import { MqttIngestionService } from '../mqtt/mqtt-ingestion.service';
 import { MaintenanceService } from '../maintenance/maintenance.service';
 import { resolveSimulatorIdentity } from '../digital-twin/device-identity';
 import { PrismaService } from '../database/prisma.service';
+import { timestamp } from '../common/mock.types';
 
 export type AlarmLevel = 'info' | 'warning' | 'critical';
 export type AlarmStatus = 'active' | 'acknowledged' | 'closed';
@@ -178,10 +179,24 @@ export class AlarmsService implements OnModuleInit {
   }
 
   /** Opens a deterministic repair work order for an alarm; repeated calls return the same order. */
-  createMaintenanceWorkOrder(tenantId: string, id: string) {
+  async createMaintenanceWorkOrder(tenantId: string, id: string) {
     const alarm = this.findOne(tenantId, id);
     if (!this.maintenanceService) throw new NotFoundException('Maintenance service is unavailable');
-    return this.maintenanceService.createFromAlarm(tenantId, alarm);
+    const existing = this.maintenanceService.list(tenantId).find((item) => item.alarmId === alarm.id);
+    if (existing) return existing;
+
+    // The HTTP command must not acknowledge a work order before its durable
+    // write succeeds.  Keep the legacy service method for in-process callers,
+    // but use the reliable variant at the API boundary.
+    return this.maintenanceService.createReliable(tenantId, {
+      alarmId: alarm.id,
+      lineId: alarm.lineId,
+      deviceId: alarm.sourceId,
+      type: 'repair',
+      title: `告警维修：${alarm.message}`,
+      description: `由告警 ${alarm.id} 自动创建`,
+      plannedAt: timestamp(),
+    });
   }
 
   private syncTenant(tenantId: string): void {

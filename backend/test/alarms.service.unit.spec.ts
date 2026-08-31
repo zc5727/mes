@@ -84,4 +84,17 @@ describe('AlarmsService', () => {
     expect(service.findOne('tenant-demo', 'alarm-device-welding-01').status).toBe('acknowledged');
     expect(service.findAll('tenant-demo', { status: 'acknowledged' })).toHaveLength(1);
   });
+
+  it('does not acknowledge alarm work-order creation before durable persistence', async () => {
+    const createReliable = jest.fn().mockRejectedValue(new Error('database unavailable'));
+    const maintenance = {
+      list: jest.fn().mockReturnValue([]),
+      createReliable,
+    };
+    const service = new AlarmsService(new DevicesService(), undefined, maintenance as never);
+
+    await expect(service.createMaintenanceWorkOrder('tenant-demo', 'alarm-device-welding-01'))
+      .rejects.toThrow('database unavailable');
+    expect(createReliable).toHaveBeenCalledTimes(1);
+  });
 });

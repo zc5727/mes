@@ -37,8 +37,8 @@ export class AlarmsController {
   }
 
   @Post(':id/maintenance-work-order')
-  createMaintenance(@TenantId() tenantId: string, @Param('id') id: string) {
-    return { data: this.alarmsService.createMaintenanceWorkOrder(tenantId, id), tenantId };
+  async createMaintenance(@TenantId() tenantId: string, @Param('id') id: string) {
+    return { data: await this.alarmsService.createMaintenanceWorkOrder(tenantId, id), tenantId };
   }
 
   private validateQuery(query: AlarmQueryDto): void {
