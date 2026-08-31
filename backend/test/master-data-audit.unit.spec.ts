@@ -98,6 +98,17 @@ describe('business foundation APIs', () => {
     expect(service.listBatches('tenant-a')).toHaveLength(0);
   });
 
+  it('rolls back master-data creation when the durable write fails', async () => {
+    const persistence = {
+      saveAuxReliable: jest.fn().mockRejectedValue(new Error('database unavailable')),
+    };
+    const service = new MasterDataService(undefined, persistence as never);
+
+    await expect(service.createReliable('tenant-a', 'product', { code: 'P-FAIL', name: '不会落库' }))
+      .rejects.toThrow('database unavailable');
+    expect(service.list('tenant-a', 'product')).toHaveLength(0);
+  });
+
   it('keeps batch inventory tenant-scoped and consumes atomically', () => {
     const service = new MasterDataService();
     service.createBatch('tenant-a', { materialCode: 'RAW-01', batchNo: 'B-01', quantity: 5 });

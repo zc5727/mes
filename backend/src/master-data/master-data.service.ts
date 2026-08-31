@@ -32,8 +32,10 @@ export class MasterDataService implements OnModuleInit {
 
   list(tenantId: string, type: MasterDataRecord['type']): MasterDataRecord[] { return (this.records.get(tenantId) ?? []).filter((record) => record.type === type); }
   findOne(tenantId: string, type: MasterDataRecord['type'], id: string): MasterDataRecord { const record = this.list(tenantId, type).find((item) => item.id === id); if (!record) throw new NotFoundException(`${type} ${id} not found`); return record; }
-  create(tenantId: string, type: MasterDataRecord['type'], dto: CreateProductDto | CreateProcessDto | CreateShiftDto | CreateCalendarDto | CreateOperationDto | CreateBomDto | CreateRoutingDto, actorId = 'system'): MasterDataRecord {
-    if (this.list(tenantId, type).some((record) => record.code === dto.code)) throw new ConflictException(`${type} code ${dto.code} already exists`);
+  create(tenantId: string, type: MasterDataRecord['type'], dto: CreateProductDto | CreateProcessDto | CreateShiftDto | CreateCalendarDto | CreateOperationDto | CreateBomDto | CreateRoutingDto, actorId = 'system', persist = true): MasterDataRecord {
+    const code = dto.code.trim();
+    const name = dto.name.trim();
+    if (this.list(tenantId, type).some((record) => record.code === code)) throw new ConflictException(`${type} code ${code} already exists`);
     if (type === 'bom' || type === 'routing') {
       const operationCodes = 'operationCodes' in dto ? dto.operationCodes ?? [] : [];
       const knownCodes = new Set(this.list(tenantId, 'operation').map((operation) => operation.code));
@@ -48,11 +50,35 @@ export class MasterDataService implements OnModuleInit {
         if (typeof materialCode !== 'string' || typeof quantity !== 'number' || quantity <= 0) throw new ConflictException('BOM items require materialCode/code and positive quantity/qty');
       }
     }
-    const now = timestamp(); const record: MasterDataRecord = { id: createId(type), tenantId, code: dto.code.trim(), name: dto.name.trim(), type, data: { ...dto }, createdAt: now, updatedAt: now };
+    const now = timestamp(); const record: MasterDataRecord = { id: createId(type), tenantId, code, name, type, data: { ...dto, code, name }, createdAt: now, updatedAt: now };
     this.records.set(tenantId, [...(this.records.get(tenantId) ?? []), record]);
-    void this.foundationPersistence?.saveAux({ id: record.id, tenantId, domain: `master-data:${type}`, payload: record as unknown as Record<string, unknown>, createdAt: record.createdAt, updatedAt: record.updatedAt });
+    if (persist) void this.foundationPersistence?.saveAux({ id: record.id, tenantId, domain: `master-data:${type}`, payload: record as unknown as Record<string, unknown>, createdAt: record.createdAt, updatedAt: record.updatedAt });
     this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'master_data.created', resource: type, resourceId: record.id, after: record as unknown as Record<string, unknown>, details: { code: record.code } });
     return record;
+  }
+
+  /** HTTP-safe master-data creation: acknowledge only after the auxiliary row is durable. */
+  async createReliable(
+    tenantId: string,
+    type: MasterDataRecord['type'],
+    dto: CreateProductDto | CreateProcessDto | CreateShiftDto | CreateCalendarDto | CreateOperationDto | CreateBomDto | CreateRoutingDto,
+    actorId = 'system',
+  ): Promise<MasterDataRecord> {
+    const record = this.create(tenantId, type, dto, actorId, false);
+    try {
+      await this.foundationPersistence?.saveAuxReliable({
+        id: record.id,
+        tenantId,
+        domain: `master-data:${type}`,
+        payload: record as unknown as Record<string, unknown>,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+      });
+      return record;
+    } catch (error: unknown) {
+      this.records.set(tenantId, this.list(tenantId, type).filter((item) => item.id !== record.id));
+      throw error;
+    }
   }
 
   createBatch(tenantId: string, dto: CreateBatchInventoryDto, actorId = 'system'): BatchInventory {
