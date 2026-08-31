@@ -164,4 +164,22 @@ describe('device connections', () => {
     await service.delete('tenant-a', connection.id);
     expect(() => service.findOne('tenant-a', connection.id)).toThrow(NotFoundException);
   });
+
+  it('requires a stopped connection for runtime changes and deletion', async () => {
+    const service = createService({ probe: jest.fn().mockResolvedValue({ ok: true, latencyMs: 1 }) });
+    const connection = await service.create('tenant-a', {
+      deviceId: 'device-07', name: '受保护连接', type: 'mqtt', endpoint: 'mqtt://localhost:1883',
+    });
+    await service.start('tenant-a', connection.id);
+
+    await expect(service.update('tenant-a', connection.id, { endpoint: 'mqtt://localhost:1884' }))
+      .rejects.toThrow(ConflictException);
+    await expect(service.delete('tenant-a', connection.id)).rejects.toThrow(ConflictException);
+    await expect(service.delete('tenant-b', connection.id)).rejects.toThrow(NotFoundException);
+
+    await service.stop('tenant-a', connection.id);
+    await expect(service.update('tenant-a', connection.id, { endpoint: 'mqtt://localhost:1884' }))
+      .resolves.toEqual(expect.objectContaining({ endpoint: 'mqtt://localhost:1884', status: 'stopped' }));
+    await expect(service.delete('tenant-a', connection.id)).resolves.toBeUndefined();
+  });
 });

@@ -77,6 +77,12 @@ export class DeviceConnectionsService implements OnModuleInit {
 
   async update(tenantId: string, id: string, dto: UpdateDeviceConnectionDto): Promise<DeviceConnection> {
     const current = this.findOne(tenantId, id);
+    if (
+      (current.status === 'running' || current.status === 'starting')
+      && this.changesRuntimeConfiguration(dto)
+    ) {
+      throw new ConflictException('Stop the device connection before changing its runtime configuration');
+    }
     const type = current.type;
     if (dto.endpoint) this.validateEndpoint(type, dto.endpoint);
     this.validateConfig(dto.config);
@@ -146,6 +152,9 @@ export class DeviceConnectionsService implements OnModuleInit {
 
   async delete(tenantId: string, id: string): Promise<void> {
     const connection = this.findOne(tenantId, id);
+    if (connection.status === 'running' || connection.status === 'starting') {
+      throw new ConflictException('Stop the device connection before deleting it');
+    }
     await this.persistence?.delete(connection.id);
     this.connections.set(tenantId, this.list(tenantId).filter((item) => item.id !== id));
     this.statusEvents.delete(this.eventKey(tenantId, id));
@@ -284,6 +293,15 @@ export class DeviceConnectionsService implements OnModuleInit {
     const values = (capabilities ?? []).map((item) => item.trim()).filter(Boolean);
     if (values.some((item) => item.length > 80)) throw new BadRequestException('Connection capability is too long');
     return [...new Set(values)];
+  }
+
+  private changesRuntimeConfiguration(
+    dto: UpdateDeviceConnectionDto,
+  ): boolean {
+    return dto.endpoint !== undefined
+      || dto.config !== undefined
+      || dto.profileKey !== undefined
+      || dto.enabled !== undefined;
   }
 
   private validateConfig(config: Record<string, unknown> | undefined): void {
