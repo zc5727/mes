@@ -9,6 +9,7 @@
     "db:migrate": "prisma migrate deploy --schema prisma/schema.prisma",
     "db:validate": "prisma validate --schema prisma/schema.prisma",
     "db:init": "prisma migrate deploy --schema prisma/schema.prisma && ts-node prisma/seed.ts",
+    "db:verify-runtime": "node scripts/verify-db-runtime.mjs",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",

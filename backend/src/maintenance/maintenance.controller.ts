@@ -12,6 +12,7 @@ export class MaintenanceController {
   @Get('spare-parts') listParts(@TenantId() tenantId: string) { return { data: this.service.listSpareParts(tenantId), tenantId }; }
   @Post('spare-parts') createPart(@TenantId() tenantId: string, @Body() dto: CreateSparePartDto) { return { data: this.service.createSparePart(tenantId, dto), tenantId }; }
   @Post('spare-parts/consume') consumePart(@TenantId() tenantId: string, @Body() dto: ConsumeSparePartDto) { return { data: this.service.consumeSparePart(tenantId, dto), tenantId }; }
+  @Post('spare-parts/return') returnPart(@TenantId() tenantId: string, @Body() dto: ConsumeSparePartDto) { return { data: this.service.returnSparePart(tenantId, dto), tenantId }; }
   @Get('metrics') metrics(@TenantId() tenantId: string) { return { data: this.service.metrics(tenantId), tenantId }; }
   @Get(':id') findOne(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.findOne(tenantId, id), tenantId }; }
   @Post() create(@TenantId() tenantId: string, @Body() dto: CreateMaintenanceDto) { return { data: this.service.create(tenantId, dto), tenantId }; }

@@ -69,5 +69,8 @@ describe('business foundation APIs', () => {
     expect(service.listBatches('tenant-a')[0].quantity).toBe(5);
     service.consumeBatches('tenant-a', [{ materialCode: 'RAW-01', batchNo: 'B-01', quantity: 2 }]);
     expect(service.listBatches('tenant-a')[0].quantity).toBe(3);
+    service.consumeBatches('tenant-a', [{ materialCode: 'RAW-01', batchNo: 'B-01', quantity: 1 }], 'report-1');
+    service.consumeBatches('tenant-a', [{ materialCode: 'RAW-01', batchNo: 'B-01', quantity: 1 }], 'report-1');
+    expect(service.listBatches('tenant-a')[0].quantity).toBe(2);
   });
 });

@@ -12,7 +12,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   private readonly requiredTables = [
     'factories', 'production_lines', 'devices', 'production_orders', 'work_orders',
     'work_order_reports', 'alarms', 'device_events', 'current_states', 'connection_events',
-    'quality_records', 'maintenance_work_orders', 'document_records',
+    'quality_records', 'maintenance_work_orders', 'document_records', 'batch_inventories',
   ];
 
   async onModuleInit(): Promise<void> {
@@ -63,7 +63,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       this.connected = true;
       this.logger.log('PostgreSQL persistence connected');
     } catch (error: unknown) {
-      this.logger.error(`PostgreSQL connection failed; memory mode will continue: ${this.errorMessage(error)}`);
+      this.logger.error(`PostgreSQL connection failed${this.required ? '; startup will fail because DATABASE_REQUIRED=true' : '; memory demo mode remains available'}: ${this.errorMessage(error)}`);
     } finally {
       this.connecting = undefined;
     }

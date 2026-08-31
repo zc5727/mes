@@ -33,4 +33,5 @@ export class CreateSparePartDto {
 export class ConsumeSparePartDto {
   @IsString() @MinLength(2) code!: string;
   quantity!: number;
+  @IsOptional() @IsString() @MaxLength(120) operationId?: string;
 }

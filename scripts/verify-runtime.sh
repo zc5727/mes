@@ -119,6 +119,16 @@ simulator_pid="$(cat "$simulator_pid_file")"
 kill -0 "$simulator_pid" 2>/dev/null || { echo "FAIL: 模拟器重启后进程未存活" >&2; exit 1; }
 echo "PASS simulator restart recovery: PID=$simulator_pid"
 
+echo "检查真实 WebSocket 推送"
+if [[ -z "${REALTIME_URL:-}" ]]; then
+  echo "BLOCKED: 未配置 REALTIME_URL，无法验证真实 WebSocket 推送。" >&2
+  exit 2
+fi
+REALTIME_URL="$REALTIME_URL" node "$ROOT_DIR/scripts/websocket-smoke.mjs"
+
+echo "检查 Tauri release smoke"
+node "$ROOT_DIR/scripts/desktop-smoke.mjs" --app-dir "$ROOT_DIR/desktop"
+
 echo "停止并验证服务清理"
 "$ROOT_DIR/scripts/dev-down.sh" --infra
 STARTED=false

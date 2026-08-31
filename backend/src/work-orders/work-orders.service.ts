@@ -279,7 +279,7 @@ export class WorkOrdersService implements OnModuleInit {
       throw new ConflictException('material consumptions must have positive quantities, material codes and batch numbers');
     }
     if (dto.operationCode && this.masterDataService) this.masterDataService.validateOperation(tenantId, current.routingId, dto.operationCode.trim());
-    if (this.masterDataService) this.masterDataService.consumeBatches(tenantId, materialConsumptions);
+    if (this.masterDataService) this.masterDataService.consumeBatches(tenantId, materialConsumptions, dto.sourceTraceId);
     const report: WorkOrderReport = {
       id: createId('report'), workOrderId: id, tenantId, quantity: dto.quantity,
       goodQty, defectQty, deviceId: dto.deviceId ?? null,

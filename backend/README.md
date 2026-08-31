@@ -121,6 +121,7 @@ npm run verify:runtime
 ```bash
 export DATABASE_URL=postgresql://mes:mes_dev@localhost:5432/mes
 npm run verify:postgres
+DATABASE_ENABLED=true DATABASE_REQUIRED=true npm run db:verify-runtime
 DATABASE_ENABLED=true DATABASE_REQUIRED=true npm run start:dev
 ```
 
