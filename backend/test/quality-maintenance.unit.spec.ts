@@ -4,6 +4,7 @@ import { MaintenanceService } from '../src/maintenance/maintenance.service';
 import { ProductionLinesService } from '../src/production-lines/production-lines.service';
 import { QualityService } from '../src/quality/quality.service';
 import { WorkOrdersService } from '../src/work-orders/work-orders.service';
+import { FoundationPersistenceService } from '../src/database/foundation-persistence.service';
 
 describe('quality and maintenance minimum loops', () => {
   it('validates an inspection rule and closes an NCR with CAPA', () => {
@@ -59,5 +60,17 @@ describe('quality and maintenance minimum loops', () => {
     quality.submit('tenant-demo', record.id, { actorId: 'inspector' });
     quality.confirm('tenant-demo', record.id, { actorId: 'manager' });
     expect(workOrders.report('tenant-demo', order.id, { quantity: 1, qualityRecordId: record.id, sourceTraceId: 'trace-qgate' }).workOrder.status).toBe('completed');
+  });
+
+  it('rolls back the in-memory quality projection when durable persistence rejects a command', async () => {
+    const persistence = {
+      saveQualityReliable: jest.fn().mockRejectedValue(new Error('database unavailable')),
+    } as unknown as FoundationPersistenceService;
+    const quality = new QualityService(undefined, undefined, undefined, persistence);
+
+    await expect(quality.createReliable('tenant-demo', {
+      batchNo: 'B-ROLLBACK', lineId: 'line-cnc', operatorId: 'inspector', values: {},
+    })).rejects.toThrow('database unavailable');
+    expect(quality.list('tenant-demo')).toHaveLength(0);
   });
 });

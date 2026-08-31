@@ -12,12 +12,12 @@ export class QualityController {
   @Get() list(@TenantId() tenantId: string) { return { data: this.qualityService.list(tenantId), tenantId }; }
   @Get('rules') listRules(@TenantId() tenantId: string) { return { data: this.qualityService.listRules(tenantId), tenantId }; }
   @Get('issues') listIssues(@TenantId() tenantId: string) { return { data: this.qualityService.listIssues(tenantId), tenantId }; }
-  @Post() create(@TenantId() tenantId: string, @Body() dto: CreateQualityRecordDto) { return { data: this.qualityService.create(tenantId, dto), tenantId }; }
-  @Post('rules') createRule(@TenantId() tenantId: string, @Body() dto: CreateQualityRuleDto, @Headers('x-user-id') actorId?: string) { return { data: this.qualityService.createRule(tenantId, dto, actorId), tenantId }; }
-  @Post('issues') createIssue(@TenantId() tenantId: string, @Body() dto: CreateQualityIssueDto, @Headers('x-user-id') actorId?: string) { return { data: this.qualityService.createIssue(tenantId, dto, actorId), tenantId }; }
-  @Patch('issues/:id') updateIssue(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateQualityIssueDto, @Headers('x-user-id') actorId?: string) { return { data: this.qualityService.updateIssue(tenantId, id, dto, actorId), tenantId }; }
-  @Patch(':id') updateDraft(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateQualityDraftDto, @Headers('x-user-id') actorId?: string) { return { data: this.qualityService.updateDraft(tenantId, id, dto, actorId), tenantId }; }
-  @Post(':id/submit') submit(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: QualityTransitionDto) { return { data: this.qualityService.submit(tenantId, id, dto), tenantId }; }
-  @Post(':id/confirm') confirm(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: QualityTransitionDto) { return { data: this.qualityService.confirm(tenantId, id, dto), tenantId }; }
-  @Post(':id/reject') reject(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: QualityTransitionDto) { return { data: this.qualityService.reject(tenantId, id, dto), tenantId }; }
+  @Post() async create(@TenantId() tenantId: string, @Body() dto: CreateQualityRecordDto) { return { data: await this.qualityService.createReliable(tenantId, dto), tenantId }; }
+  @Post('rules') async createRule(@TenantId() tenantId: string, @Body() dto: CreateQualityRuleDto, @Headers('x-user-id') actorId?: string) { return { data: await this.qualityService.createRuleReliable(tenantId, dto, actorId), tenantId }; }
+  @Post('issues') async createIssue(@TenantId() tenantId: string, @Body() dto: CreateQualityIssueDto, @Headers('x-user-id') actorId?: string) { return { data: await this.qualityService.createIssueReliable(tenantId, dto, actorId), tenantId }; }
+  @Patch('issues/:id') async updateIssue(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateQualityIssueDto, @Headers('x-user-id') actorId?: string) { return { data: await this.qualityService.updateIssueReliable(tenantId, id, dto, actorId), tenantId }; }
+  @Patch(':id') async updateDraft(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateQualityDraftDto, @Headers('x-user-id') actorId?: string) { return { data: await this.qualityService.updateDraftReliable(tenantId, id, dto, actorId), tenantId }; }
+  @Post(':id/submit') async submit(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: QualityTransitionDto) { return { data: await this.qualityService.submitReliable(tenantId, id, dto), tenantId }; }
+  @Post(':id/confirm') async confirm(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: QualityTransitionDto) { return { data: await this.qualityService.confirmReliable(tenantId, id, dto), tenantId }; }
+  @Post(':id/reject') async reject(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: QualityTransitionDto) { return { data: await this.qualityService.rejectReliable(tenantId, id, dto), tenantId }; }
 }

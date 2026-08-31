@@ -56,6 +56,15 @@ export class FoundationPersistenceService {
     }));
   }
 
+  /** Persists a quality record synchronously for an HTTP command boundary. */
+  async saveQualityReliable(record: QualityRecord): Promise<void> {
+    await this.persistNow('quality record', () => this.prisma.qualityRecord.upsert({
+      where: { id: record.id },
+      create: { id: record.id, tenantId: record.tenantId, formKey: record.formKey, formVersion: record.formVersion, status: record.status, workOrderId: record.workOrderId, batchNo: record.batchNo, lineId: record.lineId, deviceId: record.deviceId, operatorId: record.operatorId, values: record.values as Prisma.InputJsonValue, traceId: record.traceId, trace: record.trace as unknown as Prisma.InputJsonValue, inspectionType: record.inspectionType, ruleKey: record.ruleKey, createdAt: new Date(record.createdAt), updatedAt: new Date(record.updatedAt) },
+      update: { formKey: record.formKey, formVersion: record.formVersion, status: record.status, workOrderId: record.workOrderId, batchNo: record.batchNo, lineId: record.lineId, deviceId: record.deviceId, operatorId: record.operatorId, values: record.values as Prisma.InputJsonValue, traceId: record.traceId, trace: record.trace as unknown as Prisma.InputJsonValue, inspectionType: record.inspectionType, ruleKey: record.ruleKey, updatedAt: new Date(record.updatedAt) },
+    }));
+  }
+
   async saveMaintenance(item: MaintenanceWorkOrder): Promise<void> {
     await this.write('maintenance work order', () => this.prisma.maintenanceWorkOrder.upsert({
       where: { id: item.id },
@@ -112,6 +121,15 @@ export class FoundationPersistenceService {
     }));
   }
 
+  /** Persists auxiliary foundation data synchronously for an HTTP command boundary. */
+  async saveAuxReliable(item: FoundationAuxRecord): Promise<void> {
+    await this.persistNow('foundation auxiliary record', () => this.prisma.foundationAuxRecord.upsert({
+      where: { id: item.id },
+      create: { id: item.id, tenantId: item.tenantId, domain: item.domain, payload: item.payload as Prisma.InputJsonValue, createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) },
+      update: { tenantId: item.tenantId, domain: item.domain, payload: item.payload as Prisma.InputJsonValue, updatedAt: new Date(item.updatedAt) },
+    }));
+  }
+
   private documentData(item: DocumentRecord): Prisma.DocumentRecordUncheckedCreateInput {
     return {
       id: item.id, tenantId: item.tenantId, createdAt: new Date(item.createdAt),
@@ -155,6 +173,20 @@ export class FoundationPersistenceService {
       const normalized = error instanceof Error ? error : new Error(String(error));
       this.pendingError ??= normalized;
     });
+  }
+
+  private async persistNow(label: string, operation: () => Promise<unknown>): Promise<void> {
+    await this.prisma.ensureConnection();
+    if (!this.prisma.isReady()) {
+      this.failIfRequired(`persist ${label}`);
+      return;
+    }
+    try {
+      await operation();
+    } catch (error: unknown) {
+      this.failure(`persist ${label}`, error);
+      this.failIfRequired(`persist ${label}`, error);
+    }
   }
 
   private failIfRequired(operation: string, error?: unknown): void {

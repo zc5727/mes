@@ -24,14 +24,10 @@ DATABASE_REQUIRED_VALUE="${DATABASE_REQUIRED:-false}"
 STARTED_PID_FILES=()
 
 cleanup_on_failure() {
-  local exit_code
-  if (( $# > 0 )); then
-    exit_code="$1"
-  else
-    exit_code="$?"
-  fi
+  local exit_code="$?"
+  if (( $# > 0 )); then exit_code="$1"; fi
   [[ "$exit_code" -eq 0 ]] && return
-  echo "启动失败（退出码 $exit_code），清理本次启动的应用进程" >&2
+  echo "启动失败（退出码 ${exit_code}），清理本次启动的应用进程" >&2
   for pid_file in "${STARTED_PID_FILES[@]}"; do
     [[ -f "$pid_file" ]] || continue
     local pid
