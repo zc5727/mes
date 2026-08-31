@@ -140,7 +140,7 @@ export class OpcUaTelemetrySimulator implements ProtocolTelemetrySource {
   private client?: OPCUAClient;
   private session?: ClientSession;
   constructor(private readonly values: Omit<DeterministicTelemetryValues, "faultCode">, private readonly port = 4841) {
-    this.server = new OPCUAServer({ port, resourcePath: "/MES/SimulatedDevice", securityModes: [MessageSecurityMode.None], securityPolicies: [SecurityPolicy.None], allowAnonymous: true });
+    this.server = new OPCUAServer({ hostname: "127.0.0.1", alternateHostname: ["127.0.0.1"], port, resourcePath: "/MES/SimulatedDevice", securityModes: [MessageSecurityMode.None], securityPolicies: [SecurityPolicy.None], allowAnonymous: true });
   }
 
   async start(): Promise<void> {

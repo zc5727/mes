@@ -1,4 +1,5 @@
 import { FaultType, NetworkSimulationOptions, SimulatorOptions } from "./types";
+import { ProtocolKind, parseProtocolEndpoint } from "./protocols/protocol-bridge";
 
 const DEFAULT_TENANT_ID = "demo-tenant";
 const DEFAULT_INTERVAL_MS = 1000;
@@ -13,6 +14,9 @@ export interface CliOptions extends SimulatorOptions {
   paused: boolean;
   emitAgvTelemetry: boolean;
   network?: NetworkSimulationOptions;
+  protocol?: ProtocolKind;
+  protocolHost?: string;
+  protocolPort?: number;
 }
 
 export interface FaultCommand {
@@ -52,6 +56,10 @@ export function parseCliArgs(args: string[], env: NodeJS.ProcessEnv = process.en
   const network = networkLatency !== undefined || networkDuplicateRate !== undefined || networkDropRate !== undefined || networkSeed !== undefined
     ? { latencyMs: networkLatency, duplicateRate: networkDuplicateRate, dropRate: networkDropRate, seed: networkSeed }
     : undefined;
+  const protocolValue = getValue("--protocol") ?? env.SIMULATOR_PROTOCOL;
+  const protocol = protocolValue === undefined ? undefined : parseProtocolEndpoint({ protocol: protocolValue as ProtocolKind, host: getValue("--protocol-host") ?? env.SIMULATOR_PROTOCOL_HOST ?? "127.0.0.1", port: Number(getValue("--protocol-port") ?? env.SIMULATOR_PROTOCOL_PORT ?? (protocolValue === "opc-ua" ? 4841 : 1502)) }).protocol;
+  const protocolHost = protocol === undefined ? undefined : getValue("--protocol-host") ?? env.SIMULATOR_PROTOCOL_HOST ?? "127.0.0.1";
+  const protocolPort = protocol === undefined ? undefined : Number(getValue("--protocol-port") ?? env.SIMULATOR_PROTOCOL_PORT ?? (protocol === "opc-ua" ? 4841 : 1502));
 
   return {
     tenantId: getValue("--tenant") ?? env.MES_TENANT_ID ?? DEFAULT_TENANT_ID,
@@ -66,6 +74,9 @@ export function parseCliArgs(args: string[], env: NodeJS.ProcessEnv = process.en
     paused: args.includes("--pause"),
     emitAgvTelemetry: args.includes("--agv-telemetry"),
     network,
+    protocol,
+    protocolHost,
+    protocolPort,
   };
 }
 
