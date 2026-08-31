@@ -154,6 +154,13 @@ scripts/mes-runtime.sh stop
 默认只启动 PostgreSQL 和 Mosquitto；需要 MinIO/S3-compatible 对象存储时使用
 `scripts/mes-runtime.sh start --object-storage`。基础设施不可用、迁移失败或 readiness 不通过时脚本返回非零状态，不会继续伪装成可运行环境。
 
+文档二进制默认写入本地 `.data/documents`。配置 `MES_OBJECT_STORAGE=minio`（或 `s3`）并提供
+`MES_OBJECT_STORAGE_ENDPOINT`、`MES_OBJECT_STORAGE_BUCKET`、`MES_OBJECT_STORAGE_ACCESS_KEY`、
+`MES_OBJECT_STORAGE_SECRET_KEY` 后，文档服务会切换到 S3-compatible adapter。上传会写入 SHA-256
+metadata，下载先经过当前租户和文档记录权限校验，再从对象存储读取并校验 SHA-256；临时对象存储
+错误按 `S3_MAX_ATTEMPTS` 重试。`S3_LIFECYCLE_DAYS` 可通过 adapter 的 lifecycle 配置接口设置保留期，
+不会伪造病毒扫描结果，扫描仍由独立 scanner 配置决定。
+
 ## 尚未达到生产交付的事项
 
 1. ERPNext 真实旁路、字段映射、四线对账和失败回退

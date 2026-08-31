@@ -53,7 +53,7 @@ export interface DocumentStorage {
   readonly provider: 'local-disk' | 's3' | 'minio';
   readonly root: string;
   put(storageKey: string, content: Buffer): Promise<void>;
-  read(storageKey: string): Promise<Buffer>;
+  read(storageKey: string, expectedSha256?: string): Promise<Buffer>;
   remove(storageKey: string): Promise<void>;
 }
 

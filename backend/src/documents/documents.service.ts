@@ -125,7 +125,7 @@ export class DocumentsService implements OnModuleInit {
   async readContent(tenantId: string, id: string): Promise<{ record: DocumentRecord; content: Buffer }> {
     const record = this.findOne(tenantId, id);
     try {
-      return { record, content: await this.storage.read(record.storageKey) };
+      return { record, content: await this.storage.read(record.storageKey, record.fileHash) };
     } catch (error: unknown) {
       throw new ConflictException(`Document binary read failed: ${this.errorMessage(error)}`);
     }
