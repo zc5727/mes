@@ -29,8 +29,8 @@ export class DevicesController {
 
   @Post()
   @RequireCapability('write')
-  create(@TenantId() tenantId: string, @Body() dto: CreateDeviceDto) {
-    return { data: this.devicesService.create(tenantId, dto), tenantId };
+  async create(@TenantId() tenantId: string, @Body() dto: CreateDeviceDto) {
+    return { data: await this.devicesService.createReliable(tenantId, dto), tenantId };
   }
 
   @Patch(':id/status')

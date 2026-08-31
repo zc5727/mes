@@ -83,7 +83,7 @@ export class DevicesService implements OnModuleInit {
     return device;
   }
 
-  create(tenantId: string, dto: CreateDeviceDto): Device {
+  create(tenantId: string, dto: CreateDeviceDto, persist = true): Device {
     this.productionLines?.findOne(tenantId, dto.lineId);
     const duplicate = this.findAll(tenantId).some((device) => device.code === dto.code);
     if (duplicate) {
@@ -108,7 +108,7 @@ export class DevicesService implements OnModuleInit {
       updatedAt: now,
     };
     this.devices.set(device.id, device);
-    this.persist('save device', this.persistence?.saveDevice(device));
+    if (persist) this.persist('save device', this.persistence?.saveDevice(device));
     this.audit?.record(tenantId, 'system', {
       action: 'device.created',
       resource: 'device',
@@ -117,6 +117,18 @@ export class DevicesService implements OnModuleInit {
       details: { code: device.code, lineId: device.lineId },
     });
     return device;
+  }
+
+  /** Waits for the durable asset write before acknowledging device creation. */
+  async createReliable(tenantId: string, dto: CreateDeviceDto): Promise<Device> {
+    const device = this.create(tenantId, dto, false);
+    try {
+      await this.persistence?.saveDevice(device);
+      return device;
+    } catch (error: unknown) {
+      this.devices.delete(device.id);
+      throw error;
+    }
   }
 
   update(tenantId: string, id: string, dto: UpdateDeviceDto): Device {

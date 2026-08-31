@@ -4,6 +4,21 @@ import { ProductionLinesService } from '../src/production-lines/production-lines
 import { AuditService } from '../src/audit/audit.service';
 
 describe('DevicesService line ownership', () => {
+  it('does not acknowledge a device when durable persistence rejects it', async () => {
+    const persistence = {
+      isEnabled: () => true,
+      restore: jest.fn().mockResolvedValue({ devices: [] }),
+      saveDevice: jest.fn().mockRejectedValue(new Error('database unavailable')),
+    };
+    const devices = new DevicesService(persistence as never, new ProductionLinesService());
+    await devices.onModuleInit();
+
+    await expect(devices.createReliable('tenant-demo', {
+      lineId: 'line-cnc', code: 'DURABLE-001', name: '持久化设备',
+    })).rejects.toThrow('database unavailable');
+    expect(devices.findAll('tenant-demo')).toHaveLength(0);
+  });
+
   it('does not retain demo devices when an enabled database restores an empty snapshot', async () => {
     const persistence = {
       isEnabled: () => true,
