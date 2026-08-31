@@ -69,6 +69,8 @@ model Tenant {
   batchInventories BatchInventory[]
   foundationAuxRecords FoundationAuxRecord[]
   deviceConnections DeviceConnection[]
+  auditEvents      AuditEvent[]
+  auditApprovals   AuditApproval[]
 
   @@map("tenants")
 }
@@ -510,6 +512,50 @@ model StrategyCandidate {
 
   @@index([strategyRunId, score])
   @@map("strategy_candidates")
+}
+
+model AuditEvent {
+  id         String   @id @db.VarChar(80)
+  tenantId   String   @map("tenant_id") @db.VarChar(40)
+  actor      String   @db.VarChar(120)
+  action     String   @db.VarChar(80)
+  resource   String   @db.VarChar(80)
+  resourceId String?  @map("resource_id") @db.VarChar(80)
+  details    Json
+  operator   String   @db.VarChar(120)
+  object     String   @db.VarChar(160)
+  before     Json?
+  after      Json?
+  reason     String   @db.VarChar(500)
+  traceId    String   @map("trace_id") @db.VarChar(120)
+  result     String   @db.VarChar(20)
+  prevHash   String?  @map("prev_hash") @db.VarChar(64)
+  hash       String?  @db.VarChar(64)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, traceId])
+  @@map("audit_events")
+}
+
+model AuditApproval {
+  id         String    @id @db.VarChar(80)
+  tenantId   String    @map("tenant_id") @db.VarChar(40)
+  resource   String    @db.VarChar(80)
+  resourceId String    @map("resource_id") @db.VarChar(160)
+  status     String    @db.VarChar(20)
+  comment    String    @db.VarChar(500)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  createdBy  String?   @map("created_by") @db.VarChar(120)
+  decidedAt  DateTime? @map("decided_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, resource, resourceId])
+  @@index([tenantId, status, createdAt])
+  @@map("audit_approvals")
 }
 
 model Product {

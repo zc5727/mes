@@ -1,7 +1,14 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  OnModuleInit,
+  Optional,
+} from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { createId, timestamp } from '../common/mock.types';
 import { AuditResult, CreateApprovalDto, CreateAuditDto } from './dto/audit.dto';
+import { AuditPersistenceService } from './audit-persistence.service';
 export interface AuditEntry { id: string; tenantId: string; actor: string; action: string; resource: string; resourceId?: string; details: Record<string, unknown>; createdAt: string; prevHash?: string; hash?: string; }
 export interface GovernedAuditEntry extends AuditEntry {
   operator: string;
@@ -24,9 +31,20 @@ export interface Approval {
   decidedAt?: string;
 }
 @Injectable()
-export class AuditService {
+export class AuditService implements OnModuleInit {
   private readonly audit = new Map<string, AuditEntry[]>();
   private readonly approvals = new Map<string, Approval[]>();
+
+  constructor(
+    @Optional() private readonly persistence?: AuditPersistenceService,
+  ) {}
+
+  async onModuleInit(): Promise<void> {
+    const snapshot = await this.persistence?.restore();
+    snapshot?.audit.forEach((entry) => this.restore(entry));
+    snapshot?.approvals.forEach((approval) => this.restoreApproval(approval));
+  }
+
   list(tenantId: string) { return this.audit.get(tenantId) ?? []; }
   restore(entry: GovernedAuditEntry): void {
     if (this.list(entry.tenantId).some((item) => item.id === entry.id)) return;
@@ -50,6 +68,7 @@ export class AuditService {
     entry.prevHash = previous?.hash;
     entry.hash = this.hash(entry);
     this.audit.set(tenantId, [...this.list(tenantId), entry]);
+    this.persistence?.enqueueAudit(entry);
     return entry;
   }
   verify(tenantId: string): { valid: boolean; checked: number; brokenId?: string } {
@@ -88,6 +107,7 @@ export class AuditService {
       createdBy: createdBy?.trim() || undefined,
     };
     this.approvals.set(tenantId, [...this.listApprovals(tenantId), item]);
+    this.persistence?.enqueueApproval(item);
     this.record(tenantId, createdBy?.trim() || 'system', {
       action: 'APPROVAL_CREATED',
       resource: item.resource,
@@ -124,6 +144,7 @@ export class AuditService {
         approval.id === id ? updated : approval
       )),
     );
+    this.persistence?.enqueueApproval(updated);
     this.record(
       tenantId,
       actor,
@@ -164,6 +185,7 @@ export class AuditService {
         approval.id === id ? updated : approval
       )),
     );
+    this.persistence?.enqueueApproval(updated);
     this.record(tenantId, actor, {
       action: 'APPROVAL_REVOKED',
       resource: item.resource,
