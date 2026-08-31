@@ -3,7 +3,9 @@
     <div class="operations__head"><strong>生产业务</strong><span>仅提交正式 MES API</span></div>
     <div class="operations__actions">
       <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'work-order'">新建工单</button>
-      <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'device'">新增设备</button>
+      <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="openDeviceCreate">新增设备</button>
+      <button type="button" :disabled="!apiEnabled || !selectedDevice" title="请选择设备并使用 API 模式" @click="openDeviceEdit">编辑设备</button>
+      <button type="button" :disabled="!apiEnabled || !selectedDevice" title="请选择设备并使用 API 模式" @click="removeDevice">删除设备</button>
       <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'maintenance'">新建维修</button>
       <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'document'">图纸登记</button>
       <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'quality'">质量记录</button>
@@ -69,8 +71,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { confirmDocumentAnalysis, confirmQualityRecord, createDevice, createMaintenance, createQualityRecord, createWorkOrder, documentContentUrl, listDocuments, listMaintenanceWorkOrders, listQualityRecords, rejectQualityRecord, saveDocumentAnalysisDraft, submitQualityRecord, simulateStrategy, updateDocumentStatus, updateMaintenanceStatus, uploadDocument } from '@/api/mesApi';
-import { toBackendLineId } from '@/api/identityMap';
+import { confirmDocumentAnalysis, confirmQualityRecord, createDevice, deleteDevice, createMaintenance, createQualityRecord, createWorkOrder, documentContentUrl, updateDevice, listDocuments, listMaintenanceWorkOrders, listQualityRecords, rejectQualityRecord, saveDocumentAnalysisDraft, submitQualityRecord, simulateStrategy, updateDocumentStatus, updateMaintenanceStatus, uploadDocument } from '@/api/mesApi';
+import { toBackendDeviceId, toBackendLineId } from '@/api/identityMap';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
 
 type Operation = 'work-order' | 'device' | 'maintenance' | 'document' | 'quality' | 'strategy';
@@ -90,10 +92,11 @@ const qualityRecords = ref<Array<Record<string, unknown> & { id: string }>>([]);
 const maintenanceOrders = ref<Array<Record<string, unknown> & { id: string }>>([]);
 const workOrder = ref({ orderNo: '', productCode: '', productName: '', plannedQty: 1, dueAt: '' });
 const device = ref({ code: '', name: '', model: '', protocol: 'simulator' as const });
+const editingDeviceId = ref<string | null>(null);
 const maintenance = ref({ type: 'repair' as const, title: '', plannedAt: '', description: '' });
 const quality = ref({ batchNo: '', result: 'pass', remark: '' });
 const strategy = ref({ comment: '' });
-const title = computed(() => ({ 'work-order': '新建生产工单', device: '新增设备', maintenance: '新建维修工单', document: '登记图纸', quality: '填报质量记录', strategy: '策略仿真评估' }[active.value ?? 'work-order']));
+const title = computed(() => ({ 'work-order': '新建生产工单', device: editingDeviceId.value ? '编辑设备' : '新增设备', maintenance: '新建维修工单', document: '登记图纸', quality: '填报质量记录', strategy: '策略仿真评估' }[active.value ?? 'work-order']));
 const selectedDeviceName = computed(() => props.selectedDevice?.name ?? '未选择设备');
 
 const loadRecords = async () => {
@@ -118,6 +121,10 @@ const confirmDocumentRecord = async (id: string) => { try { await updateDocument
 const transitionQuality = async (id: string, action: 'submit' | 'confirm' | 'reject') => { try { if (action === 'submit') await submitQualityRecord(id); if (action === 'confirm') await confirmQualityRecord(id); if (action === 'reject') await rejectQualityRecord(id); await loadRecords(); notice.value = `质量记录${action === 'reject' ? '已驳回' : action === 'confirm' ? '已确认' : '已提交'}`; } catch { error.value = '质量记录状态更新失败，请检查当前状态和权限'; } };
 const transitionMaintenance = async (id: string) => { try { await updateMaintenanceStatus(id, 'assigned'); await loadRecords(); notice.value = '维修工单已接单'; } catch { error.value = '维修工单状态更新失败，请检查当前状态和权限'; } };
 
+const openDeviceCreate = () => { editingDeviceId.value = null; device.value = { code: '', name: '', model: '', protocol: 'simulator' }; active.value = 'device'; };
+const openDeviceEdit = () => { if (!props.selectedDevice) return; editingDeviceId.value = props.selectedDevice.id; device.value = { code: props.selectedDevice.code ?? props.selectedDevice.id, name: props.selectedDevice.name, model: '', protocol: 'simulator' }; active.value = 'device'; };
+const removeDevice = async () => { if (!props.selectedDevice || !window.confirm(`确认删除设备“${props.selectedDevice.name}”？`)) return; try { await deleteDevice(toBackendDeviceId(props.selectedDevice.id)); await loadRecords(); emit('data-changed'); notice.value = '设备已删除'; } catch { error.value = '设备删除失败，请检查权限或接口状态'; } };
+
 const selectFile = (event: Event) => { selectedFile.value = (event.target as HTMLInputElement).files?.[0] ?? null; };
 const submit = async () => {
   if (!active.value || !props.apiEnabled) return;
@@ -126,7 +133,8 @@ const submit = async () => {
     if (active.value === 'work-order') {
       await createWorkOrder({ ...workOrder.value, lineId: toBackendLineId(props.selectedLine.id), dueAt: new Date(workOrder.value.dueAt).toISOString() });
     } else if (active.value === 'device') {
-      await createDevice({ ...device.value, lineId: toBackendLineId(props.selectedLine.id) });
+      if (editingDeviceId.value) await updateDevice(toBackendDeviceId(editingDeviceId.value), { ...device.value, lineId: toBackendLineId(props.selectedLine.id) });
+      else await createDevice({ ...device.value, lineId: toBackendLineId(props.selectedLine.id) });
     } else if (active.value === 'maintenance') {
       if (!props.selectedDevice) throw new Error('请先选择设备');
       await createMaintenance({ ...maintenance.value, lineId: toBackendLineId(props.selectedLine.id), deviceId: props.selectedDevice.id, plannedAt: new Date(maintenance.value.plannedAt).toISOString() });

@@ -4,11 +4,13 @@ import { StrategiesController } from './strategies.controller';
 import { StrategyGovernanceService } from './strategy-governance.service';
 import { StrategyAuthorizationService } from './strategy-authorization.service';
 import { StrategyEngineService } from './strategy-engine.service';
+import { StrategyPersistenceService } from './strategy-persistence.service';
+import { DatabaseModule } from '../database/database.module';
 
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, DatabaseModule],
   controllers: [StrategiesController],
-  providers: [StrategyEngineService, StrategyGovernanceService, StrategyAuthorizationService],
+  providers: [StrategyEngineService, StrategyGovernanceService, StrategyAuthorizationService, StrategyPersistenceService],
   exports: [StrategyEngineService, StrategyGovernanceService, StrategyAuthorizationService],
 })
 export class StrategiesModule {}

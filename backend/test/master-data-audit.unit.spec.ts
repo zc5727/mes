@@ -20,6 +20,13 @@ describe('business foundation APIs', () => {
     expect(service.listApprovals('tenant-b')).toHaveLength(0);
   });
 
+  it('does not allow a decided approval to transition again', () => {
+    const service = new AuditService();
+    const approval = service.createApproval('tenant-a', { resource: 'strategy-candidate', resourceId: 'candidate-1' });
+    service.decide('tenant-a', approval.id, 'approved');
+    expect(() => service.decide('tenant-a', approval.id, 'rejected')).toThrow(/already approved/);
+  });
+
   it('supports tenant-scoped production calendars', () => {
     const service = new MasterDataService();
     const calendar = service.create('tenant-a', 'calendar', {

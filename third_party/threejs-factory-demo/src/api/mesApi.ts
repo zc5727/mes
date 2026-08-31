@@ -201,6 +201,8 @@ export interface CreateDeviceInput {
 export function createDevice(input: CreateDeviceInput) {
   return post<Record<string, unknown>>('/devices', input);
 }
+export function updateDevice(id: string, input: Partial<CreateDeviceInput>) { return request<Record<string, unknown>>(`/devices/${encodeURIComponent(id)}`, 'PATCH', input); }
+export function deleteDevice(id: string) { return request<Record<string, unknown>>(`/devices/${encodeURIComponent(id)}`, 'DELETE'); }
 
 export function createDocument(data: Record<string, unknown>) {
   return post<Record<string, unknown>>('/foundation/documents', { data });
@@ -361,6 +363,7 @@ function toDevice(device: ApiDevice): DeviceTelemetry {
   const status = toStatus(device.status);
   return {
     id: mapDeviceId(device.id),
+    code: device.code,
     name: device.name,
     lineId,
     zone: lineNameMap[device.lineId] ?? lineId,

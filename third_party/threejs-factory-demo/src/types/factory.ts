@@ -42,6 +42,7 @@ export interface AGVTelemetry {
 
 export interface DeviceTelemetry {
   id: string;
+  code?: string;
   name: string;
   lineId: string;
   zone: string;

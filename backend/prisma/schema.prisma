@@ -410,6 +410,7 @@ model StrategyRun {
   generatedAt  DateTime @map("generated_at")
   snapshot     Json
   risks        Json
+  governance   Json?
   createdAt    DateTime @default(now()) @map("created_at")
 
   tenant     Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)

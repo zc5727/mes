@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { Approval, AuditService } from '../audit/audit.service';
 import {
@@ -8,6 +8,7 @@ import {
   StrategySimulationResult,
   StrategyRollbackState,
 } from './strategy.types';
+import { StrategyPersistenceService } from './strategy-persistence.service';
 
 export interface StrategyCallRecord {
   callId: string;
@@ -45,11 +46,22 @@ export interface TrackedStrategySimulation {
 }
 
 @Injectable()
-export class StrategyGovernanceService {
+export class StrategyGovernanceService implements OnModuleInit {
   private readonly simulations = new Map<string, TrackedStrategySimulation>();
   private readonly idempotency = new Map<string, { fingerprint: string; response: { data: StrategySimulationResult; audit: StrategyCallRecord } }>();
 
-  constructor(private readonly auditService: AuditService) {}
+  constructor(
+    private readonly auditService: AuditService,
+    @Optional() private readonly persistence?: StrategyPersistenceService,
+  ) {}
+
+  async onModuleInit(): Promise<void> {
+    const runs = await this.persistence?.restore() ?? [];
+    runs.forEach((run) => this.simulations.set(this.key(run.tenantId, run.result.simulationId), {
+      result: run.result,
+      audit: run.audit,
+    }));
+  }
 
   recordSimulation(
     tenantId: string,
@@ -118,6 +130,7 @@ export class StrategyGovernanceService {
       rollback: { supported: true, action: 'discard_simulation', status: 'available', executionAllowed: false },
     };
     this.simulations.set(this.key(tenantId, result.simulationId), { result, audit: record });
+    void this.persistence?.save(tenantId, result, record, this.auditService.listApprovals(tenantId));
     return record;
   }
 

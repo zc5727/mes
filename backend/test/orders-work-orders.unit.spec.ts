@@ -134,8 +134,27 @@ describe('production execution flow', () => {
     workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'in_progress' });
     const result = workOrders.report('tenant-demo', workOrder.id, { quantity: 2, batchNo: 'B-001', serialNumbers: ['S-001', 'S-002'], operationCode: 'OP-10', deviceId: 'device-cnc-01', qualityRecordId: 'quality-001', materialConsumptions: [{ materialCode: 'RAW-01', batchNo: 'RAW-B-001', quantity: 2, unit: '件' }] });
     expect(result.report).toEqual(expect.objectContaining({ batchNo: 'B-001', serialNumbers: ['S-001', 'S-002'] }));
-    expect(workOrders.executionSummary('tenant-demo', workOrder.id)).toEqual(expect.objectContaining({ operations: ['OP-10'], devices: ['device-cnc-01'], qualityRecordIds: ['quality-001'], finishedBatches: ['B-001'], materialConsumptions: [{ materialCode: 'RAW-01', batchNo: 'RAW-B-001', quantity: 2 }] }));
+    expect(workOrders.executionSummary('tenant-demo', workOrder.id)).toEqual(expect.objectContaining({
+      operations: ['OP-10'], devices: ['device-cnc-01'], qualityRecordIds: ['quality-001'], finishedBatches: ['B-001'],
+      materialConsumptions: [{ materialCode: 'RAW-01', batchNo: 'RAW-B-001', quantity: 2 }],
+      operationEvents: [expect.objectContaining({ operationCode: 'OP-10', deviceId: 'device-cnc-01', batchNo: 'B-001' })],
+      finishedProducts: [{ batchNo: 'B-001', serialNumbers: ['S-001', 'S-002'], quantity: 2, goodQty: 2, defectQty: 0 }],
+    }));
     expect(() => workOrders.update('tenant-demo', workOrder.id, { productName: '不应修改' })).toThrow(ConflictException);
+  });
+
+  it('requires complete trace associations on the P0 traceability report API', () => {
+    const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService());
+    const workOrder = workOrders.create('tenant-demo', {
+      orderNo: 'WO-STRICT-TRACE', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1,
+      dueAt: '2026-08-31T18:00:00.000Z',
+    });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'in_progress' });
+    expect(() => workOrders.reportTrace('tenant-demo', workOrder.id, { quantity: 1 })).toThrow(ConflictException);
+    expect(workOrders.reportTrace('tenant-demo', workOrder.id, {
+      quantity: 1, batchNo: 'FG-001', operationCode: 'OP-10', deviceId: 'device-cnc-01',
+    }).report.batchNo).toBe('FG-001');
   });
 
   it('binds a work order to existing BOM and routing records', () => {

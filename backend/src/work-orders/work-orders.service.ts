@@ -50,6 +50,25 @@ export interface WorkOrderReport {
   reportedAt: string;
 }
 
+export interface OperationEventTrace {
+  reportId: string;
+  operationCode: string;
+  deviceId: string;
+  batchNo: string;
+  quantity: number;
+  goodQty: number;
+  defectQty: number;
+  reportedAt: string;
+}
+
+export interface FinishedProductTrace {
+  batchNo: string;
+  serialNumbers: string[];
+  quantity: number;
+  goodQty: number;
+  defectQty: number;
+}
+
 const allowedTransitions: Record<WorkOrderStatus, WorkOrderStatus[]> = {
   draft: ['released', 'cancelled'],
   released: ['in_progress', 'cancelled'],
@@ -80,8 +99,13 @@ export class WorkOrdersService implements OnModuleInit {
     }
     if (snapshot?.reports.length) {
       this.reports.push(...snapshot.reports.map((item) => ({
-        ...item, batchNo: null, serialNumbers: [], operationCode: null,
-        operatorId: null, qualityRecordId: null, materialConsumptions: [],
+        ...item,
+        batchNo: item.batchNo ?? null,
+        serialNumbers: item.serialNumbers ?? [],
+        operationCode: item.operationCode ?? null,
+        operatorId: item.operatorId ?? null,
+        qualityRecordId: item.qualityRecordId ?? null,
+        materialConsumptions: item.materialConsumptions ?? [],
       })));
     }
   }
@@ -265,6 +289,14 @@ export class WorkOrdersService implements OnModuleInit {
     return { workOrder, report };
   }
 
+  /** Records a fully traceable production event without changing the legacy report contract. */
+  reportTrace(tenantId: string, id: string, dto: ReportWorkOrderDto): { workOrder: WorkOrder; report: WorkOrderReport } {
+    if (!dto.batchNo?.trim() || !dto.operationCode?.trim() || !dto.deviceId?.trim()) {
+      throw new ConflictException('Traceable report requires batchNo, operationCode and deviceId');
+    }
+    return this.report(tenantId, id, dto);
+  }
+
   executionSummary(tenantId: string, id: string) {
     const workOrder = this.findOne(tenantId, id);
     const reports = this.findReports(tenantId, id);
@@ -276,6 +308,23 @@ export class WorkOrdersService implements OnModuleInit {
     });
     const deviceIds = [...new Set(reports.map((report) => report.deviceId).filter((value): value is string => Boolean(value)))];
     const qualityRecordIds = [...new Set(reports.map((report) => report.qualityRecordId).filter((value): value is string => Boolean(value)))];
+    const operationEvents: OperationEventTrace[] = reports
+      .filter((report): report is WorkOrderReport & { operationCode: string; deviceId: string; batchNo: string } => Boolean(report.operationCode && report.deviceId && report.batchNo))
+      .map((report) => ({
+        reportId: report.id, operationCode: report.operationCode, deviceId: report.deviceId,
+        batchNo: report.batchNo, quantity: report.quantity, goodQty: report.goodQty,
+        defectQty: report.defectQty, reportedAt: report.reportedAt,
+      }));
+    const finishedProducts: FinishedProductTrace[] = [...new Set(reports.map((report) => report.batchNo).filter((value): value is string => Boolean(value)))].map((batchNo) => {
+      const batchReports = reports.filter((report) => report.batchNo === batchNo);
+      return {
+        batchNo,
+        serialNumbers: [...new Set(batchReports.flatMap((report) => report.serialNumbers))],
+        quantity: batchReports.reduce((total, report) => total + report.quantity, 0),
+        goodQty: batchReports.reduce((total, report) => total + report.goodQty, 0),
+        defectQty: batchReports.reduce((total, report) => total + report.defectQty, 0),
+      };
+    });
     return {
       workOrderId: workOrder.id,
       operations: [...new Set(reports.map((report) => report.operationCode).filter((value): value is string => Boolean(value)))],
@@ -284,6 +333,8 @@ export class WorkOrdersService implements OnModuleInit {
       finishedBatches: [...new Set(reports.map((report) => report.batchNo).filter((value): value is string => Boolean(value)))],
       serialNumbers: [...new Set(reports.flatMap((report) => report.serialNumbers))],
       materialConsumptions: [...materialTotals.values()],
+      operationEvents,
+      finishedProducts,
       reports: reports.length,
     };
   }
