@@ -153,7 +153,7 @@ describe('quality, maintenance and traceability contracts (e2e)', () => {
     await request(app.getHttpServer()).post(`/api/v1/foundation/quality-records/${qualityId}/confirm`).set(headers).send({ actorId: 'manager-atomic' }).expect(201);
 
     await request(app.getHttpServer()).post(`/api/v1/work-orders/${workOrderId}/complete-report`).set(headers).send({
-      quantity: 1, qualityRecordId: qualityId, sourceTraceId: 'atomic-e2e-001',
+      quantity: 1, batchNo: 'FG-ATOMIC-E2E', qualityRecordId: qualityId, sourceTraceId: 'atomic-e2e-001',
       materialConsumptions: [{ materialCode: 'RAW-ATOMIC-E2E', batchNo: 'B-ATOMIC-E2E', quantity: 1 }],
     }).expect(201).expect(({ body }) => expect(body.data.workOrder).toEqual(expect.objectContaining({ status: 'completed', completedQty: 1 })));
     expect((await request(app.getHttpServer()).get('/api/v1/master-data/batches').set(headers)).body.data.find((item: { batchNo: string }) => item.batchNo === batch.body.data.batchNo).quantity).toBe(0);

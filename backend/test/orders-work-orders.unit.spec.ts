@@ -269,7 +269,7 @@ describe('production execution flow', () => {
     workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'in_progress' });
 
     const result = await workOrders.completeReport('tenant-demo', workOrder.id, {
-      quantity: 1, qualityRecordId: 'quality-complete', sourceTraceId: 'complete-report-001',
+      quantity: 1, batchNo: 'FG-COMPLETE', qualityRecordId: 'quality-complete', sourceTraceId: 'complete-report-001',
       materialConsumptions: [{ materialCode: 'RAW-COMPLETE', batchNo: 'B-COMPLETE', quantity: 1 }],
     });
 
@@ -288,7 +288,7 @@ describe('production execution flow', () => {
     workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'in_progress' });
 
     await expect(workOrders.completeReport('tenant-demo', workOrder.id, {
-      quantity: 1, qualityRecordId: 'quality-rejected', sourceTraceId: 'complete-report-002',
+      quantity: 1, batchNo: 'FG-REJECT', qualityRecordId: 'quality-rejected', sourceTraceId: 'complete-report-002',
       materialConsumptions: [{ materialCode: 'RAW-REJECT', batchNo: 'B-REJECT', quantity: 1 }],
     })).rejects.toThrow(ConflictException);
     expect(masterData.listBatches('tenant-demo')[0].quantity).toBe(1);

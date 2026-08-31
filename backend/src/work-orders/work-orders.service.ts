@@ -375,6 +375,13 @@ export class WorkOrdersService implements OnModuleInit {
     if (!dto.materialConsumptions?.length) {
       throw new ConflictException('complete-report requires material consumptions');
     }
+    const finishedBatchNo = dto.batchNo?.trim();
+    if (!finishedBatchNo) throw new ConflictException('complete-report requires a finished-product batchNo');
+    const qualityLookup = this.qualityService as unknown as { findOne?: (tenantId: string, id: string) => { batchNo: string } } | undefined;
+    const qualityRecord = qualityLookup?.findOne?.(tenantId, dto.qualityRecordId.trim());
+    if (qualityRecord && qualityRecord.batchNo !== finishedBatchNo) {
+      throw new ConflictException('Quality record batchNo must match finished-product batchNo');
+    }
     const current = this.findOne(tenantId, id);
     if (current.completedQty + dto.quantity !== current.plannedQty) {
       throw new ConflictException('complete-report must report the remaining planned quantity');
