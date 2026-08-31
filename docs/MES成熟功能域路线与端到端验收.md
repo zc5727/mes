@@ -5,7 +5,7 @@
 **更新日期：** 2026-08-31
 **产品形态：** 单工厂、单车间、四条产线试点；生产业务底座采用 ERPNext，设备接入采用 ThingsBoard/Gateway，NestJS 负责集成与治理，数字孪生前端保持不变。
 
-**状态基线：** 以下状态按提交 `a195c69f` 核对。代码、单元测试或隔离 E2E 通过只代表对应能力已具备验证证据，不代表现场生产验收完成；现场表中的“未验证”不得改写为“完成”。
+**状态基线：** 以下状态按提交 `768d7be6` 核对。代码、单元测试或隔离 E2E 通过只代表对应能力已具备验证证据，不代表现场生产验收完成；现场表中的“未验证”不得改写为“完成”。
 
 **判定口径：** “已实现”必须有代码和测试/运行输出；“模拟实现”只表示本地适配器、固定数据或隔离环境可用；“待现场接入”必须完成真实依赖、人工操作或恢复演练后才能关闭。
 
@@ -21,7 +21,7 @@
 | 维修维护 | 基础接口 | 维修对象和基础状态流转 | 告警关联、计划保养、点检闭环 | 备件扣减、维修持久化、MTBF/MTTR 生产统计 |
 | 告警与 Andon | 基础完成 | alarm.created/cleared、故障闭环 | ThingsBoard 告警映射 | 升级规则、通知、原因库、停机损失统计 |
 | 质量管理 | 演示完成 | 图纸元数据、版本、分析草稿、质量记录接口 | 与 ERPNext 质量对象映射 | IQC/IPQC/OQC、NCR/CAPA、放行、抽检规则 |
-| 库存与物料 | 未开始 | 无独立库存业务域 | ERPNext 物料/库存映射、短缺事件和对账 | 领退料、预留、批次库存、盘点、替代料 |
+| 库存与物料 | 基础/隔离完成 | 库存持久化边界、批次物料校验 | ERPNext 物料/库存映射、短缺事件和对账 | 领退料、预留、批次库存、盘点、替代料现场闭环 |
 | 追溯 | 未完成 | 工单与设备关联字段 | 设计统一 traceId 与事件链 | 批次、序列号、原料→工序→成品完整追溯 |
 | OEE 与看板 | 基础/隔离完成 | 四线状态、指标、数字孪生交互、实时快照服务边界 | ERPNext/ThingsBoard 统一读模型和 WebSocket/轮询切换 | 真实运行时推送、历史趋势、班次口径、停机原因和报表导出 |
 | 策略仿真 | 演示完成 | 五类策略、候选、评分、影响评估 | 与 ERPNext 工单快照对接 | 生产数据回放、策略版本管理、审批后执行 |
@@ -32,6 +32,16 @@
 | 安全与审计 | 演示完成 | 角色、范围、审批和审计字段 | 正式身份、API 拒绝测试、MQTT ACL | SSO、TLS、密钥托管、限流、不可篡改审计 |
 | 升级与回滚 | 未完成 | 文档化切换开关和回退原则 | 影子升级、产线灰度、备份恢复演练 | 数据库补偿迁移、自动化回滚、发布签名 |
 | 桌面发布 | 工程完成 | Tauri wrapper、单实例、readiness、清理脚本 | app/dmg 运行验收 | 签名、公证、升级、回滚、跨平台发布 |
+
+### 1.2 证据索引
+
+| 能力 | 代码路径 | 测试命令 | 运行/现场证据 | 状态 |
+|---|---|---|---|---|
+| 核心持久化/库存 | `backend/src/database/*persistence.service.ts`、`backend/prisma/migrations/` | `npm --prefix backend test -- --runInBand inventory-persistence.unit.spec.ts foundation-persistence.unit.spec.ts` | `npm --prefix backend run verify:db-runtime`；真实 PostgreSQL 重启记录 | 代码/测试有证据；现场未验 |
+| 质量/维修/追溯 | `backend/src/quality`、`backend/src/maintenance`、`backend/src/work-orders` | `npm --prefix backend test -- --runInBand quality-maintenance.unit.spec.ts orders-work-orders.unit.spec.ts` | 质量放行、维修验证、双向追溯现场记录 | 代码/测试部分有证据；现场未验 |
+| 实时接入/孪生 | `backend/src/digital-twin`、`backend/src/integrations/sidecar`、`backend/src/mqtt` | `node scripts/websocket-smoke.mjs`；相应 backend realtime/sidecar 单测 | ThingsBoard/Gateway telemetry、断线重连和浏览器 I02-I12 记录 | 隔离有证据；真实接入未验 |
+| 策略/权限/审计 | `backend/src/strategies`、`backend/src/agent-api`、`backend/src/audit` | `npm --prefix backend test -- --runInBand strategy-authorization.unit.spec.ts strategy-governance.unit.spec.ts master-data-audit.unit.spec.ts` | 正式身份、越权拒绝、审批落库和审计查询 | 代码/测试有证据；生产身份未验 |
+| 桌面发布 | `desktop/src-tauri`、`scripts/desktop-runtime.sh`、`scripts/verify-desktop-release.sh` | `node scripts/desktop-smoke.mjs --app-dir=desktop`；`bash -n scripts/desktop*.sh` | `.app/.dmg` 双击、签名、公证、窗口/三维交互和回滚记录 | 结构有证据；现场未验 |
 
 ## 2. 角色与菜单
 
@@ -284,7 +294,7 @@ SaaS 多租户商业化、Nanobot 原生集成、真实 PLC 自动控制、自�
 
 ### 9.1 当前状态
 
-当前后端未形成独立库存业务域；库存、仓库、批次库存、领料、退料和盘点不应伪装成已实现。后续由 ERPNext 主责库存与物料业务，NestJS 只负责集成、事件、权限和面向看板的读模型。
+当前后端已有库存持久化和批次校验边界，但尚未形成完整独立库存业务域；库存、仓库、领料、退料和盘点仍不应伪装成已实现。后续由 ERPNext 主责库存与物料业务，NestJS 只负责集成、事件、权限和面向看板的读模型。
 
 ### 9.2 目标范围
 

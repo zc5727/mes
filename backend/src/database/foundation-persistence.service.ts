@@ -51,8 +51,8 @@ export class FoundationPersistenceService {
   async saveMaintenance(item: MaintenanceWorkOrder): Promise<void> {
     await this.write('maintenance work order', () => this.prisma.maintenanceWorkOrder.upsert({
       where: { id: item.id },
-      create: { id: item.id, tenantId: item.tenantId, lineId: item.lineId, deviceId: item.deviceId, alarmId: item.alarmId, type: item.type, title: item.title, description: item.description, status: item.status, plannedAt: new Date(item.plannedAt), completedAt: item.completedAt ? new Date(item.completedAt) : null, createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) },
-      update: { lineId: item.lineId, deviceId: item.deviceId, alarmId: item.alarmId, type: item.type, title: item.title, description: item.description, status: item.status, plannedAt: new Date(item.plannedAt), completedAt: item.completedAt ? new Date(item.completedAt) : null, updatedAt: new Date(item.updatedAt) },
+      create: { id: item.id, tenantId: item.tenantId, lineId: item.lineId, deviceId: item.deviceId, alarmId: item.alarmId, inspectionRequired: item.inspectionRequired, inspectionStatus: item.inspectionStatus, type: item.type, title: item.title, description: item.description, status: item.status, plannedAt: new Date(item.plannedAt), completedAt: item.completedAt ? new Date(item.completedAt) : null, createdAt: new Date(item.createdAt), updatedAt: new Date(item.updatedAt) },
+      update: { lineId: item.lineId, deviceId: item.deviceId, alarmId: item.alarmId, inspectionRequired: item.inspectionRequired, inspectionStatus: item.inspectionStatus, type: item.type, title: item.title, description: item.description, status: item.status, plannedAt: new Date(item.plannedAt), completedAt: item.completedAt ? new Date(item.completedAt) : null, updatedAt: new Date(item.updatedAt) },
     }));
   }
 
@@ -89,7 +89,7 @@ export class FoundationPersistenceService {
     return { ...item, workOrderId: item.workOrderId ?? null, deviceId: item.deviceId ?? null, createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() };
   }
   private maintenance(item: any): MaintenanceWorkOrder {
-    return { ...item, completedAt: item.completedAt?.toISOString() ?? null, plannedAt: item.plannedAt.toISOString(), createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() };
+    return { ...item, alarmId: item.alarmId ?? null, inspectionRequired: item.inspectionRequired ?? false, inspectionStatus: item.inspectionStatus ?? 'pending', completedAt: item.completedAt?.toISOString() ?? null, plannedAt: item.plannedAt.toISOString(), createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() };
   }
   private document(item: any): DocumentRecord {
     return { ...item, supersedesId: item.supersedesId ?? null, lineId: item.lineId ?? null, workOrderId: item.workOrderId ?? null, productCode: item.productCode ?? null, analysisConfirmedBy: item.analysisConfirmedBy ?? null, analysisConfirmedAt: item.analysisConfirmedAt?.toISOString() ?? null, securityScanStatus: item.securityScanStatus ?? 'not_scanned', securityScanProvider: item.securityScanProvider ?? 'none', securityScanMessage: item.securityScanMessage ?? null, securityScannedAt: item.securityScannedAt?.toISOString() ?? null, uploadedAt: item.uploadedAt.toISOString(), createdAt: item.createdAt.toISOString(), updatedAt: item.updatedAt.toISOString() };

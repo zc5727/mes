@@ -4,7 +4,7 @@ import { createId, timestamp } from '../common/mock.types';
 import { DevicesService } from '../devices/devices.service';
 import { ProductionLinesService } from '../production-lines/production-lines.service';
 import { BadRequestException } from '@nestjs/common';
-import { CreateMaintenanceDto, CreatePreventivePlanDto, CreateSparePartDto, ConsumeSparePartDto, UpdateMaintenanceStatusDto } from './dto/maintenance.dto';
+import { CreateMaintenanceDto, CreatePreventivePlanDto, CreateSparePartDto, ConsumeSparePartDto, MaintenanceInspectionDto, UpdateMaintenanceStatusDto } from './dto/maintenance.dto';
 import { MaintenanceStatus, MaintenanceWorkOrder, PreventivePlan, SparePart } from './maintenance.types';
 import { AlarmsService } from '../alarms/alarms.service';
 import { AuditService } from '../audit/audit.service';
@@ -51,7 +51,7 @@ export class MaintenanceService implements OnModuleInit {
       if (alarm.lineId !== dto.lineId || alarm.sourceId !== dto.deviceId) throw new ConflictException('Maintenance alarm must belong to device and line');
     }
     const now = timestamp();
-    const item: MaintenanceWorkOrder = { id: createId('maintenance'), tenantId, lineId: dto.lineId, deviceId: dto.deviceId, alarmId: dto.alarmId?.trim() || null, type: dto.type, title: dto.title, description: dto.description ?? '', status: 'draft', plannedAt: dto.plannedAt, completedAt: null, createdAt: now, updatedAt: now };
+    const item: MaintenanceWorkOrder = { id: createId('maintenance'), tenantId, lineId: dto.lineId, deviceId: dto.deviceId, alarmId: dto.alarmId?.trim() || null, inspectionRequired: dto.inspectionRequired ?? Boolean(dto.alarmId), inspectionStatus: 'pending', type: dto.type, title: dto.title, description: dto.description ?? '', status: 'draft', plannedAt: dto.plannedAt, completedAt: null, createdAt: now, updatedAt: now };
     this.orders.set(item.id, item);
     void this.persistence?.saveMaintenance(item);
     return item;
@@ -61,9 +61,20 @@ export class MaintenanceService implements OnModuleInit {
     const current = this.findOne(tenantId, id);
     if (!transitions[current.status].includes(dto.status)) throw new ConflictException(`Cannot change maintenance order from ${current.status} to ${dto.status}`);
     if ((dto.status === 'cancelled' || dto.status === 'completed') && !dto.reason?.trim()) throw new ConflictException('A reason is required for maintenance completion or cancellation');
+    if (dto.status === 'completed' && current.inspectionRequired && current.inspectionStatus !== 'passed') throw new ConflictException('A passed point inspection is required before maintenance completion');
     const updated = { ...current, status: dto.status, completedAt: dto.status === 'completed' ? timestamp() : current.completedAt, updatedAt: timestamp() };
     this.orders.set(id, updated);
     this.audit?.record(tenantId, 'system', { action: `maintenance.${dto.status}`, resource: 'maintenance_work_order', resourceId: id, details: { from: current.status, to: dto.status, reason: dto.reason ?? '', alarmId: current.alarmId } });
+    void this.persistence?.saveMaintenance(updated);
+    return updated;
+  }
+
+  recordInspection(tenantId: string, id: string, dto: MaintenanceInspectionDto): MaintenanceWorkOrder {
+    const current = this.findOne(tenantId, id);
+    if (current.status !== 'in_progress') throw new ConflictException('Point inspection requires an in-progress maintenance order');
+    const updated = { ...current, inspectionStatus: dto.result, updatedAt: timestamp() };
+    this.orders.set(id, updated);
+    this.audit?.record(tenantId, 'system', { action: `maintenance.point_inspection.${dto.result}`, resource: 'maintenance_work_order', resourceId: id, details: { remark: dto.remark, alarmId: current.alarmId } });
     void this.persistence?.saveMaintenance(updated);
     return updated;
   }

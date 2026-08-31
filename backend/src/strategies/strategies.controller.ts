@@ -142,6 +142,17 @@ export class StrategiesController {
     return { data: this.governance?.listCalls(tenantId) ?? [], tenantId };
   }
 
+  @Get('history')
+  history(
+    @TenantId() tenantId: string,
+    @Headers('x-user-id') userId?: string, @Headers('x-role') role?: string, @Headers('x-factory-id') factoryId?: string,
+    @Headers('x-scope') scope?: string, @Headers('x-session-id') sessionId?: string, @Headers('x-trace-id') traceId?: string,
+  ) {
+    const context = this.requestContext(userId, role, factoryId, scope, sessionId, traceId);
+    this.authorization.assertCanRead(context);
+    return { data: this.governance?.listCallsForContext(tenantId, context) ?? [], tenantId };
+  }
+
   @Get('simulations/:simulationId/approvals')
   listSimulationApprovals(
     @TenantId() tenantId: string,

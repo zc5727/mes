@@ -318,6 +318,8 @@ model MaintenanceWorkOrder {
   lineId      String   @map("line_id") @db.VarChar(40)
   deviceId    String   @map("device_id") @db.VarChar(40)
   alarmId     String?  @map("alarm_id") @db.VarChar(80)
+  inspectionRequired Boolean @default(false) @map("inspection_required")
+  inspectionStatus String @default("pending") @map("inspection_status") @db.VarChar(20)
   type        String   @db.VarChar(30)
   title       String   @db.VarChar(120)
   description String   @default("") @db.VarChar(500)

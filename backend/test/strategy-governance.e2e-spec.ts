@@ -54,5 +54,16 @@ describe('strategy governance boundary (e2e)', () => {
       .set(identity('supervisor', 'LINE-01,LINE-02')).expect(200);
     expect(executed.body.data.audit.lifecycleStatus).toBe('simulated_execution');
     expect(executed.body.data.result.executionAllowed).toBe(false);
+
+    const replay = await request(server).post(`/api/v1/strategies/simulations/${simulationId}/replay`)
+      .set(identity('supervisor', 'LINE-01,LINE-02')).expect(200);
+    expect(replay.body.data).toEqual(expect.objectContaining({
+      sourceSimulationId: simulationId, strategyVersion: 'rules-v1', deterministic: true,
+    }));
+    const history = await request(server).get('/api/v1/strategies/history')
+      .set(identity('supervisor', 'LINE-01,LINE-02')).expect(200);
+    expect(history.body.data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ simulationId, lifecycleStatus: 'simulated_execution' }),
+    ]));
   });
 });

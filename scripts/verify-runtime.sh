@@ -64,7 +64,7 @@ if [[ -z "${MES_API_KEY:-}" && -f "$ROOT_DIR/backend/.env" ]]; then
 fi
 export MES_API_KEY
 
-DATABASE_ENABLED=true MQTT_ENABLED=true "$ROOT_DIR/scripts/dev-up.sh" --mqtt
+DATABASE_ENABLED=true DATABASE_REQUIRED=true MQTT_ENABLED=true "$ROOT_DIR/scripts/dev-up.sh" --mqtt
 
 readiness="$(curl -fsS http://localhost:3000/api/v1/health/readiness)"
 echo "$readiness" | grep -q '"enabled":true' || { echo "FAIL: 后端未启用真实数据库：$readiness" >&2; exit 1; }
@@ -98,7 +98,7 @@ for _ in $(seq 1 30); do
   if ! kill -0 "$backend_pid" 2>/dev/null; then break; fi
   sleep 1
 done
-DATABASE_ENABLED=true MQTT_ENABLED=true "$ROOT_DIR/scripts/dev-up.sh" --mqtt --no-frontend
+DATABASE_ENABLED=true DATABASE_REQUIRED=true MQTT_ENABLED=true "$ROOT_DIR/scripts/dev-up.sh" --mqtt --no-frontend
 readiness="$(curl -fsS http://localhost:3000/api/v1/health/readiness)"
 echo "$readiness" | grep -q '"enabled":true' || { echo "FAIL: 数据库未以 enabled=true 运行：$readiness" >&2; exit 1; }
 echo "$readiness" | grep -q '"status":"ready"' || { echo "FAIL: 后端重启后数据库未 ready：$readiness" >&2; exit 1; }

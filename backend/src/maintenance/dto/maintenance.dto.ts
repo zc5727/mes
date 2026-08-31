@@ -7,7 +7,13 @@ export class CreateMaintenanceDto {
   @IsIn(['inspection', 'preventive', 'repair']) type!: 'inspection' | 'preventive' | 'repair';
   @IsString() @MinLength(2) @MaxLength(120) title!: string;
   @IsOptional() @IsString() @MaxLength(500) description?: string;
+  @IsOptional() inspectionRequired?: boolean;
   @IsDateString() plannedAt!: string;
+}
+
+export class MaintenanceInspectionDto {
+  @IsIn(['passed', 'failed']) result!: 'passed' | 'failed';
+  @IsString() @MinLength(2) @MaxLength(200) remark!: string;
 }
 
 export class UpdateMaintenanceStatusDto {

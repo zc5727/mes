@@ -1,7 +1,7 @@
 # MES GitHub 交付说明
 
 **仓库：** `https://github.com/zc5727/mes`
-**当前基线：** `a195c69f`
+**当前基线：** `768d7be6`
 **负责人：** 赵丞
 
 ## 1. 交付内容
@@ -28,7 +28,7 @@ GitHub 提交存在、构建通过或单测通过，只能证明代码级能力�
 ```bash
 git clone https://github.com/zc5727/mes.git
 cd mes
-git checkout a195c69f
+git checkout 768d7be6
 ./scripts/verify-local.sh
 ```
 

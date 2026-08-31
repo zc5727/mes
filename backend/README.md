@@ -127,6 +127,18 @@ DATABASE_ENABLED=true DATABASE_REQUIRED=true npm run start:dev
 
 `DATABASE_REQUIRED=true` 会在数据库不可用或核心表未迁移时阻止启动，避免误把生产运行当成内存模式。
 
+生产运行时也可以由统一编排脚本执行初始化、readiness 和清理：
+
+```bash
+cd ..
+scripts/mes-runtime.sh start
+scripts/mes-runtime.sh ready
+scripts/mes-runtime.sh stop
+```
+
+默认只启动 PostgreSQL 和 Mosquitto；需要 MinIO/S3-compatible 对象存储时使用
+`scripts/mes-runtime.sh start --object-storage`。基础设施不可用、迁移失败或 readiness 不通过时脚本返回非零状态，不会继续伪装成可运行环境。
+
 ## 下一步开发顺序
 
 1. 租户、用户和权限

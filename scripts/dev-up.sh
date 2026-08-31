@@ -18,6 +18,7 @@ done
 MQTT_URL="${MQTT_URL:-mqtt://localhost:1883}"
 TENANT_ID="${MES_TENANT_ID:-tenant-demo}"
 DATABASE_ENABLED_VALUE="${DATABASE_ENABLED:-false}"
+DATABASE_REQUIRED_VALUE="${DATABASE_REQUIRED:-false}"
 STARTED_PID_FILES=()
 
 cleanup_on_failure() {
@@ -64,7 +65,9 @@ start_container_fallback() {
 }
 start_infra() {
   if docker compose version >/dev/null 2>&1 || command -v docker-compose >/dev/null 2>&1; then
-    if ! docker_compose up -d; then
+    local compose_args=(--profile infra up -d postgres mqtt)
+    [[ "${MES_OBJECT_STORAGE:-false}" == true ]] && compose_args=(--profile infra --profile object-storage up -d postgres mqtt minio)
+    if ! docker_compose "${compose_args[@]}"; then
       echo "Docker Compose 启动基础设施失败，请检查 docker compose 日志" >&2
       return 1
     fi
@@ -74,10 +77,8 @@ start_infra() {
   echo "Docker Compose 不可用，使用 Docker Engine 启动本地依赖" >&2
   start_container_fallback mes-postgres postgres:16-alpine '-p 5432:5432'
   start_container_fallback mes-mqtt eclipse-mosquitto:2 '-p 1883:1883 -p 9001:9001'
-  # MinIO is optional for the current metadata-only demo. A registry/network
-  # failure must not prevent the backend, simulator and MQTT from starting.
-  if ! start_container_fallback mes-minio minio/minio:latest '-p 9000:9000 -p 9002:9001' 'server /data --console-address :9001'; then
-    echo "可选基础设施 MinIO 启动失败，继续启动 MES（当前版本不依赖对象存储）" >&2
+  if [[ "${MES_OBJECT_STORAGE:-false}" == true ]]; then
+    start_container_fallback mes-minio minio/minio:latest '-p 9000:9000 -p 9002:9001' 'server /data --console-address :9001'
   fi
 }
 wait_for_tcp() {
@@ -123,10 +124,10 @@ start_service() {
   STARTED_PID_FILES+=("$pid_file")
   echo "$name 已启动，PID=$(cat "$pid_file")，日志：$LOG_DIR/${name}.log"
 }
-backend_command="DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' npm run build && DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' npm run start:prod"
+backend_command="DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' DATABASE_REQUIRED='$DATABASE_REQUIRED_VALUE' npm run build && DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' DATABASE_REQUIRED='$DATABASE_REQUIRED_VALUE' npm run start:prod"
 simulator_command="npm run dev"
 if [[ "$MQTT" == true ]]; then
-  backend_command="DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' MQTT_ENABLED=true MQTT_URL='$MQTT_URL' npm run build && DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' MQTT_ENABLED=true MQTT_URL='$MQTT_URL' npm run start:prod"
+  backend_command="DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' DATABASE_REQUIRED='$DATABASE_REQUIRED_VALUE' MQTT_ENABLED=true MQTT_URL='$MQTT_URL' npm run build && DATABASE_ENABLED='$DATABASE_ENABLED_VALUE' DATABASE_REQUIRED='$DATABASE_REQUIRED_VALUE' MQTT_ENABLED=true MQTT_URL='$MQTT_URL' npm run start:prod"
   simulator_command="npm run dev -- --mqtt '$MQTT_URL' --tenant '$TENANT_ID'"
 fi
 start_service backend backend "$backend_command" 3000

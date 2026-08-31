@@ -6,6 +6,8 @@ export interface MaintenanceWorkOrder {
   lineId: string;
   deviceId: string;
   alarmId: string | null;
+  inspectionRequired: boolean;
+  inspectionStatus: 'pending' | 'passed' | 'failed';
   type: 'inspection' | 'preventive' | 'repair';
   title: string;
   description: string;
