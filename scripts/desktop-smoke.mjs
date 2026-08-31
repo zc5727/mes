@@ -99,6 +99,13 @@ record(
   runtimeSource.includes('--no-simulator-ui'),
   'desktop-runtime delegates only backend and simulator services',
 );
+record(
+  'desktop runtime requires persistent demo services',
+  runtimeSource.includes('DATABASE_ENABLED=true')
+    && runtimeSource.includes('DATABASE_REQUIRED=true')
+    && runtimeSource.includes('MQTT_ENABLED=true'),
+  'packaged demo uses PostgreSQL and MQTT instead of silent memory mode',
+);
 
 if (existsSync(packagePath)) {
   try {

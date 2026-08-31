@@ -257,7 +257,10 @@ service_command=("$SCRIPT_DIR/dev-up.sh")
 # simulator console here; desktop-runtime owns the services it starts and
 # must be able to tear all of them down on window exit.
 service_command+=(--no-frontend --no-simulator-ui)
-if ! MES_RUNTIME_DIR="$RUNTIME_DIR" "${service_command[@]}" >>"$SUPERVISOR_LOG" 2>&1; then
+# A packaged demo must not silently start against the in-memory adapter. The
+# desktop runtime owns the local dependencies, so make the persistence and
+# MQTT contract explicit at this boundary.
+if ! DATABASE_ENABLED=true DATABASE_REQUIRED=true MQTT_ENABLED=true MES_OBJECT_STORAGE=true MES_RUNTIME_DIR="$RUNTIME_DIR" "${service_command[@]}" >>"$SUPERVISOR_LOG" 2>&1; then
   fail_stage "服务编排" "Backend、Simulator 或本地依赖启动失败" \
     "查看桌面诊断日志和 backend.log、simulator.log，修复端口或依赖后重试。"
   exit 1
