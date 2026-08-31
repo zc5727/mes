@@ -26,12 +26,12 @@ export class FactoriesController {
   }
 
   @Patch(':id')
-  update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateFactoryDto) {
-    return { data: this.factoriesService.update(tenantId, id, dto), tenantId };
+  async update(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateFactoryDto) {
+    return { data: await this.factoriesService.updateReliable(tenantId, id, dto), tenantId };
   }
 
   @Delete(':id')
-  remove(@TenantId() tenantId: string, @Param('id') id: string) {
-    return { data: this.factoriesService.remove(tenantId, id), tenantId };
+  async remove(@TenantId() tenantId: string, @Param('id') id: string) {
+    return { data: await this.factoriesService.removeReliable(tenantId, id), tenantId };
   }
 }

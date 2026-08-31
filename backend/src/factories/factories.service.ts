@@ -103,7 +103,7 @@ export class FactoriesService implements OnModuleInit {
     }
   }
 
-  update(tenantId: string, id: string, dto: UpdateFactoryDto): Factory {
+  update(tenantId: string, id: string, dto: UpdateFactoryDto, persist = true): Factory {
     const current = this.findOne(tenantId, id);
     if (dto.code && dto.code !== current.code) {
       const duplicate = this.findAll(tenantId).some((factory) => factory.code === dto.code);
@@ -114,7 +114,7 @@ export class FactoriesService implements OnModuleInit {
 
     const updated: Factory = { ...current, ...dto, updatedAt: timestamp() };
     this.factories.set(id, updated);
-    void this.persistence?.saveFactory(updated);
+    if (persist) void this.persistence?.saveFactory(updated);
     this.audit?.record(tenantId, 'system', {
       action: 'factory.updated',
       resource: 'factory',
@@ -126,10 +126,23 @@ export class FactoriesService implements OnModuleInit {
     return updated;
   }
 
-  remove(tenantId: string, id: string): { id: string; deleted: true } {
+  /** Waits for durable persistence before acknowledging a factory edit. */
+  async updateReliable(tenantId: string, id: string, dto: UpdateFactoryDto): Promise<Factory> {
+    const current = this.findOne(tenantId, id);
+    const updated = this.update(tenantId, id, dto, false);
+    try {
+      await this.persistence?.saveFactory(updated);
+      return updated;
+    } catch (error: unknown) {
+      this.factories.set(id, current);
+      throw error;
+    }
+  }
+
+  remove(tenantId: string, id: string, persist = true): { id: string; deleted: true } {
     const factory = this.findOne(tenantId, id);
     this.factories.delete(id);
-    void this.persistence?.deleteFactory(id);
+    if (persist) void this.persistence?.deleteFactory(id);
     this.audit?.record(tenantId, 'system', {
       action: 'factory.deleted',
       resource: 'factory',
@@ -138,5 +151,18 @@ export class FactoriesService implements OnModuleInit {
       details: { code: factory.code },
     });
     return { id, deleted: true };
+  }
+
+  /** Deletes a factory only after the durable delete succeeds. */
+  async removeReliable(tenantId: string, id: string): Promise<{ id: string; deleted: true }> {
+    const current = this.findOne(tenantId, id);
+    const result = this.remove(tenantId, id, false);
+    try {
+      await this.persistence?.deleteFactory(id);
+      return result;
+    } catch (error: unknown) {
+      this.factories.set(id, current);
+      throw error;
+    }
   }
 }

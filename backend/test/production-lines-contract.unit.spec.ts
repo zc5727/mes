@@ -18,6 +18,18 @@ describe('production line create contract', () => {
     expect(factories.findAll('tenant-a')).toHaveLength(0);
   });
 
+  it('rolls back a factory edit when durable persistence rejects it', async () => {
+    const persistence = {
+      saveFactory: jest.fn().mockRejectedValue(new Error('database unavailable')),
+    };
+    const factories = new FactoriesService(persistence as never);
+    const factory = factories.create('tenant-a', { code: 'F-EDIT', name: '原工厂' }, 'system', false);
+
+    await expect(factories.updateReliable('tenant-a', factory.id, { name: '新工厂' }))
+      .rejects.toThrow('database unavailable');
+    expect(factories.findOne('tenant-a', factory.id).name).toBe('原工厂');
+  });
+
   it('does not acknowledge a line when durable persistence rejects it', async () => {
     const factories = new FactoriesService();
     const factory = factories.create('tenant-a', { code: 'F-DURABLE', name: '持久化工厂' });
