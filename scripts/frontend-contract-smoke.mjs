@@ -33,6 +33,13 @@ const contracts = [
     'OrbitControls', 'enableDamping',
     'minDistance', 'maxDistance', 'pointermove', 'addEventListener(\'click\'',
   ]],
+  ['api/mesApi.ts', [
+    'VITE_MES_FACADE_URL', 'VITE_API_BASE_URL', 'VITE_TENANT_ID',
+    "'x-tenant-id': TENANT_ID", 'REQUEST_TIMEOUT_MS', 'fetchFactorySnapshot',
+  ]],
+  ['websocket/WebSocketService.ts', [
+    'EventSource', 'new WebSocket', 'reconnecting', 'setConnectionState(\'offline\')',
+  ]],
 ];
 
 for (const [relativePath, requiredFragments] of contracts) {
