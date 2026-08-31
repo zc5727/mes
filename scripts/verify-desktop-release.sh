@@ -40,11 +40,28 @@ for tool in codesign spctl hdiutil; do
   command -v "$tool" >/dev/null 2>&1 && passed "tool available: $tool" || blocked "缺少工具：$tool"
 done
 
+ADHOC_SIGNATURE=false
 if [[ -d "$APP_PATH" ]] && command -v codesign >/dev/null 2>&1; then
-  if codesign --verify --deep --strict --verbose=2 "$APP_PATH" >/tmp/mes-codesign.out 2>&1; then passed "codesign verify"; else failed "codesign verify"; sed -n '1,80p' /tmp/mes-codesign.out >&2 || true; fi
+  signature_info="$(codesign -dv --verbose=2 "$APP_PATH" 2>&1 || true)"
+  if grep -q '^Signature=adhoc$' <<<"$signature_info"; then
+    ADHOC_SIGNATURE=true
+    blocked "app 使用 ad-hoc 签名，未提供 Developer ID；不能宣称可分发或通过 Gatekeeper"
+  elif codesign --verify --deep --strict --verbose=2 "$APP_PATH" >/tmp/mes-codesign.out 2>&1; then
+    passed "codesign verify"
+  else
+    failed "codesign verify"
+    sed -n '1,80p' /tmp/mes-codesign.out >&2 || true
+  fi
 fi
 if [[ -d "$APP_PATH" ]] && command -v spctl >/dev/null 2>&1; then
-  if spctl --assess --type execute --verbose=4 "$APP_PATH" >/tmp/mes-spctl.out 2>&1; then passed "Gatekeeper assessment"; else failed "Gatekeeper assessment"; sed -n '1,80p' /tmp/mes-spctl.out >&2 || true; fi
+  if [[ "$ADHOC_SIGNATURE" == true ]]; then
+    blocked "跳过 Gatekeeper：app 未使用可验证的 Developer ID 签名"
+  elif spctl --assess --type execute --verbose=4 "$APP_PATH" >/tmp/mes-spctl.out 2>&1; then
+    passed "Gatekeeper assessment"
+  else
+    failed "Gatekeeper assessment"
+    sed -n '1,80p' /tmp/mes-spctl.out >&2 || true
+  fi
 fi
 if [[ -f "$DMG_PATH" ]] && command -v hdiutil >/dev/null 2>&1; then
   if hdiutil imageinfo "$DMG_PATH" >/tmp/mes-dmg.out 2>&1; then passed "DMG metadata"; else failed "DMG metadata"; fi

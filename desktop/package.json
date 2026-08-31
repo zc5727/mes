@@ -6,8 +6,14 @@
   "scripts": {
     "dev": "bash ../scripts/desktop-run.sh",
     "build": "tauri build",
+    "build:mac": "tauri build --bundles app dmg",
+    "build:app": "tauri build --bundles app",
+    "build:dmg": "tauri build --bundles dmg",
     "build:frontend": "npm --prefix ../third_party/threejs-factory-demo run build",
-    "check": "tauri info"
+    "check": "tauri info",
+    "smoke": "node ../scripts/desktop-smoke.mjs --app-dir=desktop",
+    "smoke:browser": "node ../scripts/desktop-browser-smoke.mjs",
+    "verify:release": "bash ../scripts/desktop-release-smoke.sh"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.4"

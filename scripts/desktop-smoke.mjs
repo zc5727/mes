@@ -45,7 +45,7 @@ record(
 record('Rust manifest', existsSync(cargoPath), cargoPath);
 record('desktop runtime supervisor', existsSync(runtimeScript), runtimeScript);
 
-for (const scriptName of ['desktop.sh', 'desktop-run.sh', 'desktop-runtime.sh', 'desktop-stop.sh', 'desktop-status.sh']) {
+for (const scriptName of ['desktop.sh', 'desktop-run.sh', 'desktop-runtime.sh', 'desktop-stop.sh', 'desktop-status.sh', 'desktop-rebuild.sh', 'desktop-release-smoke.sh']) {
   const scriptPath = join(rootDir, 'scripts', scriptName);
   if (!existsSync(scriptPath)) {
     record(`shell script ${scriptName}`, false, scriptPath);
@@ -70,6 +70,8 @@ if (configPath?.endsWith('.json')) {
     record('bundle enabled', config.bundle?.active === true, 'bundle.active=true');
     const resources = Array.isArray(config.bundle?.resources) ? config.bundle.resources : [];
     record('runtime resource bundle', resources.some((resource) => String(resource).includes('desktop-runtime.sh')), 'bundle.resources');
+    const targets = config.bundle?.targets;
+    record('macOS bundle target declaration', targets === 'all' || (Array.isArray(targets) && targets.includes('app') && targets.includes('dmg')), 'bundle.targets includes app/dmg or all');
   } catch (error) {
     record('Tauri config JSON', false, `invalid JSON: ${error.message}`);
   }
@@ -99,6 +101,8 @@ if (existsSync(packagePath)) {
       String(value).includes('tauri'),
     );
     record('Tauri package script', hasTauriScript, hasTauriScript ? 'found' : 'not found');
+    record('macOS build script', packageJson.scripts?.['build:mac'] === 'tauri build --bundles app dmg', 'scripts.build:mac');
+    record('desktop browser smoke script', packageJson.scripts?.['smoke:browser'] === 'node ../scripts/desktop-browser-smoke.mjs', 'scripts.smoke:browser');
     const frontendBuildScript = packageJson.scripts?.['build:frontend'] ?? packageJson.scripts?.build;
     record('frontend build script', typeof frontendBuildScript === 'string', 'package.json scripts.build:frontend or scripts.build');
     if (typeof frontendBuildScript === 'string') {
