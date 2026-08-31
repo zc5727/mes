@@ -173,6 +173,22 @@ npm run build && node --test dist/protocols/event-adapter.test.js
 
 测试覆盖 MQTT/HTTP 等价映射、Modbus 状态/故障码、OPC UA 节点值、非法帧拒绝和控制命令隔离。后续接入真实 Modbus TCP 或 OPC UA 客户端时，只需将读取到的寄存器/节点值转换为对应模拟帧，再复用该适配器和校验逻辑。
 
+### 可运行的协议 server/client
+
+`src/protocols/protocol-bridge.ts` 提供确定性本地联调实现：
+
+- Modbus TCP server/client：实现 FC03 holding-register telemetry 读取，非法功能码返回异常帧；客户端连接失败明确报错，可在 server 重启后重新读取。
+- OPC UA server/client：创建固定节点并读取 status、温度、节拍、产量和质量计数；只读，不实现设备控制。
+- 两者都复用 `event-adapter.ts`，输出 `mes/modbus/.../telemetry` 或 `mes/opcua/.../telemetry` 的 `device.telemetry` canonical MQTT 消息。
+
+运行协议 server/client、坏帧和断线测试：
+
+```bash
+npm run protocols:smoke
+```
+
+该测试只监听 `127.0.0.1:16002`、`16003` 和 `4842`，不连接真实设备。
+
 ## 故障注入
 
 故障注入接口已封装在 `FactorySimulator` 和 `ProductionLineSimulator` 中，供后续 REST、WebSocket 或测试脚本调用：
