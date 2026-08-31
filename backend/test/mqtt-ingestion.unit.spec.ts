@@ -97,10 +97,31 @@ describe('simulator MQTT ingestion', () => {
     const message = parseSimulatorMessage(topic('telemetry'), JSON.stringify(telemetry));
     if (!message || message.kind !== 'telemetry') throw new Error('test fixture did not parse');
 
-    expect(cache.upsert(message.tenantId, message.data, message.topic).accepted).toBe(true);
-    expect(cache.upsert(message.tenantId, message.data, message.topic)).toMatchObject({ accepted: false, reason: 'duplicate' });
+    const first = { ...message.data, eventId: 'event-1' };
+    expect(cache.upsert(message.tenantId, first, message.topic).accepted).toBe(true);
+    expect(cache.upsert(message.tenantId, first, message.topic)).toMatchObject({ accepted: false, reason: 'duplicate' });
+    expect(cache.upsert(message.tenantId, {
+      ...message.data, eventId: 'event-1', timestamp: '2026-08-28T09:01:00.000Z',
+    }, message.topic)).toMatchObject({ accepted: false, reason: 'duplicate' });
     expect(cache.upsert(message.tenantId, { ...message.data, totalCount: 1, timestamp: '2026-08-28T08:59:59.000Z' }, message.topic)).toMatchObject({ accepted: false, reason: 'stale' });
     expect(cache.get('demo-tenant', 'line-cnc', 'cnc-01')?.totalCount).toBe(3);
+  });
+
+  it('keeps telemetry and alarm projections isolated by tenant', () => {
+    const cache = new DeviceTelemetryCache();
+    const message = parseSimulatorMessage(topic('telemetry'), JSON.stringify(telemetry));
+    if (!message || message.kind !== 'telemetry') throw new Error('test fixture did not parse');
+
+    expect(cache.upsert('tenant-a', message.data, message.topic).accepted).toBe(true);
+    expect(cache.upsert('tenant-b', message.data, message.topic).accepted).toBe(true);
+    expect(cache.list('tenant-a')).toHaveLength(1);
+    expect(cache.list('tenant-b')).toHaveLength(1);
+
+    const deduplicator = new AlarmDeduplicator();
+    expect(deduplicator.apply('tenant-a', 'alarm.created', alarm).accepted).toBe(true);
+    expect(deduplicator.apply('tenant-b', 'alarm.created', alarm).accepted).toBe(true);
+    expect(deduplicator.listActive('tenant-a')).toHaveLength(1);
+    expect(deduplicator.listActive('tenant-b')).toHaveLength(1);
   });
 
   it('deduplicates alarm create/clear and allows a later re-open', () => {

@@ -17,8 +17,14 @@ export class DeviceTelemetryCache {
   ): DeviceCacheUpsertResult {
     const key = this.key(tenantId, telemetry.lineId, telemetry.deviceId);
     const current = this.records.get(key);
+    const incomingIdentity = telemetry.eventId ?? telemetry.traceId;
+    const currentIdentity = current?.eventId ?? current?.traceId;
     const nextTimestamp = Date.parse(telemetry.timestamp);
     const currentTimestamp = current ? Date.parse(current.timestamp) : undefined;
+
+    if (current && incomingIdentity && currentIdentity === incomingIdentity) {
+      return { accepted: false, reason: 'duplicate', current };
+    }
 
     if (current && currentTimestamp !== undefined && nextTimestamp <= currentTimestamp) {
       return {
