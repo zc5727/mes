@@ -22,4 +22,16 @@ describe('maintenance spare-part idempotency persistence', () => {
     expect(service.returnSparePart('tenant-demo', { code: 'SP-001', quantity: 1, operationId: 'op-2' }).stock).toBe(4);
     expect(persistence.saveAux).toHaveBeenCalledWith(expect.objectContaining({ domain: 'maintenance-part-movement' }));
   });
+
+  it('does not acknowledge or retain a maintenance order when durable creation fails', async () => {
+    const persistence = {
+      saveMaintenance: jest.fn().mockRejectedValue(new Error('database unavailable')),
+    };
+    const service = new MaintenanceService(new DevicesService(), new ProductionLinesService(), persistence as never);
+
+    await expect(service.createReliable('tenant-demo', {
+      lineId: 'line-cnc', deviceId: 'device-cnc-01', type: 'inspection', title: '失败写入点检', plannedAt: '2026-09-01T00:00:00.000Z',
+    }, 'engineer')).rejects.toThrow('database unavailable');
+    expect(service.list('tenant-demo')).toEqual([]);
+  });
 });

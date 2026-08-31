@@ -65,7 +65,7 @@ export class MaintenanceService implements OnModuleInit {
     return this.create(tenantId, { alarmId: alarm.id, lineId: alarm.lineId, deviceId: alarm.sourceId, type: 'repair', title: `告警维修：${alarm.message}`, description: `由告警 ${alarm.id} 自动创建`, plannedAt: timestamp() });
   }
 
-  create(tenantId: string, dto: CreateMaintenanceDto, actorId = 'system'): MaintenanceWorkOrder {
+  create(tenantId: string, dto: CreateMaintenanceDto, actorId = 'system', persist = true): MaintenanceWorkOrder {
     const device = this.devices.findOne(tenantId, dto.deviceId);
     this.lines.findOne(tenantId, dto.lineId);
     if (device.lineId !== dto.lineId) throw new ConflictException('Maintenance device must belong to line');
@@ -76,12 +76,24 @@ export class MaintenanceService implements OnModuleInit {
     const now = timestamp();
     const item: MaintenanceWorkOrder = { id: createId('maintenance'), tenantId, lineId: dto.lineId, deviceId: dto.deviceId, alarmId: dto.alarmId?.trim() || null, inspectionRequired: dto.inspectionRequired ?? Boolean(dto.alarmId), inspectionStatus: 'pending', type: dto.type, title: dto.title, description: dto.description ?? '', status: 'draft', plannedAt: dto.plannedAt, completedAt: null, createdAt: now, updatedAt: now };
     this.orders.set(item.id, item);
-    void this.persistence?.saveMaintenance(item);
+    if (persist) void this.persistence?.saveMaintenance(item);
     this.audit?.record(tenantId, actorId.trim() || 'system', { action: 'maintenance.created', resource: 'maintenance_work_order', resourceId: item.id, after: item as unknown as Record<string, unknown>, details: { deviceId: item.deviceId, lineId: item.lineId, alarmId: item.alarmId } });
     return item;
   }
 
-  updateStatus(tenantId: string, id: string, dto: UpdateMaintenanceStatusDto, actorId = 'system'): MaintenanceWorkOrder {
+  /** HTTP-safe variant: do not acknowledge creation until the persistence write completes. */
+  async createReliable(tenantId: string, dto: CreateMaintenanceDto, actorId = 'system'): Promise<MaintenanceWorkOrder> {
+    const item = this.create(tenantId, dto, actorId, false);
+    try {
+      await this.persistence?.saveMaintenance(item);
+    } catch (error: unknown) {
+      this.orders.delete(item.id);
+      throw error;
+    }
+    return item;
+  }
+
+  updateStatus(tenantId: string, id: string, dto: UpdateMaintenanceStatusDto, actorId = 'system', persist = true): MaintenanceWorkOrder {
     const current = this.findOne(tenantId, id);
     if (!transitions[current.status].includes(dto.status)) throw new ConflictException(`Cannot change maintenance order from ${current.status} to ${dto.status}`);
     if ((dto.status === 'cancelled' || dto.status === 'completed') && !dto.reason?.trim()) throw new ConflictException('A reason is required for maintenance completion or cancellation');
@@ -89,17 +101,43 @@ export class MaintenanceService implements OnModuleInit {
     const updated = { ...current, status: dto.status, completedAt: dto.status === 'completed' ? timestamp() : current.completedAt, updatedAt: timestamp() };
     this.orders.set(id, updated);
     this.audit?.record(tenantId, actorId.trim() || 'system', { action: `maintenance.${dto.status}`, resource: 'maintenance_work_order', resourceId: id, before: current as unknown as Record<string, unknown>, after: updated as unknown as Record<string, unknown>, details: { from: current.status, to: dto.status, reason: dto.reason ?? '', alarmId: current.alarmId } });
-    void this.persistence?.saveMaintenance(updated);
+    if (persist) void this.persistence?.saveMaintenance(updated);
     return updated;
   }
 
-  recordInspection(tenantId: string, id: string, dto: MaintenanceInspectionDto, actorId = 'system'): MaintenanceWorkOrder {
+  /** HTTP-safe variant: status transitions are acknowledged only after persistence. */
+  async updateStatusReliable(tenantId: string, id: string, dto: UpdateMaintenanceStatusDto, actorId = 'system'): Promise<MaintenanceWorkOrder> {
+    const current = this.findOne(tenantId, id);
+    const updated = this.updateStatus(tenantId, id, dto, actorId, false);
+    try {
+      await this.persistence?.saveMaintenance(updated);
+    } catch (error: unknown) {
+      this.orders.set(id, current);
+      throw error;
+    }
+    return updated;
+  }
+
+  recordInspection(tenantId: string, id: string, dto: MaintenanceInspectionDto, actorId = 'system', persist = true): MaintenanceWorkOrder {
     const current = this.findOne(tenantId, id);
     if (current.status !== 'in_progress') throw new ConflictException('Point inspection requires an in-progress maintenance order');
     const updated = { ...current, inspectionStatus: dto.result, updatedAt: timestamp() };
     this.orders.set(id, updated);
     this.audit?.record(tenantId, actorId.trim() || 'system', { action: `maintenance.point_inspection.${dto.result}`, resource: 'maintenance_work_order', resourceId: id, before: current as unknown as Record<string, unknown>, after: updated as unknown as Record<string, unknown>, details: { remark: dto.remark, alarmId: current.alarmId } });
-    void this.persistence?.saveMaintenance(updated);
+    if (persist) void this.persistence?.saveMaintenance(updated);
+    return updated;
+  }
+
+  /** HTTP-safe variant: point-inspection results must be durable before response. */
+  async recordInspectionReliable(tenantId: string, id: string, dto: MaintenanceInspectionDto, actorId = 'system'): Promise<MaintenanceWorkOrder> {
+    const current = this.findOne(tenantId, id);
+    const updated = this.recordInspection(tenantId, id, dto, actorId, false);
+    try {
+      await this.persistence?.saveMaintenance(updated);
+    } catch (error: unknown) {
+      this.orders.set(id, current);
+      throw error;
+    }
     return updated;
   }
 

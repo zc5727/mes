@@ -19,7 +19,7 @@ export class MaintenanceController {
   @Post('spare-parts/return') returnPart(@TenantId() tenantId: string, @Body() dto: ConsumeSparePartDto, @Headers('x-user-id') actorId?: string) { return { data: this.service.returnSparePart(tenantId, dto, actorId), tenantId }; }
   @Get('metrics') metrics(@TenantId() tenantId: string) { return { data: this.service.metrics(tenantId), tenantId }; }
   @Get(':id') findOne(@TenantId() tenantId: string, @Param('id') id: string) { return { data: this.service.findOne(tenantId, id), tenantId }; }
-  @Post() create(@TenantId() tenantId: string, @Body() dto: CreateMaintenanceDto, @Headers('x-user-id') actorId?: string) { return { data: this.service.create(tenantId, dto, actorId), tenantId }; }
-  @Patch(':id/status') updateStatus(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateMaintenanceStatusDto, @Headers('x-user-id') actorId?: string) { return { data: this.service.updateStatus(tenantId, id, dto, actorId), tenantId }; }
-  @Post(':id/inspection') inspection(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: MaintenanceInspectionDto, @Headers('x-user-id') actorId?: string) { return { data: this.service.recordInspection(tenantId, id, dto, actorId), tenantId }; }
+  @Post() async create(@TenantId() tenantId: string, @Body() dto: CreateMaintenanceDto, @Headers('x-user-id') actorId?: string) { return { data: await this.service.createReliable(tenantId, dto, actorId), tenantId }; }
+  @Patch(':id/status') async updateStatus(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: UpdateMaintenanceStatusDto, @Headers('x-user-id') actorId?: string) { return { data: await this.service.updateStatusReliable(tenantId, id, dto, actorId), tenantId }; }
+  @Post(':id/inspection') async inspection(@TenantId() tenantId: string, @Param('id') id: string, @Body() dto: MaintenanceInspectionDto, @Headers('x-user-id') actorId?: string) { return { data: await this.service.recordInspectionReliable(tenantId, id, dto, actorId), tenantId }; }
 }
