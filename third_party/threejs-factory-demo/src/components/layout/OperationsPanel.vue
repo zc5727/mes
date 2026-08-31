@@ -141,7 +141,9 @@ const faultOptions: Array<{ value: FaultType; label: string }> = [
   { value: 'MATERIAL_SHORTAGE', label: '物料短缺' },
   { value: 'QUALITY_ANOMALY', label: '质量异常' },
 ];
-const reportableWorkOrders = computed(() => workOrders.value.filter((order) => order.status === 'in_progress'));
+const reportableWorkOrders = computed(() => workOrders.value.filter((order) => (
+  order.status === 'in_progress' && order.lineId === toBackendLineId(props.selectedLine.id)
+)));
 const title = computed(() => ({ 'work-order': '新建生产工单', report: '生产报工', device: editingDeviceId.value ? '编辑设备' : '新增设备', maintenance: '新建维修工单', document: '登记图纸', quality: '填报质量记录', strategy: '策略仿真评估' }[active.value ?? 'work-order']));
 const selectedDeviceName = computed(() => props.selectedDevice?.name ?? '未选择设备');
 
