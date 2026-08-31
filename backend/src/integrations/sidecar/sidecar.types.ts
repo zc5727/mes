@@ -25,7 +25,9 @@ export interface ReconciliationReport {
   tenantId: string;
   externalTenantId: string;
   domain: ReconciliationDomain;
-  source: 'sidecar' | 'fixture';
+  source: 'sidecar' | 'fixture' | 'fallback';
+  degraded: boolean;
+  error: string | null;
   matched: number;
   localOnly: string[];
   externalOnly: string[];

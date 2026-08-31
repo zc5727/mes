@@ -19,4 +19,15 @@ describe('configurable ERPNext/OpenMES sidecar boundary', () => {
     expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer secret' }) }));
     fetchMock.mockRestore();
   });
+
+  it('falls back explicitly to local-only reconciliation after upstream failure', async () => {
+    const service = new SidecarService({ enabled: true, provider: 'erpnext', baseUrl: 'http://sidecar.local', token: 'secret', timeoutMs: 5000, retries: 0, tenantMapping: {} });
+    const fetchMock = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('connection refused'));
+
+    await expect(service.reconcile('tenant-demo', 'reports', [{ id: 'report-1', quantity: 2 }])).resolves.toEqual(expect.objectContaining({
+      source: 'fallback', degraded: true, error: 'connection refused', matched: 0, localOnly: ['report-1'],
+    }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockRestore();
+  });
 });

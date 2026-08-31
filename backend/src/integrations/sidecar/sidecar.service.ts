@@ -11,13 +11,36 @@ export class SidecarService {
 
   async reconcile(tenantId: string, domain: ReconciliationDomain, local: ReconciliationItem[], fixture?: ReconciliationItem[]): Promise<ReconciliationReport> {
     const externalTenantId = this.config.tenantMapping[tenantId] ?? tenantId;
-    const external = fixture ?? await this.readExternal(externalTenantId, domain);
+    let external: ReconciliationItem[];
+    let source: ReconciliationReport['source'];
+    let error: string | null = null;
+    if (fixture) {
+      external = fixture;
+      source = 'fixture';
+    } else if (!this.config.enabled || !this.config.baseUrl || !this.config.token) {
+      external = [];
+      source = 'fixture';
+    } else {
+      try {
+        external = await this.readExternal(externalTenantId, domain);
+        source = 'sidecar';
+      } catch (cause: unknown) {
+        external = [];
+        source = 'fallback';
+        error = cause instanceof Error ? cause.message : String(cause);
+        this.logger.warn(`Reconciliation degraded to local-only mode: ${error}`);
+      }
+    }
     const localMap = new Map(local.map((item) => [this.key(item), item]));
     const externalMap = new Map(external.map((item) => [this.key(item), item]));
     const localOnly = [...localMap.keys()].filter((key) => !externalMap.has(key));
     const externalOnly = [...externalMap.keys()].filter((key) => !localMap.has(key));
     const conflicts = [...localMap.keys()].filter((key) => externalMap.has(key)).map((key) => ({ key, fields: this.conflictingFields(localMap.get(key)!, externalMap.get(key)!) })).filter((item) => item.fields.length > 0);
-    return { provider: this.config.provider, tenantId, externalTenantId, domain, source: fixture || !this.config.baseUrl ? 'fixture' : 'sidecar', matched: local.length - localOnly.length - conflicts.length, localOnly, externalOnly, conflicts };
+    return {
+      provider: this.config.provider, tenantId, externalTenantId, domain, source,
+      degraded: source !== 'sidecar', error,
+      matched: local.length - localOnly.length - conflicts.length, localOnly, externalOnly, conflicts,
+    };
   }
 
   private async readExternal(tenantId: string, domain: ReconciliationDomain): Promise<ReconciliationItem[]> {
