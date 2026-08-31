@@ -27,8 +27,8 @@ export class ProductionLinesController {
   }
 
   @Post()
-  create(@TenantId() tenantId: string, @Body() dto: CreateProductionLineDto, @Headers('x-user-id') userId?: string) {
-    return { data: this.linesService.create(tenantId, dto, userId), tenantId };
+  async create(@TenantId() tenantId: string, @Body() dto: CreateProductionLineDto, @Headers('x-user-id') userId?: string) {
+    return { data: await this.linesService.createReliable(tenantId, dto, userId), tenantId };
   }
 
   @Patch(':id/status')

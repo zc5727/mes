@@ -83,7 +83,7 @@ export class ProductionLinesService implements OnModuleInit {
     return line;
   }
 
-  create(tenantId: string, dto: CreateProductionLineDto, actorId = 'system'): ProductionLine {
+  create(tenantId: string, dto: CreateProductionLineDto, actorId = 'system', persist = true): ProductionLine {
     this.factoriesService.findOne(tenantId, dto.factoryId);
     const duplicate = this.findAll(tenantId).some((line) => line.code === dto.code);
     if (duplicate) {
@@ -105,7 +105,7 @@ export class ProductionLinesService implements OnModuleInit {
       updatedAt: now,
     };
     this.lines.set(line.id, line);
-    void this.persistence?.saveLine(lineToPersistence(line));
+    if (persist) void this.persistence?.saveLine(lineToPersistence(line));
     this.audit?.record(tenantId, actorId.trim() || 'system', {
       action: 'production_line.created',
       resource: 'production_line',
@@ -114,6 +114,18 @@ export class ProductionLinesService implements OnModuleInit {
       details: { code: line.code, factoryId: line.factoryId },
     });
     return line;
+  }
+
+  /** Waits for the durable line write before acknowledging an API request. */
+  async createReliable(tenantId: string, dto: CreateProductionLineDto, actorId = 'system'): Promise<ProductionLine> {
+    const line = this.create(tenantId, dto, actorId, false);
+    try {
+      await this.persistence?.saveLine(lineToPersistence(line));
+      return line;
+    } catch (error: unknown) {
+      this.lines.delete(line.id);
+      throw error;
+    }
   }
 
   update(tenantId: string, id: string, dto: UpdateProductionLineDto, actorId = 'system'): ProductionLine {

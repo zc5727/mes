@@ -4,6 +4,22 @@ import { ProductionLinesService } from '../src/production-lines/production-lines
 import { AuditService } from '../src/audit/audit.service';
 
 describe('production line create contract', () => {
+  it('does not acknowledge a line when durable persistence rejects it', async () => {
+    const factories = new FactoriesService();
+    const factory = factories.create('tenant-a', { code: 'F-DURABLE', name: '持久化工厂' });
+    const persistence = {
+      isEnabled: () => true,
+      restore: jest.fn().mockResolvedValue({ lines: [], workOrders: [] }),
+      saveLine: jest.fn().mockRejectedValue(new Error('database unavailable')),
+    };
+    const service = new ProductionLinesService(factories, persistence as never);
+    await service.onModuleInit();
+
+    await expect(service.createReliable('tenant-a', { factoryId: factory.id, code: 'L-DURABLE', name: '持久化产线', type: '装配' }))
+      .rejects.toThrow('database unavailable');
+    expect(service.findAll('tenant-a')).toHaveLength(0);
+  });
+
   it('creates a tenant-scoped line with safe defaults', () => {
     const factories = new FactoriesService();
     const factory = factories.create('tenant-a', { code: 'F100', name: '测试工厂' });
