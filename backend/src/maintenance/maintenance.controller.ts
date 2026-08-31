@@ -9,6 +9,7 @@ import { MaintenanceService } from './maintenance.service';
 export class MaintenanceController {
   constructor(private readonly service: MaintenanceService) {}
   @Get() list(@TenantId() tenantId: string) { return { data: this.service.list(tenantId), tenantId }; }
+  @Get('overdue') overdue(@TenantId() tenantId: string) { return { data: this.service.overdue(tenantId), tenantId }; }
   @Get('preventive-plans') listPlans(@TenantId() tenantId: string) { return { data: this.service.listPreventivePlans(tenantId), tenantId }; }
   @Get('preventive-plans/due') duePlans(@TenantId() tenantId: string) { return { data: this.service.duePreventivePlans(tenantId), tenantId }; }
   @Post('preventive-plans/trigger-due') triggerDuePlans(@TenantId() tenantId: string, @Headers('x-user-id') actorId?: string) { return { data: this.service.triggerDuePreventivePlans(tenantId, new Date(), actorId), tenantId }; }

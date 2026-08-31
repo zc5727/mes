@@ -49,6 +49,19 @@ describe('quality and maintenance minimum loops', () => {
     expect(maintenance.isDeviceOccupied('tenant-demo', 'device-welding-01')).toBe(false);
   });
 
+  it('lists only open maintenance orders that are past their planned time', () => {
+    const maintenance = new MaintenanceService(new DevicesService(), new ProductionLinesService());
+    const overdue = maintenance.create('tenant-demo', { lineId: 'line-cnc', deviceId: 'device-cnc-01', type: 'inspection', title: '逾期点检', plannedAt: '2026-08-01T09:00:00.000Z' });
+    const future = maintenance.create('tenant-demo', { lineId: 'line-cnc', deviceId: 'device-cnc-01', type: 'inspection', title: '未来点检', plannedAt: '2026-10-01T09:00:00.000Z' });
+    const completed = maintenance.create('tenant-demo', { lineId: 'line-cnc', deviceId: 'device-cnc-01', type: 'inspection', title: '已完成点检', plannedAt: '2026-08-01T09:00:00.000Z' });
+    maintenance.updateStatus('tenant-demo', completed.id, { status: 'assigned' });
+    maintenance.updateStatus('tenant-demo', completed.id, { status: 'in_progress' });
+    maintenance.recordInspection('tenant-demo', completed.id, { result: 'passed', remark: '点检通过' });
+    maintenance.updateStatus('tenant-demo', completed.id, { status: 'completed', reason: '已完成' });
+    expect(maintenance.overdue('tenant-demo', new Date('2026-09-01T00:00:00.000Z'))).toEqual([overdue]);
+    expect(maintenance.overdue('tenant-demo', new Date('2026-09-01T00:00:00.000Z'))).not.toContain(future);
+  });
+
   it('only allows a released quality result to be used for reporting', () => {
     const quality = new QualityService();
     const workOrders = new WorkOrdersService(undefined, undefined, undefined, undefined, undefined, undefined, quality);

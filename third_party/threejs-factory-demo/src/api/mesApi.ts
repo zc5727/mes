@@ -402,6 +402,7 @@ export interface FoundationRecord { id: string; status?: string; createdAt?: str
 export function listDocuments() { return get<FoundationRecord[]>('/foundation/documents'); }
 export function listQualityRecords() { return get<FoundationRecord[]>('/foundation/quality-records'); }
 export function listMaintenanceWorkOrders() { return get<FoundationRecord[]>('/maintenance/work-orders'); }
+export function listOverdueMaintenanceWorkOrders() { return get<FoundationRecord[]>('/maintenance/work-orders/overdue'); }
 export function documentContentUrl(id: string) { return `${API_BASE_URL}/foundation/documents/${encodeURIComponent(id)}/content`; }
 export function updateDocumentStatus(id: string, status: string, actorId = 'digital-twin-ui') { return request<Record<string, unknown>>(`/foundation/documents/${encodeURIComponent(id)}/status`, 'PATCH', { status, actorId }); }
 export function submitQualityRecord(id: string, actorId = 'digital-twin-ui') { return post<Record<string, unknown>>(`/foundation/quality-records/${encodeURIComponent(id)}/submit`, { actorId }); }

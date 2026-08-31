@@ -47,6 +47,14 @@ export class MaintenanceService implements OnModuleInit {
 
   list(tenantId: string): MaintenanceWorkOrder[] { return [...this.orders.values()].filter((item) => item.tenantId === tenantId); }
 
+  /** Returns open maintenance orders whose planned time has elapsed. */
+  overdue(tenantId: string, at = new Date()): MaintenanceWorkOrder[] {
+    return this.list(tenantId)
+      .filter((item) => !['completed', 'cancelled'].includes(item.status))
+      .filter((item) => new Date(item.plannedAt).getTime() < at.getTime())
+      .sort((left, right) => left.plannedAt.localeCompare(right.plannedAt));
+  }
+
   isDeviceOccupied(tenantId: string, deviceId: string): boolean {
     // A draft is only a planned maintenance request. It must not block
     // production until it has been assigned to a technician or started.

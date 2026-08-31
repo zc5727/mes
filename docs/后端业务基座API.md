@@ -75,3 +75,11 @@ POST /strategies/simulate
 ```
 
 `preflight` 检查重复 ID、产线引用和负数剩余量；`simulate` 只生成候选方案，必须经过审批后才能进入执行流程。当前没有真实设备控制接口。
+
+维修逾期查询：
+
+```http
+GET /maintenance/work-orders/overdue
+```
+
+仅返回当前租户中计划时间已到、且尚未完成或取消的维修/点检工单，并按计划时间升序返回。
