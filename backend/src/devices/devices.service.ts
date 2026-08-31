@@ -5,6 +5,7 @@ import { CreateDeviceDto } from './dto/create-device.dto';
 import { IngestTelemetryDto } from './dto/ingest-telemetry.dto';
 import { UpdateDeviceStatusDto } from './dto/update-device-status.dto';
 import { UpdateDeviceDto } from './dto/update-device.dto';
+import { ProductionLinesService } from '../production-lines/production-lines.service';
 
 export interface Device extends MockEntity {
   lineId: string;
@@ -21,7 +22,10 @@ export interface Device extends MockEntity {
 
 @Injectable()
 export class DevicesService implements OnModuleInit {
-  constructor(@Optional() private readonly persistence?: CorePersistenceService) {}
+  constructor(
+    @Optional() private readonly persistence?: CorePersistenceService,
+    @Optional() private readonly productionLines?: ProductionLinesService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     const snapshot = await this.persistence?.restore();
@@ -75,6 +79,7 @@ export class DevicesService implements OnModuleInit {
   }
 
   create(tenantId: string, dto: CreateDeviceDto): Device {
+    this.productionLines?.findOne(tenantId, dto.lineId);
     const duplicate = this.findAll(tenantId).some((device) => device.code === dto.code);
     if (duplicate) {
       throw new ConflictException(`Device code ${dto.code} already exists`);
@@ -104,6 +109,9 @@ export class DevicesService implements OnModuleInit {
 
   update(tenantId: string, id: string, dto: UpdateDeviceDto): Device {
     const current = this.findOne(tenantId, id);
+    if (dto.lineId && dto.lineId !== current.lineId) {
+      this.productionLines?.findOne(tenantId, dto.lineId);
+    }
     if (dto.code && dto.code !== current.code) {
       const duplicate = this.findAll(tenantId).some((device) => device.code === dto.code);
       if (duplicate) {
