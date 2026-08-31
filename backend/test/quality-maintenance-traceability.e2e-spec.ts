@@ -158,4 +158,18 @@ describe('quality, maintenance and traceability contracts (e2e)', () => {
     await request(app.getHttpServer()).post(`/api/v1/maintenance/work-orders/${maintenanceId}/inspection`).set(headers).send({ result: 'passed', remark: '点检通过' }).expect(201);
     await request(app.getHttpServer()).patch(`/api/v1/maintenance/work-orders/${maintenanceId}/status`).set(headers).send({ status: 'completed', reason: '维修完成并放行' }).expect(200);
   });
+
+  it('blocks production reports while the selected device is occupied by maintenance', async () => {
+    const headers = { 'x-tenant-id': 'tenant-demo' };
+    const maintenance = await request(app.getHttpServer()).post('/api/v1/maintenance/work-orders').set(headers).send({
+      lineId: 'line-cnc', deviceId: 'device-cnc-01', type: 'repair', title: '占用设备 E2E', plannedAt: '2026-09-01T09:00:00.000Z',
+    }).expect(201);
+    await request(app.getHttpServer()).patch(`/api/v1/maintenance/work-orders/${maintenance.body.data.id}/status`).set(headers).send({ status: 'assigned' }).expect(200);
+    const workOrder = await request(app.getHttpServer()).post('/api/v1/work-orders').set(headers).send({
+      orderNo: 'WO-MAINTENANCE-LOCK-E2E', productCode: 'P-LOCK', productName: '设备占用测试件', lineId: 'line-cnc', plannedQty: 1, dueAt: '2026-09-05T12:00:00.000Z',
+    }).expect(201);
+    await request(app.getHttpServer()).patch(`/api/v1/work-orders/${workOrder.body.data.id}/status`).set(headers).send({ status: 'released' }).expect(200);
+    await request(app.getHttpServer()).patch(`/api/v1/work-orders/${workOrder.body.data.id}/status`).set(headers).send({ status: 'in_progress' }).expect(200);
+    await request(app.getHttpServer()).post(`/api/v1/work-orders/${workOrder.body.data.id}/report`).set(headers).send({ quantity: 1, deviceId: 'device-cnc-01' }).expect(409);
+  });
 });

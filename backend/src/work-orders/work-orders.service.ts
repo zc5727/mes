@@ -11,6 +11,7 @@ import { MasterDataService } from '../master-data/master-data.service';
 import { AuditService } from '../audit/audit.service';
 import { CorePersistenceService } from '../database/core-persistence.service';
 import { QualityService } from '../quality/quality.service';
+import { MaintenanceService } from '../maintenance/maintenance.service';
 
 type WorkOrderStatus = 'draft' | 'released' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
 type WorkOrderPriority = 'low' | 'normal' | 'high' | 'urgent';
@@ -99,6 +100,7 @@ export class WorkOrdersService implements OnModuleInit {
     @Optional() private readonly auditService?: AuditService,
     @Optional() private readonly persistence?: CorePersistenceService,
     @Optional() @Inject(forwardRef(() => QualityService)) private readonly qualityService?: QualityService,
+    @Optional() @Inject(forwardRef(() => MaintenanceService)) private readonly maintenanceService?: MaintenanceService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -269,6 +271,7 @@ export class WorkOrdersService implements OnModuleInit {
     if (dto.deviceId && this.devicesService) {
       const device = this.devicesService.findOne(tenantId, dto.deviceId);
       if (device.lineId !== current.lineId) throw new ConflictException('Report device must belong to work order line');
+      if (this.maintenanceService?.isDeviceOccupied(tenantId, dto.deviceId)) throw new ConflictException('Report device is occupied by maintenance work');
     }
     const goodQty = dto.goodQty ?? dto.quantity;
     const defectQty = dto.defectQty ?? dto.quantity - goodQty;

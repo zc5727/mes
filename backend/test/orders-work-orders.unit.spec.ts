@@ -5,6 +5,7 @@ import { WorkOrdersService } from '../src/work-orders/work-orders.service';
 import { DevicesService } from '../src/devices/devices.service';
 import { MasterDataService } from '../src/master-data/master-data.service';
 import { AuditService } from '../src/audit/audit.service';
+import { MaintenanceService } from '../src/maintenance/maintenance.service';
 
 describe('production execution flow', () => {
   it('creates an order, runs a work order, reports production and completes it', () => {
@@ -96,6 +97,17 @@ describe('production execution flow', () => {
     });
     workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' });
     expect(audit.list('tenant-demo').map((item) => item.action)).toEqual(expect.arrayContaining(['order.create', 'work_order.status']));
+  });
+
+  it('does not report against a device occupied by maintenance', () => {
+    const maintenance = new MaintenanceService(new DevicesService(), new ProductionLinesService());
+    const maintenanceOrder = maintenance.create('tenant-demo', { lineId: 'line-cnc', deviceId: 'device-cnc-01', type: 'repair', title: '维修占用', plannedAt: '2026-08-31T18:00:00.000Z' });
+    maintenance.updateStatus('tenant-demo', maintenanceOrder.id, { status: 'assigned' });
+    const workOrders = new WorkOrdersService(new OrdersService(), new ProductionLinesService(), new DevicesService(), undefined, undefined, undefined, undefined, maintenance);
+    const workOrder = workOrders.create('tenant-demo', { orderNo: 'WO-MAINTENANCE-LOCK', productCode: 'P', productName: '产品', lineId: 'line-cnc', plannedQty: 1, dueAt: '2026-08-31T18:00:00.000Z' });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'released' });
+    workOrders.updateStatus('tenant-demo', workOrder.id, { status: 'in_progress' });
+    expect(() => workOrders.report('tenant-demo', workOrder.id, { quantity: 1, deviceId: 'device-cnc-01' })).toThrow(ConflictException);
   });
 
   it('rejects duplicate report traces and devices from another line', () => {

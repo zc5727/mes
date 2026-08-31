@@ -40,10 +40,12 @@ describe('quality and maintenance minimum loops', () => {
     const maintenance = new MaintenanceService(new DevicesService(), new ProductionLinesService());
     const order = maintenance.create('tenant-demo', { lineId: 'line-welding', deviceId: 'device-welding-01', type: 'repair', title: '告警维修', alarmId: 'alarm-device-welding-01', plannedAt: '2026-09-01T09:00:00.000Z' });
     maintenance.updateStatus('tenant-demo', order.id, { status: 'assigned' });
+    expect(maintenance.isDeviceOccupied('tenant-demo', 'device-welding-01')).toBe(true);
     maintenance.updateStatus('tenant-demo', order.id, { status: 'in_progress' });
     expect(() => maintenance.updateStatus('tenant-demo', order.id, { status: 'completed', reason: '已修复' })).toThrow(ConflictException);
     maintenance.recordInspection('tenant-demo', order.id, { result: 'passed', remark: '空载与联动点检通过' });
     expect(maintenance.updateStatus('tenant-demo', order.id, { status: 'completed', reason: '已修复并放行' }).status).toBe('completed');
+    expect(maintenance.isDeviceOccupied('tenant-demo', 'device-welding-01')).toBe(false);
   });
 
   it('only allows a released quality result to be used for reporting', () => {

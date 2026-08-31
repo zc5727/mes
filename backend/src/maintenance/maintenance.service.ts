@@ -39,6 +39,10 @@ export class MaintenanceService implements OnModuleInit {
 
   list(tenantId: string): MaintenanceWorkOrder[] { return [...this.orders.values()].filter((item) => item.tenantId === tenantId); }
 
+  isDeviceOccupied(tenantId: string, deviceId: string): boolean {
+    return this.list(tenantId).some((item) => item.deviceId === deviceId && ['draft', 'assigned', 'in_progress'].includes(item.status));
+  }
+
   findOne(tenantId: string, id: string): MaintenanceWorkOrder {
     const item = this.orders.get(id);
     if (!item || item.tenantId !== tenantId) throw new NotFoundException(`Maintenance work order ${id} not found`);

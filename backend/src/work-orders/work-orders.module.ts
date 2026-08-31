@@ -7,10 +7,11 @@ import { DevicesModule } from '../devices/devices.module';
 import { MasterDataModule } from '../master-data/master-data.module';
 import { AuditModule } from '../audit/audit.module';
 import { QualityModule } from '../quality/quality.module';
+import { MaintenanceModule } from '../maintenance/maintenance.module';
 
 @Module({
   controllers: [WorkOrdersController],
-  imports: [OrdersModule, ProductionLinesModule, DevicesModule, MasterDataModule, AuditModule, forwardRef(() => QualityModule)],
+  imports: [OrdersModule, ProductionLinesModule, DevicesModule, MasterDataModule, AuditModule, forwardRef(() => QualityModule), forwardRef(() => MaintenanceModule)],
   providers: [WorkOrdersService],
   exports: [WorkOrdersService],
 })
