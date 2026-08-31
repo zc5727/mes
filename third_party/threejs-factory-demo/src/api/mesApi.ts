@@ -494,11 +494,11 @@ function toLine(line: ApiLine, devices: DeviceTelemetry[]): ProductionLineTeleme
   const lineDevices = devices.filter((device) => device.lineId === id);
   const hasError = lineDevices.some((device) => device.status === 'error');
   const hasWarning = lineDevices.some((device) => device.status === 'warning' || device.status === 'offline');
-  const status: ProductionLineTelemetry['status'] = hasError || line.status === 'maintenance' || line.status === 'error'
+  const status: ProductionLineTelemetry['status'] = hasError || line.status === 'error'
     ? 'error'
-    : hasWarning || line.status === 'inactive' || line.status === 'warning'
+    : hasWarning || line.status === 'maintenance' || line.status === 'warning'
       ? 'warning'
-      : line.status === 'idle'
+      : line.status === 'inactive' || line.status === 'idle'
         ? 'idle'
         : 'running';
   const plannedQuantity = line.plannedQuantity ?? line.plannedQty ?? 0;

@@ -167,7 +167,7 @@ const lineSummaries = computed<ProductionLineTelemetry[]>(() => {
       ? 'error'
       : hasAttention || line.status === 'warning'
         ? 'warning'
-        : lineDevices.length ? 'running' : 'idle';
+        : !lineDevices.length ? 'idle' : 'running';
     return {
       ...line,
       status,
