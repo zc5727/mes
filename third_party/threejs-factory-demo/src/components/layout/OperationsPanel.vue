@@ -2,28 +2,28 @@
   <section class="operations panel" aria-label="生产业务操作">
     <div class="operations__head"><strong>生产业务</strong><span>仅提交正式 MES API</span></div>
     <div class="operations__actions">
-      <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'work-order'">新建工单</button>
-      <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="openDeviceCreate">新增设备</button>
-      <button type="button" :disabled="!apiEnabled || !selectedDevice" title="请选择设备并使用 API 模式" @click="openDeviceEdit">编辑设备</button>
-      <button type="button" :disabled="!apiEnabled || !selectedDevice" title="请选择设备并使用 API 模式" @click="removeDevice">删除设备</button>
-      <button type="button" :disabled="!apiEnabled || !selectedDevice" title="请选择设备并使用 API 模式" @click="setDeviceStatus('maintenance')">设为维护</button>
-      <button type="button" :disabled="!apiEnabled || !selectedDevice" title="请选择设备并使用 API 模式" @click="setDeviceStatus('online')">恢复上线</button>
-      <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'maintenance'">新建维修</button>
-      <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'document'">图纸登记</button>
-      <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'quality'">质量记录</button>
-      <button type="button" :disabled="!apiEnabled" title="本地仿真模式不写入 MES" @click="active = 'strategy'">策略评估</button>
-      <button v-if="pendingDocumentId" type="button" :disabled="!apiEnabled || submitting" title="仅 API 模式可确认图纸分析" @click="confirmDocument">确认图纸分析</button>
+      <button type="button" :disabled="!apiEnabled || !canWrite" :title="!canWrite ? writeDisabledReason : '新建工单'" @click="active = 'work-order'">新建工单</button>
+      <button type="button" :disabled="!apiEnabled || !canWrite" :title="!canWrite ? writeDisabledReason : '新增设备'" @click="openDeviceCreate">新增设备</button>
+      <button type="button" :disabled="!apiEnabled || !canWrite || !selectedDevice" :title="!canWrite ? writeDisabledReason : !selectedDevice ? '请先选择设备' : '编辑设备'" @click="openDeviceEdit">编辑设备</button>
+      <button type="button" :disabled="!apiEnabled || !canControl || !selectedDevice" :title="!canControl ? controlDisabledReason : !selectedDevice ? '请先选择设备' : '删除设备'" @click="removeDevice">删除设备</button>
+      <button type="button" :disabled="!apiEnabled || !canWrite || !selectedDevice" :title="!canWrite ? writeDisabledReason : !selectedDevice ? '请先选择设备' : '设为维护'" @click="setDeviceStatus('maintenance')">设为维护</button>
+      <button type="button" :disabled="!apiEnabled || !canWrite || !selectedDevice" :title="!canWrite ? writeDisabledReason : !selectedDevice ? '请先选择设备' : '恢复上线'" @click="setDeviceStatus('online')">恢复上线</button>
+      <button type="button" :disabled="!apiEnabled || !canControl" :title="!canControl ? controlDisabledReason : '新建维修'" @click="active = 'maintenance'">新建维修</button>
+      <button type="button" :disabled="!apiEnabled || !canWrite" :title="!canWrite ? writeDisabledReason : '图纸登记'" @click="active = 'document'">图纸登记</button>
+      <button type="button" :disabled="!apiEnabled || !canWrite" :title="!canWrite ? writeDisabledReason : '质量记录'" @click="active = 'quality'">质量记录</button>
+      <button type="button" :disabled="!apiEnabled || !canControl" :title="!canControl ? controlDisabledReason : '策略评估'" @click="active = 'strategy'">策略评估</button>
+      <button v-if="pendingDocumentId" type="button" :disabled="!apiEnabled || !canWrite || submitting" :title="!canWrite ? writeDisabledReason : '确认图纸分析'" @click="confirmDocument">确认图纸分析</button>
     </div>
     <small v-if="notice" :class="{ error: error }">{{ notice }}</small>
     <pre v-if="resultPreview" class="result-preview">{{ resultPreview }}</pre>
     <div v-if="recordsLoading" class="record-status">正在读取工作台数据…</div>
     <div v-else-if="recordsError" class="record-status error">工作台列表暂不可用，创建入口仍可提交</div>
-    <div v-else-if="!apiEnabled" class="record-status">本地仿真模式不读取或修改业务工作台</div>
+    <div v-else-if="!apiEnabled" class="record-status">当前未启用 MES API，不读取或修改业务工作台</div>
     <div v-else class="record-status">文档 {{ documents.length }} · 质量 {{ qualityRecords.length }} · 维修 {{ maintenanceOrders.length }}</div>
     <div v-if="apiEnabled" class="record-list">
-      <div v-for="document in documents.slice(0, 2)" :key="`d-${document.id}`" class="record-row"><span>图纸 · {{ String(document.fileName ?? document.id) }}</span><button type="button" :disabled="submitting" @click="previewDocument(document.id)">预览</button><button type="button" :disabled="submitting" title="仅 API 模式可确认图纸" @click="confirmDocumentRecord(document.id)">确认</button></div>
-      <div v-for="record in qualityRecords.slice(0, 2)" :key="`q-${record.id}`" class="record-row"><span>质量 · {{ String(record.batchNo ?? record.id) }}</span><button type="button" :disabled="submitting" @click="transitionQuality(record.id, 'submit')">提交</button><button type="button" :disabled="submitting" @click="transitionQuality(record.id, 'confirm')">确认</button><button type="button" :disabled="submitting" @click="transitionQuality(record.id, 'reject')">驳回</button></div>
-      <div v-for="order in maintenanceOrders.slice(0, 2)" :key="`m-${order.id}`" class="record-row"><span>维修 · {{ String(order.title ?? order.id) }}</span><button type="button" :disabled="submitting" @click="transitionMaintenance(order.id)">接单</button></div>
+      <div v-for="document in documents.slice(0, 2)" :key="`d-${document.id}`" class="record-row"><span>图纸 · {{ String(document.fileName ?? document.id) }}</span><button type="button" :disabled="submitting" @click="previewDocument(document.id)">预览</button><button type="button" :disabled="!canWrite || submitting" :title="!canWrite ? writeDisabledReason : '确认图纸'" @click="confirmDocumentRecord(document.id)">确认</button></div>
+      <div v-for="record in qualityRecords.slice(0, 2)" :key="`q-${record.id}`" class="record-row"><span>质量 · {{ String(record.batchNo ?? record.id) }}</span><button type="button" :disabled="!canWrite || submitting" :title="!canWrite ? writeDisabledReason : '提交质量记录'" @click="transitionQuality(record.id, 'submit')">提交</button><button type="button" :disabled="!canWrite || submitting" :title="!canWrite ? writeDisabledReason : '确认质量记录'" @click="transitionQuality(record.id, 'confirm')">确认</button><button type="button" :disabled="!canWrite || submitting" :title="!canWrite ? writeDisabledReason : '驳回质量记录'" @click="transitionQuality(record.id, 'reject')">驳回</button></div>
+      <div v-for="order in maintenanceOrders.slice(0, 2)" :key="`m-${order.id}`" class="record-row"><span>维修 · {{ String(order.title ?? order.id) }}</span><button type="button" :disabled="!canControl || submitting" :title="!canControl ? controlDisabledReason : '接单维修工单'" @click="transitionMaintenance(order.id)">接单</button></div>
       <span v-if="!documents.length && !qualityRecords.length && !maintenanceOrders.length" class="hint">暂无文档、质量或维修记录</span>
     </div>
     <div v-if="active" class="operations__modal" @click.self="active = null">
@@ -79,7 +79,17 @@ import { toBackendDeviceId, toBackendLineId } from '@/api/identityMap';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
 
 type Operation = 'work-order' | 'device' | 'maintenance' | 'document' | 'quality' | 'strategy';
-const props = defineProps<{ selectedLine: ProductionLineTelemetry; selectedDevice: DeviceTelemetry | null; lines: ProductionLineTelemetry[]; devices: DeviceTelemetry[]; apiEnabled: boolean }>();
+const props = defineProps<{
+  selectedLine: ProductionLineTelemetry;
+  selectedDevice: DeviceTelemetry | null;
+  lines: ProductionLineTelemetry[];
+  devices: DeviceTelemetry[];
+  apiEnabled: boolean;
+  canWrite: boolean;
+  canControl: boolean;
+  writeDisabledReason: string;
+  controlDisabledReason: string;
+}>();
 const emit = defineEmits<{ (event: 'data-changed'): void }>();
 const active = ref<Operation | null>(null);
 const submitting = ref(false);
@@ -129,19 +139,24 @@ onMounted(() => { void loadRecords(); });
 watch(() => props.apiEnabled, () => { void loadRecords(); });
 
 const previewDocument = (id: string) => { window.open(documentContentUrl(id), '_blank', 'noopener,noreferrer'); };
-const confirmDocumentRecord = async (id: string) => { if (!props.apiEnabled || submitting.value) return; try { submitting.value = true; await updateDocumentStatus(id, 'confirmed'); await loadRecords(); notice.value = '图纸已确认'; } catch { error.value = '图纸确认失败，请检查权限或接口状态'; } finally { submitting.value = false; } };
-const transitionQuality = async (id: string, action: 'submit' | 'confirm' | 'reject') => { if (!props.apiEnabled || submitting.value) return; try { submitting.value = true; if (action === 'submit') await submitQualityRecord(id); if (action === 'confirm') await confirmQualityRecord(id); if (action === 'reject') await rejectQualityRecord(id); await loadRecords(); notice.value = `质量记录${action === 'reject' ? '已驳回' : action === 'confirm' ? '已确认' : '已提交'}`; } catch { error.value = '质量记录状态更新失败，请检查当前状态和权限'; } finally { submitting.value = false; } };
-const transitionMaintenance = async (id: string) => { if (!props.apiEnabled || submitting.value) return; try { submitting.value = true; await updateMaintenanceStatus(id, 'assigned'); await loadRecords(); notice.value = '维修工单已接单'; } catch { error.value = '维修工单状态更新失败，请检查当前状态和权限'; } finally { submitting.value = false; } };
+const confirmDocumentRecord = async (id: string) => { if (!props.apiEnabled || !props.canWrite || submitting.value) return; try { submitting.value = true; await updateDocumentStatus(id, 'confirmed'); await loadRecords(); notice.value = '图纸已确认'; } catch { error.value = '图纸确认失败，请检查权限或接口状态'; } finally { submitting.value = false; } };
+const transitionQuality = async (id: string, action: 'submit' | 'confirm' | 'reject') => { if (!props.apiEnabled || !props.canWrite || submitting.value) return; try { submitting.value = true; if (action === 'submit') await submitQualityRecord(id); if (action === 'confirm') await confirmQualityRecord(id); if (action === 'reject') await rejectQualityRecord(id); await loadRecords(); notice.value = `质量记录${action === 'reject' ? '已驳回' : action === 'confirm' ? '已确认' : '已提交'}`; } catch { error.value = '质量记录状态更新失败，请检查当前状态和权限'; } finally { submitting.value = false; } };
+const transitionMaintenance = async (id: string) => { if (!props.apiEnabled || !props.canControl || submitting.value) return; try { submitting.value = true; await updateMaintenanceStatus(id, 'assigned'); await loadRecords(); notice.value = '维修工单已接单'; } catch { error.value = '维修工单状态更新失败，请检查当前状态和权限'; } finally { submitting.value = false; } };
 
-const openDeviceCreate = () => { editingDeviceId.value = null; device.value = { code: '', name: '', model: '', protocol: 'simulator' }; active.value = 'device'; };
-const openDeviceEdit = () => { if (!props.selectedDevice) return; editingDeviceId.value = props.selectedDevice.id; device.value = { code: props.selectedDevice.code ?? props.selectedDevice.id, name: props.selectedDevice.name, model: '', protocol: 'simulator' }; active.value = 'device'; };
-const setDeviceStatus = async (status: 'online' | 'maintenance') => { if (!props.selectedDevice) return; try { await updateDeviceStatus(toBackendDeviceId(props.selectedDevice.id), status, status === 'maintenance' ? '前端工作台手动维护标记' : '前端工作台手动恢复上线'); emit('data-changed'); notice.value = status === 'maintenance' ? '设备已标记为维护' : '设备已恢复上线'; } catch { error.value = '设备状态更新失败，请检查后端服务'; } };
+const openDeviceCreate = () => { if (!props.apiEnabled || !props.canWrite) { error.value = props.writeDisabledReason; return; } editingDeviceId.value = null; device.value = { code: '', name: '', model: '', protocol: 'simulator' }; active.value = 'device'; };
+const openDeviceEdit = () => { if (!props.selectedDevice) return; if (!props.canWrite) { error.value = props.writeDisabledReason; return; } editingDeviceId.value = props.selectedDevice.id; device.value = { code: props.selectedDevice.code ?? props.selectedDevice.id, name: props.selectedDevice.name, model: '', protocol: 'simulator' }; active.value = 'device'; };
+const setDeviceStatus = async (status: 'online' | 'maintenance') => { if (!props.selectedDevice || !props.canWrite) { error.value = props.writeDisabledReason; return; } try { await updateDeviceStatus(toBackendDeviceId(props.selectedDevice.id), status, status === 'maintenance' ? '前端工作台手动维护标记' : '前端工作台手动恢复上线'); emit('data-changed'); notice.value = status === 'maintenance' ? '设备已标记为维护' : '设备已恢复上线'; } catch { error.value = '设备状态更新失败，请检查后端服务'; } };
 
-const removeDevice = async () => { if (!props.selectedDevice || !window.confirm(`确认删除设备“${props.selectedDevice.name}”？`)) return; try { await deleteDevice(toBackendDeviceId(props.selectedDevice.id)); await loadRecords(); emit('data-changed'); notice.value = '设备已删除'; } catch { error.value = '设备删除失败，请检查权限或接口状态'; } };
+const removeDevice = async () => { if (!props.selectedDevice || !props.canControl) { error.value = props.controlDisabledReason; return; } if (!window.confirm(`确认删除设备“${props.selectedDevice.name}”？`)) return; try { await deleteDevice(toBackendDeviceId(props.selectedDevice.id)); await loadRecords(); emit('data-changed'); notice.value = '设备已删除'; } catch { error.value = '设备删除失败，请检查权限或接口状态'; } };
 
 const selectFile = (event: Event) => { selectedFile.value = (event.target as HTMLInputElement).files?.[0] ?? null; };
 const submit = async () => {
   if (!active.value || !props.apiEnabled) return;
+  const requiredCapability = active.value === 'maintenance' || active.value === 'strategy' ? 'control' : 'write';
+  if ((requiredCapability === 'write' && !props.canWrite) || (requiredCapability === 'control' && !props.canControl)) {
+    error.value = requiredCapability === 'write' ? props.writeDisabledReason : props.controlDisabledReason;
+    return;
+  }
   submitting.value = true; notice.value = ''; error.value = '';
   try {
     if (active.value === 'work-order') {
@@ -181,7 +196,7 @@ const submit = async () => {
 };
 
 const confirmDocument = async () => {
-  if (!pendingDocumentId.value || !props.apiEnabled) return;
+  if (!pendingDocumentId.value || !props.apiEnabled || !props.canWrite) { error.value = props.writeDisabledReason; return; }
   submitting.value = true; error.value = ''; notice.value = '';
   try {
     await confirmDocumentAnalysis(pendingDocumentId.value, 'digital-twin-ui', { analysisStatus: 'confirmed' });

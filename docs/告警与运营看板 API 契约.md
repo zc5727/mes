@@ -23,6 +23,8 @@
 
 未传 `status` 时返回当前未清除的告警（`active` 和 `acknowledged`）；清除记录通过 `status=closed` 或详情接口查询。设备状态告警和 MQTT 告警在 API 层按租户、产线、设备、级别、消息去重。确认和清除只更新告警生命周期读模型，不向设备、PLC 或模拟器发送控制命令。
 
+启用 PostgreSQL 时，告警生命周期会从 `alarms` 表恢复；数据库不可用时继续使用现有内存状态，不因持久化失败阻断查询或告警确认/清除。
+
 告警字段包含 `id`、`tenantId`、`source`、`sourceId`、`lineId`、`level`、`message`、`occurredAt`、`status`，以及状态变更后可用的 `acknowledgedAt`、`closedAt`。
 
 非法 `level` 或 `status` 返回 HTTP 400，并包含 `code`：`INVALID_ALARM_LEVEL` 或 `INVALID_ALARM_STATUS`。不存在的告警返回 HTTP 404；已清除告警再次确认返回 HTTP 409，错误码为 `ALARM_ALREADY_CLOSED`。

@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  OnModuleInit,
   Optional,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
@@ -11,6 +12,7 @@ import { Device, DevicesService } from '../devices/devices.service';
 import { MqttIngestionService } from '../mqtt/mqtt-ingestion.service';
 import { MaintenanceService } from '../maintenance/maintenance.service';
 import { resolveSimulatorIdentity } from '../digital-twin/device-identity';
+import { PrismaService } from '../database/prisma.service';
 
 export type AlarmLevel = 'info' | 'warning' | 'critical';
 export type AlarmStatus = 'active' | 'acknowledged' | 'closed';
@@ -63,7 +65,7 @@ export interface AlarmRealtimeMessage {
  * Lifecycle actions only change this read model; they never issue device commands.
  */
 @Injectable()
-export class AlarmsService {
+export class AlarmsService implements OnModuleInit {
   private readonly alarms = new Map<string, Alarm>();
   private readonly snapshotSequences = new Map<string, number>();
 
@@ -71,7 +73,12 @@ export class AlarmsService {
     private readonly devicesService: DevicesService,
     private readonly mqttIngestionService?: MqttIngestionService,
     @Optional() @Inject(forwardRef(() => MaintenanceService)) private readonly maintenanceService?: MaintenanceService,
+    @Optional() private readonly prisma?: PrismaService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.restorePersistedAlarms();
+  }
 
   findAll(tenantId: string, filters: AlarmFilters = {}): Alarm[] {
     const normalizedFilters = this.normalizeFilters(filters);
@@ -148,6 +155,7 @@ export class AlarmsService {
       snapshotVersion: this.nextSnapshotVersion(tenantId),
     };
     this.alarms.set(this.alarmKey(tenantId, id), updated);
+    void this.persistAlarm(updated);
     return updated;
   }
 
@@ -165,6 +173,7 @@ export class AlarmsService {
       snapshotVersion: this.nextSnapshotVersion(tenantId),
     };
     this.alarms.set(this.alarmKey(tenantId, id), updated);
+    void this.persistAlarm(updated);
     return updated;
   }
 
@@ -332,5 +341,80 @@ export class AlarmsService {
     const next = (this.snapshotSequences.get(tenantId) ?? 0) + 1;
     this.snapshotSequences.set(tenantId, next);
     return `${tenantId}-${String(next).padStart(6, '0')}`;
+  }
+
+  private async restorePersistedAlarms(): Promise<void> {
+    if (!this.prisma) return;
+    await this.prisma.ensureConnection();
+    if (!this.prisma.isReady() || !this.prisma.alarm?.findMany) return;
+    try {
+      const rows = await this.prisma.alarm.findMany();
+      rows.forEach((row) => {
+        const alarmId = row.dedupeKey?.startsWith(`${row.tenantId}:`)
+          ? `mqtt-alarm-${row.tenantId}-${row.dedupeKey.slice(row.tenantId.length + 1)}`
+          : row.id;
+        const occurredAt = row.occurredAt.toISOString();
+        const lastUpdatedAt = row.updatedAt.toISOString();
+        this.alarms.set(this.alarmKey(row.tenantId, alarmId), {
+          id: alarmId,
+          alarmId: row.dedupeKey?.slice(row.tenantId.length + 1) ?? alarmId,
+          tenantId: row.tenantId,
+          source: row.code,
+          sourceId: row.deviceId ?? row.id,
+          deviceId: row.deviceId ?? row.id,
+          canonicalDeviceId: row.deviceId ?? row.id,
+          lineId: row.lineId ?? '',
+          level: row.level.toString().toLowerCase() as AlarmLevel,
+          message: row.message,
+          time: occurredAt,
+          occurredAt,
+          timestamp: occurredAt,
+          lastUpdatedAt,
+          metrics: {},
+          position: null,
+          snapshotVersion: this.nextSnapshotVersion(row.tenantId),
+          dataSource: 'database',
+          status: row.status.toString() === 'acknowledged' ? 'acknowledged' : row.status.toString() === 'resolved' ? 'closed' : 'active',
+          closedAt: row.resolvedAt?.toISOString(),
+          clearedAt: row.resolvedAt?.toISOString(),
+        });
+      });
+    } catch {
+      // Database availability is optional; in-memory projections remain authoritative.
+    }
+  }
+
+  private async persistAlarm(alarm: Alarm): Promise<void> {
+    if (!this.prisma) return;
+    await this.prisma.ensureConnection();
+    if (!this.prisma.isReady() || !this.prisma.alarm?.upsert) return;
+    try {
+      const databaseId = (alarm.dataSource === 'mqtt'
+        ? `mqtt-${alarm.tenantId}-${alarm.alarmId}`
+        : alarm.id).slice(0, 40);
+      await this.prisma.alarm.upsert({
+        where: { id: databaseId },
+        create: {
+          id: databaseId,
+          tenantId: alarm.tenantId,
+          lineId: alarm.lineId || null,
+          deviceId: alarm.deviceId.startsWith('device-') ? alarm.deviceId : null,
+          code: alarm.source,
+          level: alarm.level as never,
+          status: alarm.status === 'closed' ? 'resolved' as never : alarm.status === 'acknowledged' ? 'acknowledged' as never : 'open' as never,
+          message: alarm.message,
+          dedupeKey: alarm.dataSource === 'mqtt' ? `${alarm.tenantId}:${alarm.alarmId}` : null,
+          occurredAt: new Date(alarm.occurredAt),
+          resolvedAt: alarm.closedAt ? new Date(alarm.closedAt) : null,
+        },
+        update: {
+          status: alarm.status === 'closed' ? 'resolved' as never : alarm.status === 'acknowledged' ? 'acknowledged' as never : 'open' as never,
+          message: alarm.message,
+          resolvedAt: alarm.closedAt ? new Date(alarm.closedAt) : null,
+        },
+      });
+    } catch {
+      // Persistence is best effort and must not make lifecycle actions unavailable.
+    }
   }
 }

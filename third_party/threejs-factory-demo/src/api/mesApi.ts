@@ -15,7 +15,70 @@ import { positionForDevice } from '@/config/devicePositions';
 const API_BASE_URL = (import.meta.env.VITE_MES_FACADE_URL ?? import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api/v1').replace(/\/$/, '');
 const TENANT_ID = import.meta.env.VITE_TENANT_ID ?? 'tenant-demo';
 const API_KEY = import.meta.env.VITE_API_KEY ?? '';
+const USER_ROLE = String(import.meta.env.VITE_USER_ROLE ?? '').trim();
+const USER_ID = String(import.meta.env.VITE_USER_ID ?? '').trim();
+const FACTORY_ID = String(import.meta.env.VITE_FACTORY_ID ?? '').trim();
+const RESOURCE_SCOPE = String(import.meta.env.VITE_SCOPE ?? '').trim();
+const SESSION_ID = String(import.meta.env.VITE_SESSION_ID ?? '').trim();
 const REQUEST_TIMEOUT_MS = 8_000;
+
+export type MesCapability = 'write' | 'control' | 'admin';
+
+const ROLE_ALIASES: Record<string, string> = {
+  admin: 'admin',
+  system_admin: 'admin',
+  supervisor: 'supervisor',
+  plant_manager: 'supervisor',
+  'plant-manager': 'supervisor',
+  engineer: 'engineer',
+  equipment_supervisor: 'engineer',
+  'equipment-supervisor': 'engineer',
+  operator: 'operator',
+};
+
+const CAPABILITY_ROLES: Record<MesCapability, ReadonlySet<string>> = {
+  write: new Set(['operator', 'engineer', 'supervisor', 'admin']),
+  control: new Set(['engineer', 'supervisor', 'admin']),
+  admin: new Set(['admin']),
+};
+
+/** Whether the direct local facade has a configured role for write requests. */
+export function hasMesWriteRole(): boolean {
+  return USER_ROLE.length > 0;
+}
+
+/** Check the same minimum role capability enforced by the NestJS facade. */
+export function canMesCapability(capability: MesCapability): boolean {
+  const normalizedRole = ROLE_ALIASES[USER_ROLE.toLowerCase()] ?? USER_ROLE.toLowerCase();
+  return Boolean(USER_ROLE) && CAPABILITY_ROLES[capability].has(normalizedRole);
+}
+
+/** Produce a user-facing reason instead of leaving an enabled request doomed to 401/403. */
+export function mesCapabilityReason(capability: MesCapability): string {
+  if (!USER_ROLE) return '未配置 VITE_USER_ROLE，当前账号不能执行 MES 写操作';
+  if (canMesCapability(capability)) return '';
+  return `当前角色 ${USER_ROLE} 没有 ${capability} 权限`;
+}
+
+function identityHeaders(): Record<string, string> {
+  return {
+    'x-tenant-id': TENANT_ID,
+    ...(USER_ROLE ? { 'x-user-role': USER_ROLE, 'x-role': USER_ROLE } : {}),
+    ...(USER_ID ? { 'x-user-id': USER_ID } : {}),
+    ...(FACTORY_ID ? { 'x-factory-id': FACTORY_ID } : {}),
+    ...(RESOURCE_SCOPE ? { 'x-scope': RESOURCE_SCOPE } : {}),
+    ...(SESSION_ID ? { 'x-session-id': SESSION_ID } : {}),
+    'x-trace-id': createTraceId(),
+    ...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
+  };
+}
+
+function createTraceId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `digital-twin-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 
 interface ApiLine {
   id: string;
@@ -277,10 +340,7 @@ async function get<T>(path: string): Promise<T> {
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
-      headers: {
-        'x-tenant-id': TENANT_ID,
-        ...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
-      },
+      headers: identityHeaders(),
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`MES API ${response.status}: ${path}`);
@@ -301,9 +361,8 @@ async function request<T>(path: string, method: 'POST' | 'PATCH' | 'DELETE', bod
     const response = await fetch(`${API_BASE_URL}${path}`, {
       method,
       headers: {
-        'x-tenant-id': TENANT_ID,
+        ...identityHeaders(),
         'content-type': 'application/json',
-        ...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: controller.signal,
@@ -324,8 +383,7 @@ async function requestFormData<T>(path: string, body: FormData): Promise<T> {
       const response = await fetch(`${API_BASE_URL}${path}`, {
         method: 'POST',
         headers: {
-          'x-tenant-id': TENANT_ID,
-          ...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
+          ...identityHeaders(),
         },
         body,
         signal: controller.signal,

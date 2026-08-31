@@ -9,19 +9,21 @@ const contracts = [
   ['views/FactoryDigitalTwin.vue', [
     '@click="refreshData"', '@click="reconnectRealtime"', '@submit.prevent="submitLine"',
     'aria-label="数据连接控制"', 'aria-label="视图范围"', 'selectedLineId', 'lineFormError', 'showLineDialog',
-    "dataSource", "startRealtime()", "startApiPolling()",
+    "dataSource", "startRealtime()", "startApiPolling()", 'canMesCapability',
+    ':can-manage-alarms="canWrite"', ':can-manage-lines="canControl"',
   ]],
   ['components/layout/LeftPanel.vue', [
     'select-line', 'productionLines', 'line-list', 'select-device',
     'add-line', 'edit-line', 'delete-line', 'ack-alarm', 'close-alarm',
-    ':disabled="!canManageLines || lineBusy"', 'overflow-y: auto;',
+    ':disabled="!canManageLines || lineBusy"', 'canManageAlarms', 'alarmBusy', 'overflow-y: auto;',
   ]],
   ['components/layout/OperationsPanel.vue', [
     '@submit.prevent="submit"', 'apiEnabled', 'qualityRecords', 'maintenanceOrders',
     '新建工单', '新增设备', '编辑设备', '删除设备', '设为维护', '恢复上线',
     '新建维修', '图纸登记', '质量记录', '策略评估', 'type="file"',
     'openDeviceCreate', 'openDeviceEdit', 'removeDevice', 'setDeviceStatus',
-    ':disabled="!apiEnabled"', ':disabled="!apiEnabled || !selectedDevice"',
+    'canWrite: boolean', 'canControl: boolean', 'writeDisabledReason', 'controlDisabledReason',
+    ':disabled="!apiEnabled || !canWrite"', ':disabled="!apiEnabled || !canControl || !selectedDevice"',
   ]],
   ['components/layout/RightPanel.vue', [
     'view-work-order', 'create-inspection', '查看工单（未接入）', '创建点检（未接入）',
@@ -34,8 +36,9 @@ const contracts = [
     'minDistance', 'maxDistance', 'pointermove', 'addEventListener(\'click\'',
   ]],
   ['api/mesApi.ts', [
-    'VITE_MES_FACADE_URL', 'VITE_API_BASE_URL', 'VITE_TENANT_ID',
-    "'x-tenant-id': TENANT_ID", 'REQUEST_TIMEOUT_MS', 'fetchFactorySnapshot',
+    'VITE_MES_FACADE_URL', 'VITE_API_BASE_URL', 'VITE_TENANT_ID', 'VITE_USER_ROLE',
+    "'x-tenant-id': TENANT_ID", "'x-user-role': USER_ROLE", "'x-role': USER_ROLE",
+    'REQUEST_TIMEOUT_MS', 'fetchFactorySnapshot', 'canMesCapability', 'mesCapabilityReason',
   ]],
   ['websocket/WebSocketService.ts', [
     'EventSource', 'new WebSocket', 'reconnecting', 'setConnectionState(\'offline\')',

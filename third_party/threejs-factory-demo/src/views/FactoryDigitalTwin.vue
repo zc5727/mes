@@ -32,7 +32,7 @@
       :selected-device="activeSelectedDevice"
       @select-device="handleSceneSelect"
     />
-    <OperationsPanel :selected-line="selectedLine" :selected-device="activeSelectedDevice" :lines="lineSummaries" :devices="devices" :api-enabled="true" @data-changed="handleDataChanged" />
+    <OperationsPanel :selected-line="selectedLine" :selected-device="activeSelectedDevice" :lines="lineSummaries" :devices="devices" :api-enabled="true" :can-write="canWrite" :can-control="canControl" :write-disabled-reason="writeDisabledReason" :control-disabled-reason="controlDisabledReason" @data-changed="handleDataChanged" />
     <LeftPanel
       :alarms="lineAlarms"
       :devices="lineDevices"
@@ -42,7 +42,11 @@
       :selected-line-id="selectedLineId"
       :line-busy="lineSubmitting || dataBusy"
       @select-line="handleLineSelect"
-      :can-manage-lines="true"
+      :can-manage-lines="canControl"
+      :can-manage-alarms="canWrite"
+      :write-disabled-reason="writeDisabledReason"
+      :control-disabled-reason="controlDisabledReason"
+      :alarm-busy="alarmSubmitting"
       @add-line="openLineDialog"
       @edit-line="openEditLine"
       @delete-line="deleteLine"
@@ -99,7 +103,7 @@ import OperationsPanel from '@/components/layout/OperationsPanel.vue';
 import RightPanel from '@/components/layout/RightPanel.vue';
 import TopBar from '@/components/layout/TopBar.vue';
 import ThreeFactoryViewport from '@/components/scene/ThreeFactoryViewport.vue';
-import { acknowledgeAlarm, closeAlarm, createProductionLine, deleteProductionLine, fetchFactorySnapshot, updateProductionLine } from '@/api/mesApi';
+import { acknowledgeAlarm, canMesCapability, closeAlarm, createProductionLine, deleteProductionLine, fetchFactorySnapshot, mesCapabilityReason, updateProductionLine } from '@/api/mesApi';
 import { useFactoryStore } from '@/store/factoryStore';
 import type { DeviceTelemetry, ProductionLineTelemetry } from '@/types/factory';
 import { toBackendDeviceId, toBackendLineId } from '@/api/identityMap';
@@ -113,8 +117,13 @@ const loading = ref(true);
 const loadError = ref(false);
 const connectionState = ref<RealtimeConnectionState>('idle');
 const dataBusy = ref(false);
+const alarmSubmitting = ref(false);
 const dataNotice = ref('');
 const viewScope = ref<'line' | 'factory'>('line');
+const canWrite = canMesCapability('write');
+const canControl = canMesCapability('control');
+const writeDisabledReason = mesCapabilityReason('write');
+const controlDisabledReason = mesCapabilityReason('control');
 const showLineDialog = ref(false);
 const lineSubmitting = ref(false);
 const lineFormError = ref('');
@@ -217,13 +226,19 @@ const reconnectRealtime = () => {
 };
 
 const ackAlarm = async (id: string) => {
+  if (!canWrite || alarmSubmitting.value) { dataNotice.value = writeDisabledReason; return; }
+  alarmSubmitting.value = true;
   try { await acknowledgeAlarm(id); await refreshApiSnapshot(); dataNotice.value = '告警已确认'; }
-  catch { dataNotice.value = '告警确认失败，请检查后端服务'; }
+  catch { dataNotice.value = '告警确认失败，请检查后端服务和当前角色权限'; }
+  finally { alarmSubmitting.value = false; }
 };
 
 const closeAlarmAction = async (id: string) => {
+  if (!canWrite || alarmSubmitting.value) { dataNotice.value = writeDisabledReason; return; }
+  alarmSubmitting.value = true;
   try { await closeAlarm(id); await refreshApiSnapshot(); dataNotice.value = '告警已关闭'; }
-  catch { dataNotice.value = '告警关闭失败，请检查后端服务'; }
+  catch { dataNotice.value = '告警关闭失败，请检查后端服务和当前角色权限'; }
+  finally { alarmSubmitting.value = false; }
 };
 
 const handleLineSelect = (id: string) => {
@@ -250,6 +265,7 @@ const startApiPolling = (interval = 3_000) => {
 
 const openLineDialog = () => {
   if (dataBusy.value) return;
+  if (!canControl) { dataNotice.value = controlDisabledReason; return; }
   editingLineId.value = null;
   lineForm.value = { factoryId: 'factory-demo', code: '', name: '', type: '', targetOee: 85 };
   lineFormError.value = '';
@@ -259,6 +275,7 @@ const openLineDialog = () => {
 
 const openEditLine = (lineId: string) => {
   if (dataBusy.value) return;
+  if (!canControl) { dataNotice.value = controlDisabledReason; return; }
   const line = lineSummaries.value.find((item) => item.id === lineId);
   if (!line) return;
   editingLineId.value = lineId;
@@ -276,6 +293,7 @@ const openEditLine = (lineId: string) => {
 
 const deleteLine = async (lineId: string) => {
   if (lineSubmitting.value || dataBusy.value) return;
+  if (!canControl) { dataNotice.value = controlDisabledReason; return; }
   const line = lineSummaries.value.find((item) => item.id === lineId);
   if (!line || !window.confirm(`确认删除产线“${line.name}”？该操作将提交到后端。`)) return;
   lineSubmitting.value = true;
@@ -299,6 +317,10 @@ const closeLineDialog = () => {
 const submitLine = async () => {
   const form = lineForm.value;
   if (lineSubmitting.value) return;
+  if (!canControl) {
+    lineFormError.value = controlDisabledReason;
+    return;
+  }
   if (form.factoryId.length < 2 || form.code.length < 2 || form.name.length < 2 || !form.type) {
     lineFormError.value = '请完整填写工厂 ID、产线编码、名称和类型';
     return;

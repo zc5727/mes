@@ -10,7 +10,7 @@
       </div>
       <div class="flow-title line-overview-title">
         <span>生产线总览</span>
-        <button type="button" class="add-line-button" :disabled="!canManageLines || lineBusy" :title="lineBusy ? '产线请求处理中' : !canManageLines ? '当前模式不允许修改产线' : '新增产线'" @click="$emit('add-line')">＋ 新增产线</button>
+        <button type="button" class="add-line-button" :disabled="!canManageLines || lineBusy" :title="lineBusy ? '产线请求处理中' : !canManageLines ? controlDisabledReason : '新增产线'" @click="$emit('add-line')">＋ 新增产线</button>
       </div>
       <div class="line-list">
         <div v-for="line in productionLines" :key="line.id" class="line-row">
@@ -20,8 +20,8 @@
             <span class="line-rate">{{ line.completionRate }}%</span>
           </button>
           <span v-if="canManageLines" class="line-actions">
-            <button type="button" :disabled="lineBusy" :title="lineBusy ? '产线请求处理中' : '编辑产线'" @click="$emit('edit-line', line.id)">编辑</button>
-            <button type="button" :disabled="lineBusy" :title="lineBusy ? '产线请求处理中' : '删除产线'" @click="$emit('delete-line', line.id)">删除</button>
+            <button type="button" :disabled="!canManageLines || lineBusy" :title="lineBusy ? '产线请求处理中' : !canManageLines ? controlDisabledReason : '编辑产线'" @click="$emit('edit-line', line.id)">编辑</button>
+            <button type="button" :disabled="!canManageLines || lineBusy" :title="lineBusy ? '产线请求处理中' : !canManageLines ? controlDisabledReason : '删除产线'" @click="$emit('delete-line', line.id)">删除</button>
           </span>
         </div>
         <div v-if="!productionLines.length" class="empty-state">暂无产线数据，请检查 MES API 或数据权限。</div>
@@ -38,7 +38,7 @@
             <em>{{ alarm.time.slice(-8) }}</em>
           </div>
           <p>{{ alarm.message }}</p>
-          <div class="alarm-actions"><button type="button" :disabled="!canManageLines" title="本地仿真模式不写入 MES" @click="$emit('ack-alarm', alarm.id)">确认</button><button type="button" :disabled="!canManageLines" title="本地仿真模式不写入 MES" @click="$emit('close-alarm', alarm.id)">关闭</button></div>
+          <div class="alarm-actions"><button type="button" :disabled="!canManageAlarms || alarmBusy" :title="alarmBusy ? '告警请求处理中' : !canManageAlarms ? writeDisabledReason : '确认告警'" @click="$emit('ack-alarm', alarm.id)">{{ alarmBusy ? '处理中…' : '确认' }}</button><button type="button" :disabled="!canManageAlarms || alarmBusy" :title="alarmBusy ? '告警请求处理中' : !canManageAlarms ? writeDisabledReason : '关闭告警'" @click="$emit('close-alarm', alarm.id)">{{ alarmBusy ? '处理中…' : '关闭' }}</button></div>
         </div>
         <div v-if="!alarms.length" class="empty-state">当前产线暂无未处理告警。</div>
       </div>
@@ -76,6 +76,10 @@ const props = defineProps<{
   selectedLineId: string;
   selectedLine?: ProductionLineTelemetry;
   canManageLines: boolean;
+  canManageAlarms: boolean;
+  writeDisabledReason: string;
+  controlDisabledReason: string;
+  alarmBusy: boolean;
   lineBusy: boolean;
 }>();
 
