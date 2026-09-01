@@ -14,6 +14,11 @@ const identityHeaders: Record<string, string> = {
   'x-scope': import.meta.env.VITE_SCOPE ?? '*',
   'x-session-id': import.meta.env.VITE_SESSION_ID ?? 'simulator-console-local',
 };
+function createTraceId(): string {
+  return typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `simulator-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 const app = document.querySelector<HTMLDivElement>('#app')!;
 let devices: Device[] = [];
 let lines: Line[] = [];
@@ -24,6 +29,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set('content-type', 'application/json');
   headers.set('x-tenant-id', tenantId);
+  headers.set('x-trace-id', createTraceId());
   Object.entries(identityHeaders).forEach(([key, value]) => headers.set(key, value));
   if (apiKey) headers.set('authorization', `Bearer ${apiKey}`);
   try {

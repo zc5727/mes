@@ -18,6 +18,7 @@ const assertions = [
   ['单设备启停控件', source.includes('data-action="start"') && source.includes('data-action="stop"')],
   ['API 密钥注入', source.includes('VITE_API_KEY') && source.includes('authorization')],
   ['身份上下文注入', source.includes('x-user-role') && source.includes('x-factory-id')],
+  ['请求追踪标识', source.includes('x-trace-id') && source.includes('createTraceId')],
   ['API 失败可重试', source.includes('id="retry"') && source.includes('addEventListener(\'click\', load)')],
 ];
 
