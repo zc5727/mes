@@ -25,7 +25,13 @@ jobs:
           npm --prefix third_party/threejs-factory-demo ci
       - name: Prepare backend environment
         run: cp backend/.env.example backend/.env
-      - name: Run code and real dependency gates
+      - name: Run code quality gates
         env:
           CI: true
-        run: ./scripts/verify-ci.sh
+        run: ./scripts/verify-all.sh
+      - name: Run real PostgreSQL and MQTT gates
+        env:
+          CI: true
+          DATABASE_ENABLED: true
+          MQTT_ENABLED: true
+        run: ./scripts/verify-runtime.sh

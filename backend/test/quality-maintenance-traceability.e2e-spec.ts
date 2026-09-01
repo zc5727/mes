@@ -5,7 +5,7 @@ import { createTestApp } from './support/test-app';
 // This suite performs several guarded HTTP round trips per scenario. Keep the
 // test budget independent of the host's cold-start and TypeScript transform
 // latency while still failing promptly on a genuinely hung request.
-jest.setTimeout(15000);
+jest.setTimeout(30000);
 
 describe('quality, maintenance and traceability contracts (e2e)', () => {
   let app: INestApplication;
