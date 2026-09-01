@@ -388,7 +388,18 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     const paused = data?.paused;
     const timeScale = data?.timeScale;
     const currentTime = message.timestamp ?? new Date().toISOString();
-    if (status !== 'RUNNING' && status !== 'PAUSED' && status !== 'STOPPED') return;
+    if (status !== 'RUNNING' && status !== 'PAUSED' && status !== 'STOPPED') {
+      if (!current || (message.event !== 'simulator.snapshot' && message.event !== 'simulator.export')) return;
+      this.simulatorRuntime.set(tenantId, {
+        ...current,
+        currentTime,
+        lastCommand: message.action as SimulatorRuntimeProjection['lastCommand'],
+        lastCommandId: message.commandId ?? null,
+        lastCommandAt: currentTime,
+      });
+      this.notifyProjection(tenantId);
+      return;
+    }
     if (typeof paused !== 'boolean' || typeof timeScale !== 'number' || !Number.isFinite(timeScale) || timeScale <= 0) return;
     this.simulatorRuntime.set(tenantId, {
       status,
