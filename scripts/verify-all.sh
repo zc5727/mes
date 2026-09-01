@@ -36,6 +36,7 @@ run npm --prefix "$ROOT_DIR/simulator-ui" run build
 run node "$ROOT_DIR/scripts/simulator-ui-contract-smoke.mjs"
 run npm --prefix "$ROOT_DIR/third_party/threejs-factory-demo" run build
 run node "$ROOT_DIR/scripts/frontend-contract-smoke.mjs"
+run node "$ROOT_DIR/scripts/frontend-regression-contract-smoke.mjs"
 run node "$ROOT_DIR/scripts/desktop-smoke.mjs" --app-dir "$ROOT_DIR/desktop"
 
 echo "代码级验证全部通过。真实 PostgreSQL/MQTT 启停恢复和 DOM/Tauri 交互需执行 scripts/verify-runtime.sh。"
