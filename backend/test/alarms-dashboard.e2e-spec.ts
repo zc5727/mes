@@ -36,6 +36,23 @@ describe('Alarms and dashboard API (e2e)', () => {
     ]);
   });
 
+  it('supports paginated alarm reads with stable item data', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/alarms?page=1&pageSize=1')
+      .set('x-tenant-id', 'tenant-demo')
+      .expect(200);
+
+    expect(response.body.data).toHaveLength(1);
+    expect(response.body.pagination).toEqual({
+      page: 1,
+      pageSize: 1,
+      total: 1,
+      totalPages: 1,
+      hasNext: false,
+      hasPrevious: false,
+    });
+  });
+
   it('serves the dashboard overview route', async () => {
     const response = await request(app.getHttpServer())
       .get('/api/v1/dashboard/overview')
@@ -131,6 +148,23 @@ describe('Alarms and dashboard API (e2e)', () => {
       .set('x-tenant-id', 'other-tenant')
       .expect(200)
       .expect({ tenantId: 'other-tenant', data: [] });
+  });
+
+  it('supports paginated production history reads', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/dashboard/history?lineId=line-cnc&page=1&pageSize=20')
+      .set('x-tenant-id', 'tenant-demo')
+      .expect(200);
+
+    expect(response.body.data).toEqual([]);
+    expect(response.body.pagination).toEqual({
+      page: 1,
+      pageSize: 20,
+      total: 0,
+      totalPages: 0,
+      hasNext: false,
+      hasPrevious: false,
+    });
   });
 
   it('projects an injected MQTT fault into alarms and dashboard state', async () => {

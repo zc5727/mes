@@ -66,6 +66,33 @@ describe('DashboardService', () => {
     });
   });
 
+  it('paginates production history while preserving the history point contract', () => {
+    const devicesService = new DevicesService();
+    const service = new DashboardService(
+      new ProductionLinesService(),
+      devicesService,
+      new WorkOrdersService(),
+      new AgvsService(),
+      new AlarmsService(devicesService),
+    );
+    jest.spyOn(service, 'getProductionHistory').mockReturnValue([
+      { timestamp: '2026-08-31T09:00:00.000Z', lineId: 'line-cnc', workOrderId: 'wo-1', quantity: 10, goodQty: 9, defectQty: 1, cumulativeCompletedQty: 10, completionRate: 10, source: 'work_order_reports' },
+      { timestamp: '2026-08-31T10:00:00.000Z', lineId: 'line-cnc', workOrderId: 'wo-1', quantity: 20, goodQty: 20, defectQty: 0, cumulativeCompletedQty: 30, completionRate: 30, source: 'work_order_reports' },
+    ]);
+
+    expect(service.getProductionHistoryPage('tenant-demo', 'line-cnc', 2, 1)).toEqual({
+      items: [expect.objectContaining({ quantity: 20 })],
+      pagination: {
+        page: 2,
+        pageSize: 1,
+        total: 2,
+        totalPages: 2,
+        hasNext: false,
+        hasPrevious: true,
+      },
+    });
+  });
+
   it('pushes overview snapshots when the tenant projection changes', () => {
     const devicesService = new DevicesService();
     const ingestion = new MqttIngestionService();

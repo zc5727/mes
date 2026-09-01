@@ -57,6 +57,20 @@ export interface ProductionHistoryPoint {
   source: 'work_order_reports';
 }
 
+export interface DashboardPagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+}
+
+export interface ProductionHistoryPage {
+  items: ProductionHistoryPoint[];
+  pagination: DashboardPagination;
+}
+
 export interface DashboardLineSummary {
   lineId: string;
   code: string;
@@ -235,6 +249,29 @@ export class DashboardService {
           };
         });
     }).sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+  }
+
+  getProductionHistoryPage(
+    tenantId: string,
+    lineId: string | undefined,
+    page = 1,
+    pageSize = 50,
+  ): ProductionHistoryPage {
+    const items = this.getProductionHistory(tenantId, lineId);
+    const totalPages = Math.ceil(items.length / pageSize);
+    const start = (page - 1) * pageSize;
+
+    return {
+      items: items.slice(start, start + pageSize),
+      pagination: {
+        page,
+        pageSize,
+        total: items.length,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrevious: page > 1 && totalPages > 0,
+      },
+    };
   }
 
   stream(tenantId: string): Observable<DashboardRealtimeMessage> {

@@ -26,6 +26,22 @@ describe('AlarmsService', () => {
     expect(service.findAll('tenant-demo', { lineId: 'line-welding' })).toHaveLength(1);
   });
 
+  it('returns explicit pagination metadata without changing the alarm item shape', () => {
+    const service = new AlarmsService(new DevicesService());
+
+    expect(service.findPage('tenant-demo', { page: 2, pageSize: 1 })).toEqual({
+      items: [],
+      pagination: {
+        page: 2,
+        pageSize: 1,
+        total: 1,
+        totalPages: 1,
+        hasNext: false,
+        hasPrevious: true,
+      },
+    });
+  });
+
   it('pushes an initial snapshot and tenant-scoped projection updates', () => {
     const ingestion = new MqttIngestionService();
     const service = new AlarmsService(new DevicesService(), ingestion);

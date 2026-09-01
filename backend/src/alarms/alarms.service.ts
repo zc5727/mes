@@ -52,6 +52,25 @@ export interface AlarmFilters {
   status?: AlarmStatus;
 }
 
+export interface AlarmPage extends AlarmFilters {
+  page?: number;
+  pageSize?: number;
+}
+
+export interface AlarmPagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+}
+
+export interface AlarmPageResult {
+  items: Alarm[];
+  pagination: AlarmPagination;
+}
+
 export interface AlarmRealtimeMessage {
   data: {
     type: 'snapshot' | 'updated' | 'heartbeat';
@@ -99,6 +118,26 @@ export class AlarmsService implements OnModuleInit {
       .filter((alarm) => !normalizedFilters.deviceId
         || [alarm.deviceId, alarm.canonicalDeviceId, alarm.sourceId].includes(normalizedFilters.deviceId))
       .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
+  }
+
+  findPage(tenantId: string, filters: AlarmPage = {}): AlarmPageResult {
+    const page = filters.page ?? 1;
+    const pageSize = filters.pageSize ?? 50;
+    const items = this.findAll(tenantId, filters);
+    const totalPages = Math.ceil(items.length / pageSize);
+    const start = (page - 1) * pageSize;
+
+    return {
+      items: items.slice(start, start + pageSize),
+      pagination: {
+        page,
+        pageSize,
+        total: items.length,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrevious: page > 1 && totalPages > 0,
+      },
+    };
   }
 
   findOne(tenantId: string, id: string): Alarm {

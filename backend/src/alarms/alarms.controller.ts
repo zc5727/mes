@@ -13,7 +13,11 @@ export class AlarmsController {
   @Get()
   findAll(@TenantId() tenantId: string, @Query() query: AlarmQueryDto) {
     this.validateQuery(query);
-    return { data: this.alarmsService.findAll(tenantId, query), tenantId };
+    if (query.page === undefined && query.pageSize === undefined) {
+      return { data: this.alarmsService.findAll(tenantId, query), tenantId };
+    }
+    const result = this.alarmsService.findPage(tenantId, query);
+    return { data: result.items, pagination: result.pagination, tenantId };
   }
 
   @Sse('stream')

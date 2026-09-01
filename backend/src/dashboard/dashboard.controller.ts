@@ -25,7 +25,17 @@ export class DashboardController {
 
   @Get('history')
   history(@TenantId() tenantId: string, @Query() query: DashboardHistoryQueryDto) {
-    return { data: this.dashboardService.getProductionHistory(tenantId, query.lineId?.trim()), tenantId };
+    const lineId = query.lineId?.trim();
+    if (query.page === undefined && query.pageSize === undefined) {
+      return { data: this.dashboardService.getProductionHistory(tenantId, lineId), tenantId };
+    }
+    const result = this.dashboardService.getProductionHistoryPage(
+      tenantId,
+      lineId,
+      query.page,
+      query.pageSize,
+    );
+    return { data: result.items, pagination: result.pagination, tenantId };
   }
 
   @Get('lines/:lineId')
