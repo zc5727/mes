@@ -1,5 +1,5 @@
 import { RequireCapability } from '../common/route-capability.decorator';
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, Post, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, Post, Query, ServiceUnavailableException } from '@nestjs/common';
 import { TenantId } from '../common/tenant.decorator';
 import { StrategyEngineService } from './strategy-engine.service';
 import { StrategyCallRecord, StrategyGovernanceService } from './strategy-governance.service';
@@ -156,10 +156,21 @@ export class StrategiesController {
     @TenantId() tenantId: string,
     @Headers('x-user-id') userId?: string, @Headers('x-role') role?: string, @Headers('x-factory-id') factoryId?: string,
     @Headers('x-scope') scope?: string, @Headers('x-session-id') sessionId?: string, @Headers('x-trace-id') traceId?: string,
+    @Query('page') pageQuery?: string,
+    @Query('pageSize') pageSizeQuery?: string,
   ) {
     const context = this.requestContext(userId, role, factoryId, scope, sessionId, traceId);
     this.authorization.assertCanRead(context);
-    return { data: this.requireGovernance().listCallsForContext(tenantId, context), tenantId, traceId: context.traceId };
+    const records = this.requireGovernance().listCallsForContext(tenantId, context);
+    const page = this.parsePage(pageQuery, 'page', 1);
+    const pageSize = this.parsePage(pageSizeQuery, 'pageSize', 100);
+    const start = (page - 1) * pageSize;
+    return {
+      data: pageQuery || pageSizeQuery ? records.slice(start, start + pageSize) : records,
+      pagination: { page, pageSize, total: records.length, totalPages: Math.ceil(records.length / pageSize) },
+      tenantId,
+      traceId: context.traceId,
+    };
   }
 
   @Get('simulations/:simulationId/approvals')
@@ -304,5 +315,14 @@ export class StrategiesController {
       );
     }
     return this.governance;
+  }
+
+  private parsePage(value: string | undefined, name: string, fallback: number): number {
+    if (value === undefined) return fallback;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 1 || (name === 'pageSize' && parsed > 100)) {
+      throw new BadRequestException(`${name} must be an integer between 1 and ${name === 'pageSize' ? 100 : Number.MAX_SAFE_INTEGER}`);
+    }
+    return parsed;
   }
 }

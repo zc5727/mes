@@ -20,7 +20,7 @@
 ```text
 GET /api/v1/strategies/simulations/:simulationId
 GET /api/v1/strategies/audit-records
-GET /api/v1/strategies/history
+GET /api/v1/strategies/history?page=1&pageSize=20
 GET /api/v1/strategies/simulations/:simulationId/approvals
 POST /api/v1/strategies/simulations/:simulationId/replay
 POST /api/v1/strategies/simulations/:simulationId/rollback
@@ -34,6 +34,8 @@ POST /api/v1/strategies/simulations/:simulationId/execute
 正式仿真请求建议携带 `Idempotency-Key`。同一租户、同一 key 和同一快照会重放原结果，不重复创建审计和审批；同一 key 复用但快照不同会返回冲突。回滚接口只丢弃仿真建议并保留结果与审计轨迹，不回写设备、工单或产线。
 
 审批状态通过仿真专属接口读取，返回该仿真产生的审批记录（`pending`、`approved`、`rejected` 或 `revoked`）。执行接口必须提交已审批的 `confirmationId`；审批决定不会触发策略执行，重复执行和未审批执行都会被拒绝。策略模块没有设备控制或工单写回能力。
+
+策略分析页分页调用 `GET /api/v1/strategies/history?page=<n>&pageSize=<1-100>`；响应的 `data` 是当前页，`pagination` 返回 `page`、`pageSize`、`total` 和 `totalPages`。不带分页参数时保留完整历史数组兼容旧调用。分页不会改变权限、租户、工厂和产线范围校验。
 
 ## Agent 受控访问
 

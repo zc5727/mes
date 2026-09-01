@@ -82,6 +82,12 @@ describe('strategy governance boundary (e2e)', () => {
     expect(history.body.data).toEqual(expect.arrayContaining([
       expect.objectContaining({ simulationId, lifecycleStatus: 'simulated_execution' }),
     ]));
+    const pagedHistory = await request(server).get('/api/v1/strategies/history?page=1&pageSize=1')
+      .set(identity('supervisor', 'LINE-01,LINE-02')).expect(200);
+    expect(pagedHistory.body.pagination).toEqual(expect.objectContaining({ page: 1, pageSize: 1, total: expect.any(Number) }));
+    expect(pagedHistory.body.data).toHaveLength(1);
+    await request(server).get('/api/v1/strategies/history?pageSize=101')
+      .set(identity('supervisor', 'LINE-01,LINE-02')).expect(400);
     const auditRecords = await request(server).get('/api/v1/strategies/audit-records')
       .set(identity('supervisor', 'LINE-01')).expect(200);
     expect(auditRecords.body.data).toEqual([]);
