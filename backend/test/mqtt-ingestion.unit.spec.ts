@@ -350,6 +350,7 @@ describe('simulator MQTT ingestion', () => {
     expect(client.subscriptions).toEqual([
       'mes/+/+/lines/+/devices/+/telemetry',
       'mes/simulator/+/alarms',
+      'mes/simulator/+/control',
     ]);
 
     client.emit('message', topic('telemetry'), Buffer.from(JSON.stringify(telemetry)));
@@ -358,7 +359,7 @@ describe('simulator MQTT ingestion', () => {
     client.emit('reconnect');
     client.emit('connect');
     await flushPromises();
-    expect(client.subscriptions).toHaveLength(4);
+    expect(client.subscriptions).toHaveLength(6);
     client.emit('message', topic('telemetry'), JSON.stringify(telemetry));
     expect(service.listDevices('demo-tenant')).toHaveLength(1);
 

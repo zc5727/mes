@@ -183,6 +183,10 @@ interface FetchSnapshotResult {
   dashboard?: ApiDashboardOverview;
 }
 
+interface ApiDigitalTwinSnapshot {
+  simulator?: FactorySnapshot['simulator'];
+}
+
 export interface SimulatorControlCommand {
   action: 'fault' | 'reset' | 'recover';
   lineId?: string;
@@ -222,9 +226,10 @@ export async function fetchFactorySnapshot(): Promise<FetchSnapshotResult> {
     getOptional<ApiAgv[]>('/agvs'),
   ]);
 
-  const [apiAlarms, dashboard] = await Promise.all([
+  const [apiAlarms, dashboard, twin] = await Promise.all([
     getOptional<ApiAlarm[]>('/alarms'),
     getOptional<ApiDashboardOverview>('/dashboard/overview'),
+    getOptional<ApiDigitalTwinSnapshot>('/digital-twin/snapshot'),
   ]);
   const devices = apiDevices.map(toDevice);
   const alarms = apiAlarms?.map(toAlarm) ?? deriveAlarms(apiDevices, devices);
@@ -245,6 +250,7 @@ export async function fetchFactorySnapshot(): Promise<FetchSnapshotResult> {
       powerConsumption: devices.reduce((total, device) => total + device.power, 0),
       temperatureTrend: devices.slice(0, 8).map((device) => device.temperature),
       productionSummary,
+      simulator: twin?.simulator,
     },
   };
 }

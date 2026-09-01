@@ -3,11 +3,12 @@ import { AlarmDeduplicator } from './alarm-deduplicator';
 import { MqttStatePersistenceService } from '../database/mqtt-state-persistence.service';
 import { DeviceTelemetryCache } from './device-cache';
 import { createDefaultMqttClient } from './mqtt-client.factory';
-import { parseSimulatorMessage } from './mqtt-parser';
+import { parseSimulatorControlProjection, parseSimulatorMessage } from './mqtt-parser';
 import { IngestDeviceEventDto } from './dto/ingest-device-event.dto';
 import { mapGatewayPoints } from './point-mapping';
 import { DevicesService } from '../devices/devices.service';
 import { DeviceConnectionsService } from '../device-connections/device-connections.service';
+import { resolveSimulatorSourceId } from '../digital-twin/device-identity';
 import {
   DEFAULT_ALARMS_TOPIC,
   DEFAULT_TELEMETRY_TOPIC,
@@ -19,6 +20,7 @@ import {
   SimulatorControlCommand,
   SimulatorTelemetry,
   MqttIngestionStatus,
+  SimulatorRuntimeProjection,
 } from './mqtt.types';
 
 /**
@@ -45,6 +47,7 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
   private reconnectAttempts = 0;
   private readonly messageCounters = { received: 0, telemetry: 0, alarms: 0, http: 0, accepted: 0, duplicate: 0, stale: 0, malformed: 0, rejected: 0 };
   private readonly projectionListeners = new Set<(tenantId: string) => void>();
+  private readonly simulatorRuntime = new Map<string, SimulatorRuntimeProjection>();
 
   constructor(
     @Inject(MQTT_CLIENT_FACTORY) private readonly clientFactory: MqttClientFactory = createDefaultMqttClient,
@@ -154,6 +157,10 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     return this.alarmDeduplicator.listActive(tenantId);
   }
 
+  getSimulatorRuntime(tenantId: string): SimulatorRuntimeProjection | null {
+    return this.simulatorRuntime.get(tenantId) ?? null;
+  }
+
   onProjection(listener: (tenantId: string) => void): () => void {
     this.projectionListeners.add(listener);
     return () => this.projectionListeners.delete(listener);
@@ -222,8 +229,11 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     }
 
     const commandId = command.commandId ?? `sim-control-${Date.now()}-${process.pid}`;
+    const simulatorCommand = command.lineId && command.deviceId
+      ? { ...command, deviceId: resolveSimulatorSourceId(command.lineId, command.deviceId) }
+      : command;
     const payload = JSON.stringify({
-      ...command,
+      ...simulatorCommand,
       commandId,
     });
     const topic = `mes/control/${tenantId}/simulator/command`;
@@ -294,7 +304,11 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     if (!client || !this.started || this.subscriptionInFlight) return;
 
     const options = this.resolveOptions();
-    const topics = [options.telemetryTopic ?? DEFAULT_TELEMETRY_TOPIC, options.alarmsTopic ?? DEFAULT_ALARMS_TOPIC];
+    const topics = [
+      options.telemetryTopic ?? DEFAULT_TELEMETRY_TOPIC,
+      options.alarmsTopic ?? DEFAULT_ALARMS_TOPIC,
+      'mes/simulator/+/control',
+    ];
     this.subscriptionInFlight = true;
     try {
       for (const topic of topics) {
@@ -314,6 +328,11 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
   }
 
   private handleMessage(topic: string, payload: string | Uint8Array): void {
+    const controlMatch = /^mes\/simulator\/([^/]+)\/control$/.exec(topic);
+    if (controlMatch) {
+      this.handleSimulatorControlProjection(controlMatch[1], payload);
+      return;
+    }
     const message = parseSimulatorMessage(topic, payload);
     this.messageCounters.received += 1;
     if (!message) {
@@ -354,6 +373,34 @@ export class MqttIngestionService implements OnModuleInit, OnModuleDestroy {
     }
     else if (result.reason === 'duplicate') this.messageCounters.duplicate += 1;
     else this.messageCounters.stale += 1;
+  }
+
+  private handleSimulatorControlProjection(tenantId: string, payload: string | Uint8Array): void {
+    const message = parseSimulatorControlProjection(payload);
+    if (!message) {
+      this.messageCounters.malformed += 1;
+      this.setError('Malformed simulator control acknowledgement', 'MQTT_MALFORMED_CONTROL');
+      return;
+    }
+    const current = this.simulatorRuntime.get(tenantId);
+    const data = message.data;
+    const status = data?.status;
+    const paused = data?.paused;
+    const timeScale = data?.timeScale;
+    const currentTime = message.timestamp ?? new Date().toISOString();
+    if (status !== 'RUNNING' && status !== 'PAUSED' && status !== 'STOPPED') return;
+    if (typeof paused !== 'boolean' || typeof timeScale !== 'number' || !Number.isFinite(timeScale) || timeScale <= 0) return;
+    this.simulatorRuntime.set(tenantId, {
+      status,
+      paused,
+      timeScale,
+      currentTime,
+      lastCommand: message.action as SimulatorRuntimeProjection['lastCommand'],
+      lastCommandId: message.commandId ?? null,
+      lastCommandAt: currentTime,
+      dataSource: 'mqtt',
+    });
+    this.notifyProjection(tenantId);
   }
 
   private notifyProjection(tenantId: string): void {

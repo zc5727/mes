@@ -59,6 +59,14 @@ export function resolveLedgerIdentity(device: Device): DeviceIdentity {
   };
 }
 
+/** Convert a canonical MES device id to the source id expected by the simulator. */
+export function resolveSimulatorSourceId(lineId: string, deviceId: string): string {
+  const knownSourceId = SOURCE_BY_CANONICAL_ID.get(deviceId);
+  if (knownSourceId) return knownSourceId;
+  const identity = resolveSimulatorIdentity(lineId, deviceId);
+  return identity.canonicalId === deviceId ? identity.sourceId : deviceId;
+}
+
 function normalize(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-');
 }

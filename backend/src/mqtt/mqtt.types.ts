@@ -118,6 +118,17 @@ export interface MqttIngestionStatus {
   messages: { received: number; telemetry: number; alarms: number; http: number; accepted: number; duplicate: number; stale: number; malformed: number; rejected: number };
 }
 
+export interface SimulatorRuntimeProjection {
+  status: 'RUNNING' | 'PAUSED' | 'STOPPED';
+  paused: boolean;
+  timeScale: number;
+  currentTime: string;
+  lastCommand: SimulatorControlAction | null;
+  lastCommandId: string | null;
+  lastCommandAt: string | null;
+  dataSource: 'mqtt';
+}
+
 export type SimulatorControlAction =
   | 'start'
   | 'stop'

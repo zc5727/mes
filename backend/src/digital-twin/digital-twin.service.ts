@@ -91,6 +91,7 @@ export interface DigitalTwinSnapshot {
   devices: DigitalTwinDeviceState[];
   alarms: DigitalTwinAlarmState[];
   agvs: Agv[];
+  simulator: ReturnType<MqttIngestionService['getSimulatorRuntime']>;
 }
 
 @Injectable()
@@ -158,6 +159,7 @@ export class DigitalTwinService {
       devices,
       alarms,
       agvs: this.agvsService.findAll(tenantId),
+      simulator: this.mqttIngestionService.getSimulatorRuntime(tenantId),
     };
   }
 

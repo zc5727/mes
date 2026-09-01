@@ -37,6 +37,27 @@ export function parseSimulatorMessage(topic: string, payload: MqttPayload): Pars
   return undefined;
 }
 
+/** Parses the simulator control acknowledgement envelope without accepting arbitrary MQTT data. */
+export function parseSimulatorControlProjection(payload: MqttPayload): {
+  event: string;
+  action: string;
+  commandId?: string;
+  timestamp?: string;
+  data?: Record<string, unknown>;
+} | undefined {
+  const value = parseJsonObject(payload);
+  if (!value || typeof value.event !== 'string' || !value.event.startsWith('simulator.')) return undefined;
+  if (typeof value.action !== 'string') return undefined;
+  const data = isRecord(value.data) ? value.data : undefined;
+  return {
+    event: value.event,
+    action: value.action,
+    ...(typeof value.commandId === 'string' ? { commandId: value.commandId } : {}),
+    ...(typeof value.timestamp === 'string' ? { timestamp: value.timestamp } : {}),
+    ...(data ? { data } : {}),
+  };
+}
+
 function parseTelemetryMessage(
   topic: string,
   match: RegExpExecArray,
