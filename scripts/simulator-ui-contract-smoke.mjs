@@ -14,7 +14,7 @@ const assertions = [
   ['统一仿真控制接口', source.includes("api('/simulator/control'")],
   ['启动全部控件', source.includes('id="startAll"')],
   ['停止全部控件', source.includes('id="stopAll"')],
-  ['设备故障注入控件', source.includes('data-fault="SPINDLE_OVERLOAD"')],
+  ['设备故障注入控件', source.includes("'OVERHEAT'") && source.includes("'QUALITY_ANOMALY'")],
   ['单设备启停控件', source.includes('data-action="start"') && source.includes('data-action="stop"')],
   ['API 密钥注入', source.includes('VITE_API_KEY') && source.includes('authorization')],
   ['身份上下文注入', source.includes('x-user-role') && source.includes('x-factory-id')],
