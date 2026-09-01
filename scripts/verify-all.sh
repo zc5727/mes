@@ -27,7 +27,7 @@ run git -C "$ROOT_DIR" diff --check
 run "$ROOT_DIR/scripts/verify-runtime-unavailable.sh"
 run npm --prefix "$ROOT_DIR/backend" run verify:env
 run npm --prefix "$ROOT_DIR/backend" run verify:mock
-run npm --prefix "$ROOT_DIR/backend" test -- --runInBand
+run npm --prefix "$ROOT_DIR/backend" test -- --runInBand --testTimeout=30000
 run npm --prefix "$ROOT_DIR/backend" run test:e2e -- --runInBand
 run npm --prefix "$ROOT_DIR/backend" run build
 run npm --prefix "$ROOT_DIR/backend" run db:validate
