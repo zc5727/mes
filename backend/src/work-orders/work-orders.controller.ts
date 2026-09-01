@@ -5,6 +5,7 @@ import { CreateWorkOrderDto } from './dto/create-work-order.dto';
 import { UpdateWorkOrderStatusDto } from './dto/update-work-order-status.dto';
 import { UpdateWorkOrderDto } from './dto/update-work-order.dto';
 import { ReportWorkOrderDto } from './dto/report-work-order.dto';
+import { ListWorkOrderQueryDto } from './dto/list-work-order-query.dto';
 import { TraceabilityQuery, WorkOrdersService } from './work-orders.service';
 
 @Controller('work-orders')
@@ -23,8 +24,8 @@ export class WorkOrdersController {
   }
 
   @Get()
-  findAll(@TenantId() tenantId: string, @Query('status') status?: UpdateWorkOrderStatusDto['status']) {
-    return { data: this.workOrdersService.findAll(tenantId, status), tenantId };
+  findAll(@TenantId() tenantId: string, @Query() query: ListWorkOrderQueryDto) {
+    return { data: this.workOrdersService.findAll(tenantId, query.status), tenantId };
   }
 
   @Get(':id')

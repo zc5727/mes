@@ -1,10 +1,11 @@
 import type { INestApplication } from '@nestjs/common';
 import request = require('supertest');
 import { createTestApp } from './support/test-app';
+import { AuditService } from '../src/audit/audit.service';
 
 describe('orders to work-orders production execution (e2e)', () => {
   let app: INestApplication;
-  const headers = { 'x-tenant-id': 'tenant-demo', 'x-user-role': 'supervisor' };
+  const headers = { 'x-tenant-id': 'tenant-demo', 'x-user-role': 'supervisor', 'x-user-id': 'planner-e2e' };
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -23,6 +24,9 @@ describe('orders to work-orders production execution (e2e)', () => {
         plannedQty: 2, dueAt: '2026-09-10T12:00:00.000Z', priority: 'normal',
       })
       .expect(201);
+    expect(app.get(AuditService).list('tenant-demo')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: 'order.create', actor: 'planner-e2e', resourceId: order.body.data.id }),
+    ]));
 
     const workOrder = await request(app.getHttpServer())
       .post('/api/v1/work-orders')
@@ -75,5 +79,47 @@ describe('orders to work-orders production execution (e2e)', () => {
       .set(headers)
       .expect(200)
       .expect(({ body }) => expect(body.data).toEqual(expect.objectContaining({ completedQty: 2, status: 'completed' })));
+  });
+
+  it('keeps list filtering, response envelope, role checks and validation explicit', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/work-orders')
+      .set('x-tenant-id', 'tenant-demo')
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual(expect.objectContaining({ tenantId: 'tenant-demo', data: expect.any(Array) }));
+      });
+
+    const payload = {
+      orderNo: 'WO-E2E-CONTRACT-001', productCode: 'P-CONTRACT', productName: '接口契约测试件',
+      lineId: 'line-cnc', plannedQty: 1, dueAt: '2026-09-10T12:00:00.000Z',
+    };
+    await request(app.getHttpServer())
+      .post('/api/v1/work-orders')
+      .set('x-tenant-id', 'tenant-demo')
+      .send(payload)
+      .expect(401);
+    await request(app.getHttpServer())
+      .post('/api/v1/work-orders')
+      .set('x-tenant-id', 'tenant-demo')
+      .set('x-user-role', 'viewer')
+      .send(payload)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .get('/api/v1/work-orders')
+      .set('x-tenant-id', 'tenant-demo')
+      .query({ status: 'not-a-work-order-status' })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .get('/api/v1/work-orders')
+      .set('x-tenant-id', 'tenant-demo')
+      .query({ status: 'in_progress' })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data).toEqual(expect.any(Array));
+        expect(body.data.every((item: { status: string }) => item.status === 'in_progress')).toBe(true);
+      });
   });
 });
