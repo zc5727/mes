@@ -79,6 +79,47 @@ test("control protocol covers lifecycle, speed, fault, snapshot and export", () 
   assert.equal(Array.isArray(exportMessage.payload.data), true);
 });
 
+test("records direct control and twin messages for replay with command timestamps", () => {
+  const factory = new FactorySimulator("test-tenant", 1000, () => 0.5, [LINE_DEFINITIONS[0]]);
+  const timestamp = new Date("2026-08-29T08:00:00.000Z");
+
+  const faultMessages = factory.handleControlCommand({
+    action: "fault",
+    commandId: "fault-1",
+    lineId: "line-cnc",
+    deviceId: "cnc-01",
+    faultType: "OVERHEAT",
+    timestamp: timestamp.toISOString(),
+  }, timestamp);
+  const twinTimestamp = new Date(timestamp.getTime() + 1000);
+  const twinMessages = factory.handleTwinCommand({
+    commandId: "twin-1",
+    action: "STOP_LINE",
+    lineId: "line-cnc",
+    timestamp: twinTimestamp.toISOString(),
+  }, timestamp);
+  assert.equal(
+    (twinMessages[0].payload.data as { timestamp: string }).timestamp,
+    twinTimestamp.toISOString(),
+  );
+
+  const snapshot = factory.handleControlCommand({ action: "snapshot", commandId: "snapshot-1" }, timestamp)[0];
+  assert.equal(snapshot.payload.timestamp, timestamp.toISOString());
+
+  const replay = JSON.parse(factory.exportReplay()) as {
+    frames: Array<{ timestamp: string; messages: SimulationMessageLike[] }>;
+  };
+  const replayMessages = replay.frames.flatMap((frame) => frame.messages);
+  assert.equal(replay.frames[0].timestamp, timestamp.toISOString());
+  assert.equal(replayMessages.filter((message) => message.payload.event === "alarm.created").length, 1);
+  assert.equal(replayMessages.some((message) => message.payload.event === "twin.state.changed"), true);
+  assert.equal(replayMessages.some((message) => message.payload.event === "simulator.snapshot"), true);
+  assert.deepEqual(
+    replay.frames[0].messages.slice(0, faultMessages.length).map((message) => message.payload.event),
+    faultMessages.map((message) => message.payload.event),
+  );
+});
+
 test("scoped reset clears only the requested fault, device or line", () => {
   const factory = new FactorySimulator("test-tenant", 1000, () => 0.5, LINE_DEFINITIONS.slice(0, 2));
   const timestamp = new Date("2026-08-29T08:00:00.000Z");
@@ -119,3 +160,7 @@ test("scoped reset clears only the requested fault, device or line", () => {
   assert.deepEqual(factory.snapshot(timestamp).find((line) => line.lineId === "line-assembly")?.devices
     .find((device) => device.deviceId === "asm-01")?.activeFaults, ["JAM"]);
 });
+
+interface SimulationMessageLike {
+  payload: { event: string };
+}

@@ -224,62 +224,73 @@ export class FactorySimulator {
     const commandTimestamp = command.timestamp ? new Date(command.timestamp) : timestamp;
     if (Number.isNaN(commandTimestamp.getTime())) throw new Error("timestamp must be a valid ISO date");
 
-    switch (command.action) {
-      case "start":
-        return this.applyLifecycleCommand(command, "START_LINE", "START_DEVICE", commandTimestamp);
-      case "stop":
-        return this.applyLifecycleCommand(command, "STOP_LINE", "STOP_DEVICE", commandTimestamp);
-      case "pause":
-        this.pause();
-        return [this.controlAppliedMessage(command, commandTimestamp)];
-      case "resume":
-        this.resume();
-        return [this.controlAppliedMessage(command, commandTimestamp)];
-      case "speed":
-        if (command.speed === undefined) throw new Error("speed requires a positive speed");
-        this.setTimeScale(command.speed);
-        return [this.controlAppliedMessage(command, commandTimestamp)];
-      case "fault": {
-        if (!command.lineId || !command.deviceId || !command.faultType) {
-          throw new Error("fault requires lineId, deviceId and faultType");
-        }
-        const agv = this.findAgv(command.lineId, command.deviceId);
-        const alarm = agv
-          ? agv.injectFault(command.faultType, commandTimestamp)
-          : this.findLine(command.lineId).injectFault(command.deviceId, command.faultType, commandTimestamp);
-        if (agv) this.agvAlarms.set(alarm.id, alarm);
-        return [
-          this.alarmMessage("alarm.created", alarm),
-          this.controlAppliedMessage(command, commandTimestamp),
-        ];
-      }
-      case "reset":
-        if (!command.lineId) {
-          this.reset();
+    const messages = (() => {
+      switch (command.action) {
+        case "start":
+          return this.applyLifecycleCommand(command, "START_LINE", "START_DEVICE", commandTimestamp);
+        case "stop":
+          return this.applyLifecycleCommand(command, "STOP_LINE", "STOP_DEVICE", commandTimestamp);
+        case "pause":
+          this.pause();
           return [this.controlAppliedMessage(command, commandTimestamp)];
+        case "resume":
+          this.resume();
+          return [this.controlAppliedMessage(command, commandTimestamp)];
+        case "speed":
+          if (command.speed === undefined) throw new Error("speed requires a positive speed");
+          this.setTimeScale(command.speed);
+          return [this.controlAppliedMessage(command, commandTimestamp)];
+        case "fault": {
+          if (!command.lineId || !command.deviceId || !command.faultType) {
+            throw new Error("fault requires lineId, deviceId and faultType");
+          }
+          const agv = this.findAgv(command.lineId, command.deviceId);
+          const alarm = agv
+            ? agv.injectFault(command.faultType, commandTimestamp)
+            : this.findLine(command.lineId).injectFault(command.deviceId, command.faultType, commandTimestamp);
+          if (agv) this.agvAlarms.set(alarm.id, alarm);
+          return [
+            this.alarmMessage("alarm.created", alarm),
+            this.controlAppliedMessage(command, commandTimestamp),
+          ];
         }
-        return this.applyResetCommand(command, commandTimestamp);
-      case "snapshot":
-        return [
-          this.controlMessage("simulator.snapshot", command, {
-            // Keep the original snapshot payload shape; strategyInputSnapshot()
-            // is the richer, explicitly versionable strategy contract.
-            data: this.snapshot(commandTimestamp),
-          }),
-        ];
-      case "export":
-        return [
-          this.controlMessage("simulator.export", command, {
-            data: JSON.parse(this.exportHistory()),
-          }),
-        ];
-      case "replay":
-        return [
-          this.controlMessage("simulator.replay", command, {
-            data: JSON.parse(this.exportReplay()),
-          }),
-        ];
-    }
+        case "reset":
+          if (!command.lineId) {
+            this.reset();
+            return [this.controlAppliedMessage(command, commandTimestamp)];
+          }
+          return this.applyResetCommand(command, commandTimestamp);
+        case "snapshot":
+          return [
+            this.controlMessage("simulator.snapshot", command, {
+              // Keep the original snapshot payload shape; strategyInputSnapshot()
+              // is the richer, explicitly versionable strategy contract.
+              data: this.snapshot(commandTimestamp),
+              timestamp: commandTimestamp.toISOString(),
+            }),
+          ];
+        case "export":
+          return [
+            this.controlMessage("simulator.export", command, {
+              data: JSON.parse(this.exportHistory()),
+              timestamp: commandTimestamp.toISOString(),
+            }),
+          ];
+        case "replay":
+          return [
+            this.controlMessage("simulator.replay", command, {
+              data: JSON.parse(this.exportReplay()),
+              timestamp: commandTimestamp.toISOString(),
+            }),
+          ];
+      }
+    })();
+    // Commands received over MQTT are published immediately by the caller.
+    // Keep that behaviour, but also persist the exact acknowledgement/alarm
+    // messages so a later replay does not silently lose operator actions.
+    // Scenario commands are recorded by their enclosing tick instead.
+    if (!this.processingScenario) this.recordCommandFrame(timestamp, messages);
+    return messages;
   }
 
   private applyLifecycleCommand(
@@ -303,28 +314,30 @@ export class FactorySimulator {
   }
 
   public handleTwinCommand(command: TwinCommand, timestamp = new Date()): SimulationMessage[] {
+    const commandTimestamp = command.timestamp ? new Date(command.timestamp) : timestamp;
+    if (Number.isNaN(commandTimestamp.getTime())) throw new Error("timestamp must be a valid ISO date");
     const line = this.findLine(command.lineId);
     const alarms: Alarm[] = [];
     if (command.action === "INJECT_FAULT") {
       if (!command.deviceId || !command.faultType) throw new Error("INJECT_FAULT requires deviceId and faultType");
       const agv = this.findAgv(command.lineId, command.deviceId);
       const alarm = agv
-        ? agv.injectFault(command.faultType, timestamp)
-        : line.injectFault(command.deviceId, command.faultType, timestamp);
+        ? agv.injectFault(command.faultType, commandTimestamp)
+        : line.injectFault(command.deviceId, command.faultType, commandTimestamp);
       if (agv) this.agvAlarms.set(alarm.id, alarm);
       alarms.push(alarm);
     } else if (command.action === "START_LINE" || command.action === "STOP_LINE" || command.action === "RESET_FAULT") {
-      alarms.push(...line.executeLineAction(command.action, timestamp));
+      alarms.push(...line.executeLineAction(command.action, commandTimestamp));
       if (command.action === "RESET_FAULT") {
         this.agvs.filter((agv) => this.agvDefinitions.find((definition) => definition.id === agv.agvId)?.lineId === command.lineId)
-          .forEach((agv) => alarms.push(...this.clearAgvFaults(agv, timestamp)));
+          .forEach((agv) => alarms.push(...this.clearAgvFaults(agv, commandTimestamp)));
       }
     } else {
       if (!command.deviceId) throw new Error(`${command.action} requires deviceId`);
       const agv = this.findAgv(command.lineId, command.deviceId);
       if (agv && command.action === "START_DEVICE") agv.start();
       else if (agv && command.action === "STOP_DEVICE") agv.stop();
-      else alarms.push(...line.executeDeviceAction(command.action, command.deviceId, timestamp));
+      else alarms.push(...line.executeDeviceAction(command.action, command.deviceId, commandTimestamp));
     }
 
     const event = command.action === "RESET_FAULT" ? "alarm.cleared" : command.action === "INJECT_FAULT" ? "alarm.created" : "twin.command.applied";
@@ -334,9 +347,10 @@ export class FactorySimulator {
       payload: {
         event: "twin.state.changed",
         commandId: command.commandId,
-        data: this.withAgvs(line.snapshot(timestamp)),
+        data: this.withAgvs(line.snapshot(commandTimestamp)),
       },
     });
+    if (!this.processingScenario) this.recordCommandFrame(timestamp, messages);
     return messages;
   }
 
@@ -473,8 +487,22 @@ export class FactorySimulator {
 
   private recordFrame(timestamp: Date, messages: SimulationMessage[]): SimulationMessage[] {
     const delivered = this.deliver(messages, timestamp);
-    this.history.push({ timestamp: timestamp.toISOString(), messages: cloneMessages(delivered) });
+    this.appendHistoryFrame(timestamp, delivered);
     return delivered;
+  }
+
+  private recordCommandFrame(timestamp: Date, messages: SimulationMessage[]): void {
+    this.appendHistoryFrame(timestamp, messages);
+  }
+
+  private appendHistoryFrame(timestamp: Date, messages: SimulationMessage[]): void {
+    const timestampValue = timestamp.toISOString();
+    const previous = this.history.at(-1);
+    if (previous?.timestamp === timestampValue) {
+      previous.messages.push(...cloneMessages(messages));
+      return;
+    }
+    this.history.push({ timestamp: timestampValue, messages: cloneMessages(messages) });
   }
 
   private applyResetCommand(command: SimulatorControlCommand, timestamp: Date): SimulationMessage[] {
