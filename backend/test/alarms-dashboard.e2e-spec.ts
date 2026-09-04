@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { INestApplication } from '@nestjs/common';
 import request = require('supertest');
@@ -17,6 +17,11 @@ describe('Alarms and dashboard API (e2e)', () => {
   beforeAll(async () => {
     app = await NestFactory.create(AlarmsDashboardTestModule, { logger: false });
     app.setGlobalPrefix('api/v1');
+    app.useGlobalPipes(new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }));
     await app.init();
   });
 
