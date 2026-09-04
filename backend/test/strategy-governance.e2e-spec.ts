@@ -102,6 +102,9 @@ describe('strategy governance boundary (e2e)', () => {
     const outOfScopeHistory = await request(server).get('/api/v1/strategies/history')
       .set(identity('supervisor', 'LINE-OTHER')).expect(200);
     expect(outOfScopeHistory.body.data).toEqual([]);
+    const outOfScopePagedHistory = await request(server).get('/api/v1/strategies/history?page=1&pageSize=20')
+      .set(identity('supervisor', 'LINE-OTHER')).expect(200);
+    expect(outOfScopePagedHistory.body.data).toEqual([]);
   });
 
   it('deduplicates repeated simulation requests and blocks revoked recommendations', async () => {
