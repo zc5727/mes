@@ -62,9 +62,12 @@ const contracts = [
     'errorMessage.value = error instanceof Error',
   ]],
   ['third_party/threejs-factory-demo/src/store/factoryStore.ts', [
+    'selectedLineId',
     'selectedDeviceId',
+    'sessionStorage',
     'setConnectionState',
     'applySnapshot',
+    'selectLine(id: string | null)',
     'selectDevice(id: string | null)',
   ]],
   ['third_party/threejs-factory-demo/src/components/layout/OperationsPanel.vue', [
