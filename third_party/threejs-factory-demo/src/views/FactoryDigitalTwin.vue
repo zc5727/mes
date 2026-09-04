@@ -40,7 +40,7 @@
       :selected-device-id="selectedDeviceId"
       @select-device="handleListSelect"
       :production-lines="lineSummaries"
-      :selected-line-id="selectedLineId"
+      :selected-line-id="selectedLine.id"
       :line-busy="lineSubmitting || dataBusy"
       @select-line="handleLineSelect"
       :can-manage-lines="canControl"
@@ -119,7 +119,6 @@ import type { RealtimeMessage } from '@/websocket/protocol';
 
 const store = useFactoryStore();
 const mesSource = (import.meta.env.VITE_MES_SOURCE_NAME as string | undefined)?.trim() || 'NestJS Facade / OpenMES';
-const selectedLineId = ref('LINE-01');
 const loading = ref(true);
 const loadError = ref(false);
 const connectionState = ref<RealtimeConnectionState>('idle');
@@ -158,6 +157,7 @@ const {
   powerConsumption,
   temperatureTrend,
   selectedDeviceId,
+  selectedLineId,
   selectedDevice,
   onlineDeviceCount,
   connected,
@@ -259,7 +259,7 @@ const closeAlarmAction = async (id: string) => {
 };
 
 const handleLineSelect = (id: string) => {
-  selectedLineId.value = id;
+  store.selectLine(id);
   const nextDevice = devices.value.find((device) => device.lineId === id && device.status !== 'offline')
     ?? devices.value.find((device) => device.lineId === id);
   store.selectDevice(nextDevice?.id ?? null);
@@ -411,7 +411,7 @@ const handleCreateInspection = async (deviceId: string) => {
 
 const ensureLineSelection = () => {
   const nextLine = productionLines.value.find((line) => line.id === selectedLineId.value) ?? productionLines.value[0];
-  if (nextLine && selectedLineId.value !== nextLine.id) selectedLineId.value = nextLine.id;
+  if (nextLine && selectedLineId.value !== nextLine.id) store.selectLine(nextLine.id);
   if (selectedDeviceId.value && devices.value.some((device) => device.id === selectedDeviceId.value && device.lineId === selectedLineId.value)) return;
   const firstDevice = devices.value.find((device) => device.lineId === selectedLineId.value);
   store.selectDevice(firstDevice?.id ?? null);

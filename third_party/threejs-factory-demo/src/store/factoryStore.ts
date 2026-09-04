@@ -13,11 +13,41 @@ type ConnectionState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'f
 
 interface FactoryState extends FactorySnapshot {
   productionLines: ProductionLineTelemetry[];
+  selectedLineId: string | null;
   selectedDeviceId: string | null;
   connected: boolean;
   connectionState: ConnectionState;
   dataSource: 'api' | 'simulator';
 }
+
+const SELECTION_STORAGE_KEY = 'mes.factory.selection';
+
+function readSelection(): Pick<FactoryState, 'selectedLineId' | 'selectedDeviceId'> {
+  if (typeof window === 'undefined') return { selectedLineId: null, selectedDeviceId: null };
+  try {
+    const value = JSON.parse(window.sessionStorage.getItem(SELECTION_STORAGE_KEY) ?? 'null') as Partial<Pick<FactoryState, 'selectedLineId' | 'selectedDeviceId'>> | null;
+    return {
+      selectedLineId: typeof value?.selectedLineId === 'string' ? value.selectedLineId : null,
+      selectedDeviceId: typeof value?.selectedDeviceId === 'string' ? value.selectedDeviceId : null,
+    };
+  } catch {
+    return { selectedLineId: null, selectedDeviceId: null };
+  }
+}
+
+function persistSelection(state: Pick<FactoryState, 'selectedLineId' | 'selectedDeviceId'>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(SELECTION_STORAGE_KEY, JSON.stringify({
+      selectedLineId: state.selectedLineId,
+      selectedDeviceId: state.selectedDeviceId,
+    }));
+  } catch {
+    // Storage can be disabled by browser policy; in-memory selection remains valid.
+  }
+}
+
+const initialSelection = readSelection();
 
 export const useFactoryStore = defineStore('factory', {
   state: (): FactoryState => ({
@@ -29,7 +59,7 @@ export const useFactoryStore = defineStore('factory', {
     powerConsumption: 0,
     temperatureTrend: [],
     productionLines: [],
-    selectedDeviceId: null,
+    ...initialSelection,
     connected: false,
     connectionState: 'idle',
     dataSource: 'api',
@@ -98,6 +128,11 @@ export const useFactoryStore = defineStore('factory', {
     },
     selectDevice(id: string | null) {
       this.selectedDeviceId = id;
+      persistSelection(this);
+    },
+    selectLine(id: string | null) {
+      this.selectedLineId = id;
+      persistSelection(this);
     },
   },
 });
