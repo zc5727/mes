@@ -353,7 +353,12 @@ class AgentLoop:
         self._extra_hooks: list[AgentHook] = hooks or []
         self._hook_factories: list[AgentTurnHookFactory] = hook_factories or []
 
-        self.context = ContextBuilder(workspace, timezone=timezone, disabled_skills=disabled_skills)
+        self.context = ContextBuilder(
+            workspace,
+            timezone=timezone,
+            disabled_skills=disabled_skills,
+            mes_only=_tc.mes_only,
+        )
         self.sessions = session_manager or SessionManager(workspace)
         self.tools = ToolRegistry()
         # One file-read/write tracker per logical session. The tool registry is
@@ -535,6 +540,7 @@ class AgentLoop:
         provider_snapshot_loader: Callable[..., ProviderSnapshot] | None,
     ) -> None:
         """Register the default set of tools via plugin loader."""
+        from nanobot.agent.mes_policy import mes_only_tool_classes
         from nanobot.agent.tools.context import ToolContext
         from nanobot.agent.tools.loader import ToolLoader
 
@@ -552,10 +558,12 @@ class AgentLoop:
             runtime_events=self.runtime_events,
         )
         loader = ToolLoader()
+        if self.tools_config.mes_only:
+            loader = ToolLoader(test_classes=mes_only_tool_classes(loader.discover()))
         registered = loader.load(ctx, self.tools)
 
         # MyTool needs runtime state reference — manual registration
-        if self.tools_config.my.enable:
+        if not self.tools_config.mes_only and self.tools_config.my.enable:
             self.tools.register(
                 MyTool(runtime_state=self, modify_allowed=self.tools_config.my.allow_set)
             )
@@ -565,6 +573,8 @@ class AgentLoop:
 
     async def _connect_mcp(self) -> None:
         """Connect configured MCP servers."""
+        if self.tools_config.mes_only:
+            return
         await agent_context.connect_mcp(self, self.tools)
 
     def register_runtime_context_provider(

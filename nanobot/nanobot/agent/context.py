@@ -53,9 +53,10 @@ class ContextBuilder:
     _MAX_HISTORY_TOKENS = 8_000  # hard cap on recent history section size (tokens)
     _RUNTIME_CONTEXT_END = RUNTIME_CONTEXT_END
 
-    def __init__(self, workspace: Path, timezone: str | None = None, disabled_skills: list[str] | None = None):
+    def __init__(self, workspace: Path, timezone: str | None = None, disabled_skills: list[str] | None = None, mes_only: bool = False):
         self.workspace = workspace
         self.timezone = timezone
+        self.mes_only = mes_only
         self.memory = MemoryStore(workspace)
         self.skills = SkillsLoader(workspace, disabled_skills=set(disabled_skills) if disabled_skills else None)
 
@@ -78,6 +79,14 @@ class ContextBuilder:
             parts.append(bootstrap)
 
         parts.append(render_template("agent/tool_contract.md"))
+        if self.mes_only:
+            parts.append(
+                "# MES-only adapter policy\n\n"
+                "You are a MES-specific interaction adapter. Only answer using MES data, "
+                "analysis, controlled-operation requests, approvals, and audit context. "
+                "Do not act as a general personal assistant, answer unrelated questions, "
+                "use external business tools, or bypass the MES Agent API."
+            )
 
         memory = self.memory.get_memory_context()
         if memory and not self._is_template_content(self.memory.read_memory(), "memory/MEMORY.md"):

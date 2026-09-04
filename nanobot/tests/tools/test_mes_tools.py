@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 
 import pytest
 
-from nanobot.agent.tools.mes import GetActiveAlarmsTool, GetLineStatusTool, MesToolsConfig
 from nanobot.agent.tools.context import RequestContext, request_context
+from nanobot.agent.tools.mes import GetActiveAlarmsTool, GetLineStatusTool, MesToolsConfig
 
 
 class FakeResponse:
@@ -81,4 +80,4 @@ def test_mes_tools_are_read_only_and_strictly_discoverable() -> None:
     assert tool.read_only is True
     assert "line_id" in tool.parameters["properties"]
     assert tool.parameters["required"] == ["line_id"]
-    assert SimpleNamespace(mes=MesToolsConfig(enable=False)).mes.enable is False
+    assert MesToolsConfig(enable=False).enable is False

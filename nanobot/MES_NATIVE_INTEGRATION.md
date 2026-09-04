@@ -33,11 +33,13 @@
       "tenantId": "tenant-demo",
       "requestedBy": "nanobot",
       "timeoutSeconds": 10
-    }
+    },
+    "mesOnly": true
   }
 }
 ```
 
 `traceId` 优先使用当前 nanobot turn ID，否则自动生成。工具只提供查询与
 分析；启动/停止设备、停线、修改工单、修改告警、执行策略和发布 MQTT
-控制消息均不会注册。
+控制消息均不会注册。启用 `mesOnly` 后，Nanobot 不注册个人助理、文件、
+Shell、网页、MCP 或其他非 MES 工具，并跳过 MCP 连接。

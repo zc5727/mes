@@ -370,6 +370,11 @@ class ToolsConfig(Base):
         default_factory=lambda: _lazy_default("nanobot.agent.tools.image_generation", "ImageGenerationToolConfig"),
     )
     mes: MesToolsConfig = Field(default_factory=lambda: _lazy_default("nanobot.agent.tools.mes", "MesToolsConfig"))
+    mes_only: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("mesOnly", "mes_only"),
+        serialization_alias="mesOnly",
+    )  # expose only MES tools and disable MCP/other built-ins
     restrict_to_workspace: bool = False  # policy intent: keep tool access inside workspace when possible
     webui_allow_local_service_access: bool = Field(
         default=True,
