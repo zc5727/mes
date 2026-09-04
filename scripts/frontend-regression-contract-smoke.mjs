@@ -22,7 +22,7 @@ const contracts = [
     "createApp(App).use(createPinia()).mount('#app')",
   ]],
   ['third_party/threejs-factory-demo/src/App.vue', [
-    '<FactoryDigitalTwin />',
+    '<WorkspaceShell />',
   ]],
   ['third_party/threejs-factory-demo/src/views/FactoryDigitalTwin.vue', [
     'onMounted(async () => {',
@@ -39,6 +39,27 @@ const contracts = [
     'startRealtime',
     'canMesCapability',
     'listWorkOrders',
+  ]],
+  ['third_party/threejs-factory-demo/src/views/WorkspaceShell.vue', [
+    '<FactoryDigitalTwin v-if="isTwinPage" />',
+    '<BusinessPage v-else :page="businessPage" />',
+    'window.location.hash',
+    'readRoute()',
+    'hashchange',
+  ]],
+  ['third_party/threejs-factory-demo/src/components/layout/WorkspaceNavigation.vue', [
+    'aria-current',
+    'activeRoute === item.key',
+    '@click="$emit(\'navigate\', item.key)"',
+    'overflow-x: auto;',
+  ]],
+  ['third_party/threejs-factory-demo/src/views/BusinessPage.vue', [
+    ':disabled="loading"',
+    '@click="loadData"',
+    'role="alert"',
+    'watch(() => props.page.key',
+    'records__scroll',
+    'errorMessage.value = error instanceof Error',
   ]],
   ['third_party/threejs-factory-demo/src/store/factoryStore.ts', [
     'selectedDeviceId',
@@ -82,6 +103,21 @@ const contracts = [
     "'line-welding'",
     "'line-vision'",
   ]],
+  ['backend/src/alarms/alarms.controller.ts', [
+    "@Query() query: AlarmQueryDto",
+    'query.page === undefined && query.pageSize === undefined',
+    'pagination: result.pagination',
+  ]],
+  ['backend/src/dashboard/dashboard.controller.ts', [
+    "@Query() query: DashboardHistoryQueryDto",
+    'getProductionHistoryPage',
+    'pagination: result.pagination',
+  ]],
+  ['backend/src/strategies/strategies.controller.ts', [
+    "@Query('page') pageQuery?: string",
+    "@Query('pageSize') pageSizeQuery?: string",
+    'totalPages',
+  ]],
 ];
 
 const failures = [];
@@ -101,5 +137,5 @@ if (failures.length > 0) {
 }
 
 console.log(`PASS FRONTEND REGRESSION CONTRACT (${passed} assertions)`);
-console.log('COVERED: root entry, refresh/polling lifecycle, line/device selection, fault/recovery API wiring, realtime reconnect, and role-bound buttons.');
-console.log('NOTE: route history/back state, reload retention, DOM gestures, and live API fault propagation require frontend-browser-smoke.mjs with Playwright.');
+console.log('COVERED: workspace hash navigation, refresh/error/empty states, line/device selection, API pagination contracts, fault/recovery API wiring, realtime reconnect, and role-bound buttons.');
+console.log('NOTE: browser back/reload retention, DOM gestures, and live API fault propagation require frontend-browser-smoke.mjs with Playwright.');
