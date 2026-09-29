@@ -1,0 +1,125 @@
+name: mes-local
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mes
+      POSTGRES_PASSWORD: mes_dev
+      POSTGRES_DB: mes
+    ports:
+      - "${MES_POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - mes_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mes -d mes"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    ports:
+      - "${MES_MQTT_HOST_PORT:-1883}:1883"
+      - "${MES_MQTT_WS_HOST_PORT:-9001}:9001"
+    volumes:
+      - ./backend/infra/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -p 1883 -t '$$SYS/broker/uptime' -C 1 -W 2 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: mes_dev
+      MINIO_ROOT_PASSWORD: mes_dev_secret
+    ports:
+      - "${MES_MINIO_HOST_PORT:-9000}:9000"
+      - "${MES_MINIO_CONSOLE_HOST_PORT:-9002}:9001"
+    volumes:
+      - mes_minio:/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    working_dir: /workspace
+    environment:
+      DATABASE_URL: postgresql://mes:mes_dev@postgres:5432/mes
+      DATABASE_ENABLED: "true"
+      DATABASE_REQUIRED: "true"
+      MQTT_ENABLED: "true"
+      MQTT_URL: mqtt://mqtt:1883
+      MES_TENANT_ID: tenant-demo
+      CORS_ALLOWED_ORIGINS: http://localhost:5173,http://localhost:5174
+    ports:
+      - "${MES_API_HOST_PORT:-3000}:3000"
+    volumes:
+      - ./backend:/workspace
+      - backend_node_modules:/workspace/node_modules
+    depends_on:
+      postgres: { condition: service_healthy }
+      mqtt: { condition: service_healthy }
+    command: sh -c "npm run db:migrate && npm run start:dev"
+
+  simulator:
+    build:
+      context: ./simulator
+      dockerfile: Dockerfile.dev
+    working_dir: /workspace
+    environment:
+      MQTT_URL: mqtt://mqtt:1883
+      MES_TENANT_ID: tenant-demo
+    volumes:
+      - ./simulator:/workspace
+      - simulator_node_modules:/workspace/node_modules
+    depends_on:
+      mqtt: { condition: service_healthy }
+    command: npm run dev -- --mqtt mqtt://mqtt:1883 --tenant tenant-demo
+
+  digital-twin:
+    build:
+      context: ./third_party/threejs-factory-demo
+      dockerfile: Dockerfile.dev
+    working_dir: /workspace
+    environment:
+      VITE_API_BASE_URL: http://localhost:3000/api/v1
+      VITE_TENANT_ID: tenant-demo
+      VITE_DATA_MODE: api
+    ports:
+      - "${MES_TWIN_HOST_PORT:-5173}:5173"
+    volumes:
+      - ./third_party/threejs-factory-demo:/workspace
+      - twin_node_modules:/workspace/node_modules
+    depends_on:
+      - backend
+    command: npm run dev -- --host 0.0.0.0
+
+  simulator-ui:
+    build:
+      context: ./simulator-ui
+      dockerfile: Dockerfile.dev
+    working_dir: /workspace
+    environment:
+      VITE_API_BASE_URL: http://localhost:3000/api/v1
+      VITE_TENANT_ID: tenant-demo
+      VITE_USER_ROLE: engineer
+    ports:
+      - "${MES_SIMULATOR_UI_HOST_PORT:-5174}:5173"
+    volumes:
+      - ./simulator-ui:/workspace
+      - simulator_ui_node_modules:/workspace/node_modules
+    depends_on:
+      - backend
+    command: npm run dev -- --host 0.0.0.0
+
+volumes:
+  mes_postgres:
+  mes_minio:
+  backend_node_modules:
+  simulator_node_modules:
+  twin_node_modules:
+  simulator_ui_node_modules:
